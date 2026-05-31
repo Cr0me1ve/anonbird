@@ -144,6 +144,38 @@ Published endpoints: none
 Result: OK
 ```
 
+### Migration From NetBird
+
+Migration defaults to dry-run mode and prints the exact file/service actions
+before changing anything.
+
+Client migration:
+
+```bash
+anonbird migrate client --dry-run
+sudo anonbird migrate client --apply
+```
+
+For a clean anonymous re-enrollment during client migration:
+
+```bash
+sudo anonbird migrate client --apply --rejoin "anonbird://join?server=http%3A%2F%2Fexample.onion&setup_key=..."
+```
+
+Self-hosted server migration uses the packaged AnonBird migration script for the
+legacy Docker Compose stack:
+
+```bash
+anonbird migrate server --install-dir /opt/netbird --dry-run
+sudo anonbird migrate server --install-dir /opt/netbird --apply --yes
+```
+
+Rollback for client filesystem migration:
+
+```bash
+sudo anonbird migrate rollback --backup-dir /var/backups/anonbird/migration-YYYYMMDD-HHMMSS --apply
+```
+
 ### Release-readiness status
 
 The current branch contains a working anonymous MVP plus post-MVP production

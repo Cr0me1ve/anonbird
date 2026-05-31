@@ -9,7 +9,7 @@
 # Not supported: External IdP (Auth0, Keycloak, etc.) — use getting-started.sh for fresh setup.
 #
 # Usage:
-#   ./migrate.sh [--install-dir /path/to/netbird] [--non-interactive]
+#   ./migrate.sh [--install-dir /path/to/netbird] [--dry-run] [--non-interactive]
 
 set -euo pipefail
 
@@ -45,6 +45,7 @@ fi
 
 INSTALL_DIR=""
 NON_INTERACTIVE=false
+DRY_RUN=false
 DOCKER_COMPOSE_CMD=""
 
 # Detection results
@@ -1217,13 +1218,18 @@ main() {
         NON_INTERACTIVE=true
         shift
         ;;
+      --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
       --help|-h)
-        echo "Usage: $0 [--install-dir /path/to/netbird] [--non-interactive]"
+        echo "Usage: $0 [--install-dir /path/to/netbird] [--dry-run] [--non-interactive]"
         echo ""
         echo "Migrates a pre-v0.65.0 NetBird deployment into the AnonBird combined container setup."
         echo ""
         echo "Options:"
         echo "  --install-dir DIR    Path to existing NetBird installation"
+        echo "  --dry-run            Detect and print planned migration without changing files or containers"
         echo "  --non-interactive    Skip confirmation prompts (for automation)"
         echo "  -h, --help           Show this help message"
         exit 0
@@ -1250,6 +1256,15 @@ main() {
   detect_store_config
   extract_config_values
   print_detection_summary
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo ""
+    echo "$MSG_SEPARATOR"
+    echo "Dry-run complete. No files, Docker volumes, or containers were changed."
+    echo "Re-run without --dry-run to apply this server migration."
+    echo "$MSG_SEPARATOR"
+    return 0
+  fi
 
   confirm_action "Proceed with migration?"
 

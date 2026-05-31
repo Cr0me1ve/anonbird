@@ -160,6 +160,7 @@
 - Проверки 2026-05-31: final requirement-by-requirement completion audit — в плане не осталось незакрытых чекбоксов или рабочих пунктов по текущему MVP scope; Phase 0-6 имеют `Статус: выполнено/закрыто`; устаревших маркеров незавершённого remote smoke/goal-blocker больше нет; focused rg в netbird и dashboard не находит old upstream docs/cloud/package/forum/shared-actions hosts вне явно исключённых исторических audit docs; `git status --short` чистый в `/Users/kirill/Code/netbird` и `/Users/kirill/Code/dashboard` после push.
 - Проверки 2026-05-31: post-MVP production readiness start — `infrastructure_files/getting-started.sh` получил non-interactive one-command режим (`--domain`, `--email`, `--yes`, `--render-only`, proxy options), README обновлён open-source quickstart инструкцией. Проверено: `bash -n`, `--help`, `--render-only`, `docker compose config` для сгенерированного self-host stack, fail-fast без `--email` в non-interactive Traefik mode.
 - Проверки 2026-05-31: production path cleanup — default client/service paths переключены на `/etc/anonbird`, `/var/lib/anonbird`, `/var/log/anonbird`, `ProgramData\AnonBird`, `/var/db/anonbird`; legacy NetBird paths оставлены как source для миграции. Проверено: `gofmt`, `go test ./client/configs ./client/internal/profilemanager ./client/cmd -count=1 -timeout 240s`, `git diff --check`.
+- Проверки 2026-05-31: migration CLI first pass — добавлен `anonbird migrate client|server|rollback`: client path делает dry-run/apply/backup/rollback для `/etc/netbird`, `/var/lib/netbird`, `/var/log/netbird` и systemd unit rewrite; server path запускает packaged `infrastructure_files/migrate.sh`, которому добавлен `--dry-run`; README получил migration раздел. Проверено: `go test ./client/cmd -run 'Test.*Migration|TestInitCommands' -count=1`, `go test ./client/configs ./client/internal/profilemanager ./client/cmd -count=1 -timeout 240s`, `go run ./client migrate --help`, `go run ./client migrate client --root /tmp/anonbird-missing-root --dry-run`, fake-root `migrate client --apply` + `migrate rollback --apply`, `bash -n infrastructure_files/migrate.sh`, `bash infrastructure_files/migrate.sh --help`.
 - Проверки 2026-05-31: Tor benchmark preflight — SSH к `93.177.116.58` восстановился, Tor onion hostname `o2n24n6pjl4dkz2i3tlyfov3ozpnwcu4bhy26rtd65stqctn6rg3vpad.onion` доступен в конфиге, remote combined всё ещё старой сборки с `/health` 503 из-за onion DNS self-probe, но management/setup-key path через onion работоспособен.
 - Проверки 2026-05-31: Tor relay-only benchmark восстановлен на `93.177.116.58` + `185.246.220.249`/`45.138.103.224`; Tor management/signal/relay идут через `http://o2n24n6pjl4dkz2i3tlyfov3ozpnwcu4bhy26rtd65stqctn6rg3vpad.onion:80`, клиенты подключены `Relayed`, `anonymous-check` OK, STUN/ICE/direct UDP/clearnet fallback отсутствуют.
 - Проверки 2026-05-31: Tor relay-only ping между `185.246.220.249` (`100.79.204.47`) и `45.138.103.224` (`100.79.143.119`) — 10/10 packets в обе стороны, avg RTT `~1047 ms` и `~1092 ms`.
@@ -1347,7 +1348,7 @@ Type "I understand this may leak my real IP" to continue:
 
 ### 22.5. Migration command
 
-- [ ] Добавить простой Linux migration helper как first-class CLI command:
+- [x] Добавить простой Linux migration helper как first-class CLI command:
 
 ```bash
 anonbird migrate server --dry-run
@@ -1359,6 +1360,8 @@ anonbird migrate rollback
 ```
 
 Примечание: command name в Linux должен быть lowercase `anonbird`; бренд в тексте может оставаться `AnonBird`/`anonBird`.
+
+Статус 2026-05-31: CLI surface реализован без заглушек. `client` path выполняет dry-run/apply/backup/rollback нативно; `server` path запускает существующий полноценный self-host migration script и поддерживает dry-run/apply. Открыты packaging/e2e пункты ниже.
 
 - [ ] `anonbird migrate server` должен покрывать happy-path self-host Linux install:
   - detect existing NetBird services/processes;
