@@ -5,7 +5,7 @@ import Button from "@/components/Button";
 import { Input } from "@/components/Input";
 import PinCodeInput, { type PinCodeInputRef } from "@/components/PinCodeInput";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
-import { PoweredByNetBird } from "@/components/PoweredByNetBird";
+import { PoweredByAnonBird } from "@/components/PoweredByAnonBird";
 import { Card } from "@/components/Card";
 import { Title } from "@/components/Title";
 import { Description } from "@/components/Description";
@@ -23,7 +23,7 @@ const methods: NonNullable<Data["methods"]> =
 
 function App() {
   useEffect(() => {
-    document.title = "Authentication Required - NetBird Service";
+    document.title = "Authentication Required - AnonBird Service";
   }, []);
 
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +104,7 @@ function App() {
             <Loader2 className="animate-spin" size={24} />
           </div>
         </Card>
-        <PoweredByNetBird />
+        <PoweredByAnonBird />
       </main>
     );
   }
@@ -219,7 +219,7 @@ function App() {
           </div>
         </Card>
 
-      <PoweredByNetBird />
+      <PoweredByAnonBird />
     </main>
   );
 }

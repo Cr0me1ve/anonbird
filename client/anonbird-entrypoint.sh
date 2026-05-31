@@ -2,8 +2,8 @@
 set -eEuo pipefail
 
 : ${NB_ENTRYPOINT_SERVICE_TIMEOUT:="30"}
-NETBIRD_BIN="${NETBIRD_BIN:-"netbird"}"
-export NB_LOG_FILE="${NB_LOG_FILE:-"console,/var/log/netbird/client.log"}"
+ANONBIRD_BIN="${ANONBIRD_BIN:-"anonbird"}"
+export NB_LOG_FILE="${NB_LOG_FILE:-"console,/var/log/anonbird/client.log"}"
 service_pids=()
 
 _log() {
@@ -21,7 +21,7 @@ warn() {
 }
 
 on_exit() {
-  info "Shutting down NetBird daemon..."
+  info "Shutting down AnonBird daemon..."
   if test "${#service_pids[@]}" -gt 0; then
     info "terminating service process IDs: ${service_pids[@]@Q}"
     kill -TERM "${service_pids[@]}" 2>/dev/null || true
@@ -40,7 +40,7 @@ wait_for_daemon_startup() {
 
   local deadline=$((SECONDS + timeout))
   while [[ "${SECONDS}" -lt "${deadline}" ]]; do
-    if "${NETBIRD_BIN}" status --check live 2>/dev/null; then
+    if "${ANONBIRD_BIN}" status --check live 2>/dev/null; then
       return
     fi
     sleep 1
@@ -51,16 +51,16 @@ wait_for_daemon_startup() {
 }
 
 connect() {
-  info "running 'netbird up'..."
-  "${NETBIRD_BIN}" up
+  info "running 'anonbird up'..."
+  "${ANONBIRD_BIN}" up
   return $?
 }
 
 main() {
   trap 'on_exit' SIGTERM SIGINT EXIT
-  "${NETBIRD_BIN}" service run &
+  "${ANONBIRD_BIN}" service run &
   service_pids+=("$!")
-  info "registered new service process 'netbird service run', currently running: ${service_pids[@]@Q}"
+  info "registered new service process 'anonbird service run', currently running: ${service_pids[@]@Q}"
 
   wait_for_daemon_startup "${NB_ENTRYPOINT_SERVICE_TIMEOUT}"
   connect

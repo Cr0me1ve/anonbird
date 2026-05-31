@@ -1,14 +1,16 @@
-# This code is based on the netbird-installer contribution by physk on GitHub.
-# Source: https://github.com/physk/netbird-installer
+# AnonBird installer for release artifacts published by the fork.
 set -e
 
-CONFIG_FOLDER="/etc/netbird"
+CONFIG_FOLDER="${ANONBIRD_CONFIG_FOLDER:-/etc/anonbird}"
 CONFIG_FILE="$CONFIG_FOLDER/install.conf"
 
-OWNER="netbirdio"
-REPO="netbird"
-CLI_APP="netbird"
-UI_APP="netbird-ui"
+OWNER="${ANONBIRD_GITHUB_OWNER:-Cr0me1ve}"
+REPO="${ANONBIRD_GITHUB_REPO:-netbird}"
+CLI_APP="anonbird"
+UI_APP="anonbird-ui"
+PROJECT_URL="${ANONBIRD_PROJECT_URL:-https://github.com/${OWNER}/${REPO}}"
+RELEASE_API_URL="${ANONBIRD_RELEASE_API_URL:-https://api.github.com/repos/${OWNER}/${REPO}/releases/latest}"
+RELEASE_BASE_URL="${ANONBIRD_RELEASE_BASE_URL:-${PROJECT_URL}/releases/download}"
 
 # Set default variable
 OS_NAME=""
@@ -25,8 +27,8 @@ elif command -v doas > /dev/null && [ "$(id -u)" -ne 0 ]; then
     SUDO="doas"
 fi
 
-if [ -z ${NETBIRD_RELEASE+x} ]; then
-    NETBIRD_RELEASE=latest
+if [ -z ${ANONBIRD_RELEASE+x} ]; then
+    ANONBIRD_RELEASE="latest"
 fi
 
 TAG_NAME=""
@@ -34,29 +36,33 @@ TAG_NAME=""
 get_release() {
     local RELEASE=$1
     if [ "$RELEASE" = "latest" ]; then
-        local TAG="latest"
-        local URL="https://pkgs.netbird.io/releases/latest"
+        local URL="${RELEASE_API_URL}"
     else
-        local TAG="tags/${RELEASE}"
-        local URL="https://api.github.com/repos/${OWNER}/${REPO}/releases/${TAG}"
+        TAG_NAME="\"tag_name\":\"${RELEASE}\""
+        echo "${RELEASE}" | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^/v/' | sed 's/^vv/v/'
+        return 0
     fi
 	OUTPUT=""
     if [ -n "$GITHUB_TOKEN" ]; then
-          OUTPUT=$(curl -H  "Authorization: token ${GITHUB_TOKEN}" -s "${URL}")
+          OUTPUT=$(curl -fH  "Authorization: token ${GITHUB_TOKEN}" -s "${URL}")
     else
-          OUTPUT=$(curl -s "${URL}") 
+          OUTPUT=$(curl -fsSL "${URL}")
     fi
 	TAG_NAME=$(echo ${OUTPUT} |  grep -Eo '\"tag_name\":\s*\"v([0-9]+\.){2}[0-9]+"' | tail -n 1)
 	echo "${TAG_NAME}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+'
 }
 
 download_release_binary() {
-    VERSION=$(get_release "$NETBIRD_RELEASE")
+    VERSION=$(get_release "$ANONBIRD_RELEASE")
+    if [ -z "$VERSION" ]; then
+      echo "Failed to resolve AnonBird release ${ANONBIRD_RELEASE}"
+      exit 1
+    fi
 	echo "Using the following tag name for binary installation: ${TAG_NAME}"
-    BASE_URL="https://github.com/${OWNER}/${REPO}/releases/download"
+    BASE_URL="${RELEASE_BASE_URL}"
     BINARY_BASE_NAME="${VERSION#v}_${OS_TYPE}_${ARCH}.tar.gz"
 
-    # for Darwin, download the signed NetBird-UI
+    # For Darwin, download the signed AnonBird UI archive if it is published.
     if [ "$OS_TYPE" = "darwin" ] && [ "$1" = "$UI_APP" ]; then
         BINARY_BASE_NAME="${VERSION#v}_${OS_TYPE}_${ARCH}_signed.zip"
     fi
@@ -74,14 +80,14 @@ download_release_binary() {
 
     echo "Installing $1 from $DOWNLOAD_URL"
     if [ -n "$GITHUB_TOKEN" ]; then
-      cd /tmp && curl -H  "Authorization: token ${GITHUB_TOKEN}" -LO "$DOWNLOAD_URL"
+      cd /tmp && curl -fH  "Authorization: token ${GITHUB_TOKEN}" -LO "$DOWNLOAD_URL"
     else
-      cd /tmp && curl -LO "$DOWNLOAD_URL" || curl -LO --dns-servers 8.8.8.8 "$DOWNLOAD_URL"
+      cd /tmp && curl -fLO "$DOWNLOAD_URL"
     fi
 
 
     if [ "$OS_TYPE" = "darwin" ] && [ "$1" = "$UI_APP" ]; then
-        INSTALL_DIR="/Applications/NetBird UI.app"
+        INSTALL_DIR="/Applications/AnonBird UI.app"
 
         if test -d "$INSTALL_DIR" ; then
           echo "removing $INSTALL_DIR"
@@ -90,7 +96,8 @@ download_release_binary() {
 
         # Unzip the app and move to INSTALL_DIR
         unzip -q -o "$BINARY_NAME"
-        mv -v "netbird_ui_${OS_TYPE}/" "$INSTALL_DIR/" || mv -v "netbird_ui_${OS_TYPE}_${ARCH}/" "$INSTALL_DIR/"
+        mv -v "anonbird_ui_${OS_TYPE}/" "$INSTALL_DIR/" || \
+          mv -v "anonbird_ui_${OS_TYPE}_${ARCH}/" "$INSTALL_DIR/"
     else
         ${SUDO} mkdir -p "$INSTALL_DIR"
         tar -xzvf "$BINARY_NAME"
@@ -99,39 +106,15 @@ download_release_binary() {
 }
 
 add_apt_repo() {
-    ${SUDO} apt-get update
-    ${SUDO} apt-get install ca-certificates curl gnupg -y
-
-    # Remove old keys and repo source files
-    ${SUDO} rm -f \
-        /etc/apt/sources.list.d/netbird.list \
-        /etc/apt/sources.list.d/wiretrustee.list \
-        /etc/apt/trusted.gpg.d/wiretrustee.gpg \
-        /usr/share/keyrings/netbird-archive-keyring.gpg \
-        /usr/share/keyrings/wiretrustee-archive-keyring.gpg
-
-    curl -sSL https://pkgs.netbird.io/debian/public.key \
-    | ${SUDO} gpg --dearmor -o /usr/share/keyrings/netbird-archive-keyring.gpg
-
-    # Explicitly set the file permission
-    ${SUDO} chmod 0644 /usr/share/keyrings/netbird-archive-keyring.gpg
-
-    echo 'deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://pkgs.netbird.io/debian stable main' \
-    | ${SUDO} tee /etc/apt/sources.list.d/netbird.list
-
-    ${SUDO} apt-get update
+    echo "AnonBird does not configure old upstream apt repositories."
+    echo "Using AnonBird release binaries from ${RELEASE_BASE_URL}."
+    PACKAGE_MANAGER="bin"
 }
 
 add_rpm_repo() {
-cat <<-EOF | ${SUDO} tee /etc/yum.repos.d/netbird.repo
-[NetBird]
-name=NetBird
-baseurl=https://pkgs.netbird.io/yum/
-enabled=1
-gpgcheck=1
-gpgkey=https://pkgs.netbird.io/yum/repodata/repomd.xml.key
-repo_gpgcheck=1
-EOF
+    echo "AnonBird does not configure old upstream RPM repositories."
+    echo "Using AnonBird release binaries from ${RELEASE_BASE_URL}."
+    PACKAGE_MANAGER="bin"
 }
 
 prepare_tun_module() {
@@ -183,11 +166,15 @@ install_pkg() {
     *) echo "Unsupported macOS arch: $(uname -m)" >&2; exit 1 ;;
   esac
 
-  PKG_URL=$(curl -sIL -o /dev/null -w '%{url_effective}' "https://pkgs.netbird.io/macos/${ARCH}")
-  echo "Downloading NetBird macOS installer from https://pkgs.netbird.io/macos/${ARCH}"
-  curl -fsSL -o /tmp/netbird.pkg "${PKG_URL}"
-  ${SUDO} installer -pkg /tmp/netbird.pkg -target /
-  rm -f /tmp/netbird.pkg
+  if [ -z "${ANONBIRD_MACOS_PKG_URL:-}" ]; then
+    echo "ANONBIRD_MACOS_PKG_URL is required for macOS pkg installation."
+    echo "Set USE_BIN_INSTALL=true to install AnonBird release binaries instead."
+    exit 1
+  fi
+  echo "Downloading AnonBird macOS installer from ${ANONBIRD_MACOS_PKG_URL}"
+  curl -fsSL -o /tmp/anonbird.pkg "${ANONBIRD_MACOS_PKG_URL}"
+  ${SUDO} installer -pkg /tmp/anonbird.pkg -target /
+  rm -f /tmp/anonbird.pkg
 }
 
 check_use_bin_variable() {
@@ -198,21 +185,21 @@ check_use_bin_variable() {
     return 1
 }
 
-install_netbird() {
-    if [ -x "$(command -v netbird)" ]; then
-      status_output="$(netbird status 2>&1 || true)"
+install_anonbird() {
+    if [ -x "$(command -v anonbird)" ]; then
+      status_output="$(anonbird status 2>&1 || true)"
 
       if echo "$status_output" | grep -q 'failed to connect to daemon error: context deadline exceeded'; then
-          echo "Warning: could not reach NetBird daemon (timeout), proceeding anyway"
+          echo "Warning: could not reach AnonBird daemon (timeout), proceeding anyway"
       else
           if echo "$status_output" | grep -q 'Management: Connected' && \
               echo "$status_output" | grep -q 'Signal: Connected'; then
-              echo "NetBird service is running, please stop it before proceeding"
+              echo "AnonBird service is running, please stop it before proceeding"
               exit 1
           fi
 
           if [ -n "$status_output" ]; then
-              echo "NetBird seems to be installed already, please remove it before proceeding"
+              echo "AnonBird seems to be installed already, please remove it before proceeding"
               exit 1
           fi
       fi
@@ -223,41 +210,24 @@ install_netbird() {
     case "$PACKAGE_MANAGER" in
     apt)
         add_apt_repo
-        ${SUDO} apt-get install netbird -y
-
-        if ! $SKIP_UI_APP; then
-            ${SUDO} apt-get install netbird-ui -y
-        fi
+        install_native_binaries
     ;;
     yum)
         add_rpm_repo
-        ${SUDO} yum -y install netbird
-        if ! $SKIP_UI_APP; then
-            ${SUDO} yum -y install netbird-ui
-        fi
+        install_native_binaries
     ;;
     dnf)
         add_rpm_repo
-        ${SUDO} dnf -y install netbird
-
-        if ! $SKIP_UI_APP; then
-            ${SUDO} dnf -y install netbird-ui
-        fi
+        install_native_binaries
     ;;
     rpm-ostree)
         add_rpm_repo
-        ${SUDO} rpm-ostree -y install netbird
-        if ! $SKIP_UI_APP; then
-            ${SUDO} rpm-ostree -y install netbird-ui
-        fi
-        # ensure the service is started after install
-         ${SUDO} netbird service install || true
-         ${SUDO} netbird service start || true
+        install_native_binaries
     ;;
     pkg)
         # Check if the package is already installed
-        if [ -f /Library/Receipts/netbird.pkg ]; then
-            echo "NetBird is already installed. Please remove it before proceeding."
+        if [ -f /Library/Receipts/anonbird.pkg ]; then
+            echo "AnonBird is already installed. Please remove it before proceeding."
             exit 1
         fi
 
@@ -265,31 +235,35 @@ install_netbird() {
         install_pkg
     ;;
     brew)
-        # Remove Netbird if it had been installed using Homebrew before
-        if brew ls --versions netbird >/dev/null 2>&1; then
-            echo "Removing existing netbird client"
+        if [ -z "${ANONBIRD_HOMEBREW_FORMULA:-}" ]; then
+            echo "ANONBIRD_HOMEBREW_FORMULA is required for Homebrew installation."
+            echo "Set USE_BIN_INSTALL=true to install AnonBird release binaries instead."
+            exit 1
+        fi
+        if brew ls --versions anonbird >/dev/null 2>&1; then
+            echo "Removing existing anonbird client"
 
             # Stop and uninstall daemon service:
-            netbird service stop
-            netbird service uninstall
+            anonbird service stop
+            anonbird service uninstall
 
             # Unlink the app
-            brew unlink netbird
+            brew unlink anonbird
         fi
 
-        brew install netbirdio/tap/netbird
-        if ! $SKIP_UI_APP; then
-            brew install --cask netbirdio/tap/netbird-ui
+        brew install "${ANONBIRD_HOMEBREW_FORMULA}"
+        if ! $SKIP_UI_APP && [ -n "${ANONBIRD_HOMEBREW_UI_FORMULA:-}" ]; then
+            brew install --cask "${ANONBIRD_HOMEBREW_UI_FORMULA}"
         fi
     ;;
     *)
       if [ "$OS_NAME" = "nixos" ];then
-        echo "Please add NetBird to your NixOS configuration.nix directly:"
+        echo "Please add AnonBird to your NixOS configuration.nix directly:"
 			  echo ""
-			  echo "services.netbird.enable = true;"
+			  echo "# Build AnonBird from ${PROJECT_URL} or use a pinned AnonBird package overlay."
 
         if ! $SKIP_UI_APP; then
-          echo "environment.systemPackages = [ pkgs.netbird-ui ];"
+          echo "# Add anonbird-ui from the same overlay if you need the desktop UI."
         fi
 
         echo "Build and apply new configuration:"
@@ -310,20 +284,20 @@ install_netbird() {
     ${SUDO} mkdir -p "$CONFIG_FOLDER"
     echo "package_manager=$PACKAGE_MANAGER" | ${SUDO} tee "$CONFIG_FILE" > /dev/null
 
-    # Load and start netbird service
+    # Load and start anonbird service
     if [ "$PACKAGE_MANAGER" != "rpm-ostree" ] && [ "$PACKAGE_MANAGER" != "pkg" ]; then
-        if ! ${SUDO} netbird service install 2>&1; then
-            echo "NetBird service has already been loaded"
+        if ! ${SUDO} anonbird service install 2>&1; then
+            echo "AnonBird service has already been loaded"
         fi
-        if ! ${SUDO} netbird service start 2>&1; then
-            echo "NetBird service has already been started"
+        if ! ${SUDO} anonbird service start 2>&1; then
+            echo "AnonBird service has already been started"
         fi
     fi
 
 
-    echo "Installation has been finished. To connect, you need to run NetBird by executing the following command:"
+    echo "Installation has been finished. To connect, you need to run AnonBird by executing the following command:"
     echo ""
-    echo "netbird up"
+    echo "anonbird up"
 }
 
 version_greater_equal() {
@@ -338,40 +312,40 @@ is_bin_package_manager() {
   fi
 }
 
-stop_running_netbird_ui() {
-  NB_UI_PROC=$(ps -ef | grep "[n]etbird-ui" | awk '{print $2}')
+stop_running_anonbird_ui() {
+  NB_UI_PROC=$(ps -ef | grep "[a]nonbird-ui" | awk '{print $2}')
   if [ -n "$NB_UI_PROC" ]; then
-    echo "NetBird UI is running with PID $NB_UI_PROC. Stopping it..."
+    echo "AnonBird UI is running with PID $NB_UI_PROC. Stopping it..."
     kill -9 "$NB_UI_PROC"
   fi
 }
 
-update_netbird() {
+update_anonbird() {
   if is_bin_package_manager "$CONFIG_FILE"; then
     latest_release=$(get_release "latest")
     latest_version=${latest_release#v}
-    installed_version=$(netbird version)
+    installed_version=$(anonbird version)
 
     if [ "$latest_version" = "$installed_version" ]; then
-      echo "Installed NetBird version ($installed_version) is up-to-date"
+      echo "Installed AnonBird version ($installed_version) is up-to-date"
       exit 0
     fi
 
     if version_greater_equal "$latest_version" "$installed_version"; then
-      echo "NetBird new version ($latest_version) available. Updating..."
+      echo "AnonBird new version ($latest_version) available. Updating..."
       echo ""
-      echo "Initiating NetBird update. This will stop the netbird service and restart it after the update"
+      echo "Initiating AnonBird update. This will stop the anonbird service and restart it after the update"
 
-      ${SUDO} netbird service stop || true
-      ${SUDO} netbird service uninstall || true
-      stop_running_netbird_ui
+      ${SUDO} anonbird service stop || true
+      ${SUDO} anonbird service uninstall || true
+      stop_running_anonbird_ui
       install_native_binaries
 
-      ${SUDO} netbird service install
-      ${SUDO} netbird service start
+      ${SUDO} anonbird service install
+      ${SUDO} anonbird service start
     fi
   else
-     echo "NetBird installation was done using a package manager. Please use your system's package manager to update"
+     echo "AnonBird installation was done using a package manager. Please use your system's package manager to update"
   fi
 }
 
@@ -381,7 +355,7 @@ if [ -z "$SKIP_UI_APP" ]; then
 else
     if $SKIP_UI_APP; then
       echo "SKIP_UI_APP has been set to true in the environment"
-      echo "NetBird UI installation will be omitted based on your preference"
+      echo "AnonBird UI installation will be omitted based on your preference"
     fi
 fi
 
@@ -401,17 +375,17 @@ if type uname >/dev/null 2>&1; then
               OS_NAME="$(. /etc/os-release && echo "$ID")"
               INSTALL_DIR="/usr/bin"
 
-              # Allow netbird UI installation for x64 arch only
+              # Allow AnonBird UI installation for compatible CPU architectures only
               if [ "$ARCH" != "amd64" ] && [ "$ARCH" != "arm64" ] \
                   && [ "$ARCH" != "x86_64" ];then
                   SKIP_UI_APP=true
-                  echo "NetBird UI installation will be omitted as $ARCH is not a compatible architecture"
+                  echo "AnonBird UI installation will be omitted as $ARCH is not a compatible architecture"
               fi
 
-              # Allow netbird UI installation for linux running desktop environment
+              # Allow AnonBird UI installation only when Linux runs a desktop environment
               if [ -z "$XDG_CURRENT_DESKTOP" ];then
                   SKIP_UI_APP=true
-                  echo "NetBird UI installation will be omitted as Linux does not run desktop environment"
+                  echo "AnonBird UI installation will be omitted as Linux does not run desktop environment"
               fi
 
               # Check the availability of a compatible package manager
@@ -419,16 +393,16 @@ if type uname >/dev/null 2>&1; then
                   PACKAGE_MANAGER="bin"
               elif [ -x "$(command -v apt-get)" ]; then
                   PACKAGE_MANAGER="apt"
-                  echo "The installation will be performed using apt package manager"
+                  echo "apt detected; AnonBird will install release binaries and avoid upstream package repositories"
               elif [ -x "$(command -v dnf)" ]; then
                   PACKAGE_MANAGER="dnf"
-                  echo "The installation will be performed using dnf package manager"
+                  echo "dnf detected; AnonBird will install release binaries and avoid upstream package repositories"
               elif [ -x "$(command -v rpm-ostree)" ]; then
                   PACKAGE_MANAGER="rpm-ostree"
-                  echo "The installation will be performed using rpm-ostree package manager"
+                  echo "rpm-ostree detected; AnonBird will install release binaries and avoid upstream package repositories"
               elif [ -x "$(command -v yum)" ]; then
                   PACKAGE_MANAGER="yum"
-                  echo "The installation will be performed using yum package manager"
+                  echo "yum detected; AnonBird will install release binaries and avoid upstream package repositories"
               fi
             else
               echo "Unable to determine OS type from /etc/os-release"
@@ -447,7 +421,7 @@ if type uname >/dev/null 2>&1; then
             if check_use_bin_variable; then
                 PACKAGE_MANAGER="bin"
             else
-              PACKAGE_MANAGER="pkg"
+              PACKAGE_MANAGER="bin"
             fi
 		;;
 	esac
@@ -455,14 +429,14 @@ fi
 
 UPDATE_FLAG=$1
 
-if [ "${UPDATE_NETBIRD}-x" = "true-x" ]; then
+if [ "${UPDATE_ANONBIRD}-x" = "true-x" ]; then
   UPDATE_FLAG="--update"
 fi
 
 case "$UPDATE_FLAG" in
     --update)
-      update_netbird
+      update_anonbird
     ;;
     *)
-      install_netbird
+      install_anonbird
 esac

@@ -1,21 +1,21 @@
 [Unit]
-Description=Netbird Client (%i)
-Documentation=https://netbird.io/docs
+Description=AnonBird Client (%i)
+Documentation=https://github.com/Cr0me1ve/netbird/tree/main/docs
 After=network-online.target syslog.target NetworkManager.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=-/etc/default/netbird
-ExecStart=/usr/bin/netbird service run --log-file /var/log/netbird/client-%i.log --daemon-addr unix:///var/run/netbird/%i.sock $FLAGS
+EnvironmentFile=-/etc/default/anonbird
+ExecStart=/usr/bin/anonbird service run --log-file /var/log/anonbird/client-%i.log --daemon-addr unix:///var/run/anonbird/%i.sock $FLAGS
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=10
-CacheDirectory=netbird
-ConfigurationDirectory=netbird
-LogsDirectory=netbird
-RuntimeDirectory=netbird
-StateDirectory=netbird
+CacheDirectory=anonbird
+ConfigurationDirectory=anonbird
+LogsDirectory=anonbird
+RuntimeDirectory=anonbird
+StateDirectory=anonbird
 
 # sandboxing
 LockPersonality=yes
@@ -39,4 +39,3 @@ RestrictSUIDSGID=yes
 
 [Install]
 WantedBy=multi-user.target
-

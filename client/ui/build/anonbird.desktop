@@ -1,8 +1,8 @@
 [Desktop Entry]
 Name=AnonBird
-Exec=/usr/bin/netbird-ui
-Icon=netbird
+Exec=/usr/bin/anonbird-ui
+Icon=anonbird
 Type=Application
 Terminal=false
 Categories=Utility;
-Keywords=anonbird;netbird;
+Keywords=anonbird;

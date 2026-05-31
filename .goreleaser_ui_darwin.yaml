@@ -1,10 +1,10 @@
 version: 2
 
-project_name: netbird-ui
+project_name: anonbird-ui
 builds:
-  - id: netbird-ui-darwin
+  - id: anonbird-ui-darwin
     dir: client/ui
-    binary: netbird-ui
+    binary: anonbird-ui
     env:
       - CGO_ENABLED=1
       - MACOSX_DEPLOYMENT_TARGET=11.0
@@ -24,11 +24,11 @@ builds:
       - load_wgnt_from_rsrc
 
 universal_binaries:
-  - id: netbird-ui-darwin
+  - id: anonbird-ui-darwin
 
 archives:
   - builds:
-      - netbird-ui-darwin
+      - anonbird-ui-darwin
 
 checksum:
   name_template: "{{ .ProjectName }}_darwin_checksums.txt"

@@ -5,7 +5,7 @@ import path from 'node:path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: '/__netbird__/',
+  base: '/__anonbird__/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

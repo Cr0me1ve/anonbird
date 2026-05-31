@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# FreeBSD Port Issue Body Generator for NetBird
+# FreeBSD Port Issue Body Generator for AnonBird
 #
 # This script generates the issue body content for submitting a FreeBSD port update
 # to the FreeBSD Bugzilla at https://bugs.freebsd.org/bugzilla/
@@ -10,12 +10,13 @@
 #
 # If no versions are provided, the script will:
 #   - Fetch OLD version from FreeBSD ports cgit (current version in ports tree)
-#   - Fetch NEW version from latest NetBird GitHub release tag
+#   - Fetch NEW version from latest AnonBird GitHub release tag
 
 set -e
 
-GITHUB_REPO="netbirdio/netbird"
-PORTS_CGIT_URL="https://cgit.freebsd.org/ports/plain/security/netbird/Makefile"
+GITHUB_REPO="${ANONBIRD_GITHUB_REPO:-Cr0me1ve/netbird}"
+PORT_NAME="${ANONBIRD_FREEBSD_PORT_NAME:-anonbird}"
+PORTS_CGIT_URL="${ANONBIRD_FREEBSD_PORTS_CGIT_URL:-https://cgit.freebsd.org/ports/plain/security/${PORT_NAME}/Makefile}"
 
 fetch_current_ports_version() {
     echo "Fetching current version from FreeBSD ports..." >&2
@@ -120,7 +121,7 @@ generate_changelog_section() {
     return 0
 }
 
-OUTPUT_FILE="${OUTPUT_DIR}/netbird-${NEW_VERSION}-issue.txt"
+OUTPUT_FILE="${OUTPUT_DIR}/${PORT_NAME}-${NEW_VERSION}-issue.txt"
 
 cat << EOF > "$OUTPUT_FILE"
 BUGZILLA ISSUE DETAILS
@@ -128,11 +129,11 @@ BUGZILLA ISSUE DETAILS
 
 Severity: Affects Some People
 
-Summary: security/netbird: Update to ${NEW_VERSION}
+Summary: security/${PORT_NAME}: Update to ${NEW_VERSION}
 
 Description:
 ------------
-security/netbird: Update ${OLD_VERSION} => ${NEW_VERSION}
+security/${PORT_NAME}: Update ${OLD_VERSION} => ${NEW_VERSION}
 
 $(generate_changelog_section)
 
@@ -153,7 +154,7 @@ echo "1. Go to https://bugs.freebsd.org/bugzilla/ and login"
 echo "2. Click 'Report an update or defect to a port'"
 echo "3. Fill in:"
 echo "   - Severity: Affects Some People"
-echo "   - Summary: security/netbird: Update to ${NEW_VERSION}"
+echo "   - Summary: security/${PORT_NAME}: Update to ${NEW_VERSION}"
 echo "   - Description: Copy content from ${OUTPUT_FILE}"
-echo "4. Attach diff file: netbird-${NEW_VERSION}.diff"
+echo "4. Attach diff file: ${PORT_NAME}-${NEW_VERSION}.diff"
 echo "5. Submit the bug report"

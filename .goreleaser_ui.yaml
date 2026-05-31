@@ -1,10 +1,10 @@
 version: 2
 
-project_name: netbird-ui
+project_name: anonbird-ui
 builds:
-  - id: netbird-ui
+  - id: anonbird-ui
     dir: client/ui
-    binary: netbird-ui
+    binary: anonbird-ui
     env:
       - CGO_ENABLED=1
     goos:
@@ -15,9 +15,9 @@ builds:
       - -s -w -X github.com/netbirdio/netbird/version.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.CommitDate}} -X main.builtBy=goreleaser
     mod_timestamp: "{{ .CommitTimestamp }}"
 
-  - id: netbird-ui-windows-amd64
+  - id: anonbird-ui-windows-amd64
     dir: client/ui
-    binary: netbird-ui
+    binary: anonbird-ui
     env:
       - CGO_ENABLED=1
       - CC=x86_64-w64-mingw32-gcc
@@ -30,9 +30,9 @@ builds:
       - -H windowsgui
     mod_timestamp: "{{ .CommitTimestamp }}"
 
-  - id: netbird-ui-windows-arm64
+  - id: anonbird-ui-windows-arm64
     dir: client/ui
-    binary: netbird-ui
+    binary: anonbird-ui
     env:
       - CGO_ENABLED=1
       - CC=aarch64-w64-mingw32-clang
@@ -50,68 +50,51 @@ archives:
   - id: linux-arch
     name_template: "{{ .ProjectName }}-linux_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds:
-      - netbird-ui
+      - anonbird-ui
   - id: windows-arch
     name_template: "{{ .ProjectName }}-windows_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds:
-      - netbird-ui-windows-amd64
-      - netbird-ui-windows-arm64
+      - anonbird-ui-windows-amd64
+      - anonbird-ui-windows-arm64
 
 nfpms:
-  - maintainer: Netbird <dev@netbird.io>
-    description: Netbird client UI.
-    homepage: https://netbird.io/
-    id: netbird_ui_deb
-    package_name: netbird-ui
+  - maintainer: AnonBird <dev@anonbird.local>
+    description: AnonBird client UI.
+    homepage: https://github.com/Cr0me1ve/netbird
+    id: anonbird_ui_deb
+    package_name: anonbird-ui
     builds:
-      - netbird-ui
+      - anonbird-ui
     formats:
       - deb
     scripts:
       postinstall: "release_files/ui-post-install.sh"
     contents:
-      - src: client/ui/build/netbird.desktop
-        dst: /usr/share/applications/netbird.desktop
-      - src: client/ui/assets/netbird.png
-        dst: /usr/share/pixmaps/netbird.png
+      - src: client/ui/build/anonbird.desktop
+        dst: /usr/share/applications/anonbird.desktop
+      - src: client/ui/assets/anonbird.png
+        dst: /usr/share/pixmaps/anonbird.png
     dependencies:
-      - netbird
+      - anonbird
 
-  - maintainer: Netbird <dev@netbird.io>
-    description: Netbird client UI.
-    homepage: https://netbird.io/
-    id: netbird_ui_rpm
-    package_name: netbird-ui
+  - maintainer: AnonBird <dev@anonbird.local>
+    description: AnonBird client UI.
+    homepage: https://github.com/Cr0me1ve/netbird
+    id: anonbird_ui_rpm
+    package_name: anonbird-ui
     builds:
-      - netbird-ui
+      - anonbird-ui
     formats:
       - rpm
     scripts:
       postinstall: "release_files/ui-post-install.sh"
     contents:
-      - src: client/ui/build/netbird.desktop
-        dst: /usr/share/applications/netbird.desktop
-      - src: client/ui/assets/netbird.png
-        dst: /usr/share/pixmaps/netbird.png
+      - src: client/ui/build/anonbird.desktop
+        dst: /usr/share/applications/anonbird.desktop
+      - src: client/ui/assets/anonbird.png
+        dst: /usr/share/pixmaps/anonbird.png
     dependencies:
-      - netbird
+      - anonbird
     rpm:
       signature:
         key_file: '{{ if index .Env "GPG_RPM_KEY_FILE" }}{{ .Env.GPG_RPM_KEY_FILE }}{{ end }}'
-
-uploads:
-  - name: debian
-    ids:
-      - netbird_ui_deb
-    mode: archive
-    target: https://pkgs.wiretrustee.com/debian/pool/{{ .ArtifactName }};deb.distribution=stable;deb.component=main;deb.architecture={{ if .Arm }}armhf{{ else }}{{ .Arch }}{{ end }};deb.package=
-    username: dev@wiretrustee.com
-    method: PUT
-
-  - name: yum
-    ids:
-      - netbird_ui_rpm
-    mode: archive
-    target: https://pkgs.wiretrustee.com/yum/{{ .Arch }}{{ if .Arm }}{{ .Arm }}{{ end }}
-    username: dev@wiretrustee.com
-    method: PUT

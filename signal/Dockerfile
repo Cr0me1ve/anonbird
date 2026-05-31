@@ -1,4 +1,4 @@
 FROM gcr.io/distroless/base:debug
-ENTRYPOINT [ "/go/bin/netbird-signal","run" ]
+ENTRYPOINT [ "/go/bin/anonbird-signal","run" ]
 CMD ["--log-file", "console"]
-COPY netbird-signal /go/bin/netbird-signal
+COPY anonbird-signal /go/bin/anonbird-signal

@@ -1,6 +1,6 @@
 import { cn } from "@/utils/helpers";
-import netbirdFull from "@/assets/netbird-full.svg";
-import netbirdMark from "@/assets/netbird.svg";
+import anonbirdFull from "@/assets/anonbird-full.svg";
+import anonbirdMark from "@/assets/anonbird.svg";
 
 type Props = {
   size?: "small" | "default" | "large";
@@ -22,22 +22,22 @@ const sizes = {
   },
 };
 
-export const NetBirdLogo = ({ size = "default", mobile = true }: Props) => {
+export const AnonBirdLogo = ({ size = "default", mobile = true }: Props) => {
   return (
     <>
       <img
-        src={netbirdFull}
+        src={anonbirdFull}
         height={sizes[size].desktop}
         style={{ height: sizes[size].desktop }}
-        alt="NetBird Logo"
+        alt="AnonBird Logo"
         className={cn(mobile && "hidden md:block", "group-hover:opacity-80 transition-all")}
       />
       {mobile && (
         <img
-          src={netbirdMark}
+          src={anonbirdMark}
           width={sizes[size].mobile}
           style={{ width: sizes[size].mobile }}
-          alt="NetBird Logo"
+          alt="AnonBird Logo"
           className={cn(mobile && "md:hidden ml-4")}
         />
       )}

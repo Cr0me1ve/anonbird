@@ -42,8 +42,8 @@ const variantStyles: Record<Variant, string[]> = {
     "dark:focus:ring-zinc-800/50 dark:bg-nb-gray dark:text-gray-400 dark:border-gray-700/30 dark:hover:text-white dark:hover:bg-zinc-800/50",
   ],
   primary: [
-    "dark:focus:ring-netbird-600/50 dark:ring-offset-neutral-950/50 enabled:dark:bg-netbird disabled:dark:bg-nb-gray-910 dark:text-gray-100 enabled:dark:hover:text-white enabled:dark:hover:bg-netbird-500/80",
-    "enabled:bg-netbird enabled:text-white enabled:focus:ring-netbird-400/50 enabled:hover:bg-netbird-500",
+    "dark:focus:ring-anonbird-600/50 dark:ring-offset-neutral-950/50 enabled:dark:bg-anonbird disabled:dark:bg-nb-gray-910 dark:text-gray-100 enabled:dark:hover:text-white enabled:dark:hover:bg-anonbird-500/80",
+    "enabled:bg-anonbird enabled:text-white enabled:focus:ring-anonbird-400/50 enabled:hover:bg-anonbird-500",
   ],
   secondary: [
     "bg-white hover:text-black focus:ring-zinc-200/50 hover:bg-gray-100 border-gray-200 text-gray-900",
@@ -80,7 +80,7 @@ const variantStyles: Record<Variant, string[]> = {
   ],
   outline: [
     "bg-white hover:text-black focus:ring-zinc-200/50 hover:bg-gray-100 border-gray-200 text-gray-900",
-    "dark:focus:ring-zinc-800/50 dark:bg-transparent dark:text-netbird dark:border-netbird dark:hover:bg-nb-gray-900/30",
+    "dark:focus:ring-zinc-800/50 dark:bg-transparent dark:text-anonbird dark:border-anonbird dark:hover:bg-nb-gray-900/30",
   ],
   "danger-outline": [
     "enabled:dark:focus:ring-red-800/20 enabled:dark:focus:bg-red-950/40 enabled:hover:dark:bg-red-950/50 enabled:dark:hover:border-red-800/50 dark:bg-transparent dark:text-red-500",

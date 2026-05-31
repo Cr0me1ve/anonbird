@@ -3,13 +3,13 @@ import {BookText, RotateCw, Globe, UserIcon, WaypointsIcon} from "lucide-react";
 import { Title } from "@/components/Title";
 import { Description } from "@/components/Description";
 import Button from "@/components/Button";
-import { PoweredByNetBird } from "@/components/PoweredByNetBird";
+import { PoweredByAnonBird } from "@/components/PoweredByAnonBird";
 import { StatusCard } from "@/components/StatusCard";
 import type { ErrorData } from "@/data";
 
 export function ErrorPage({ code, title, message, proxy = true, destination = true, requestId, simple = false, retryUrl }: Readonly<ErrorData>) {
   useEffect(() => {
-    document.title = `${title} - NetBird Service`;
+    document.title = `${title} - AnonBird Service`;
   }, [title]);
 
   const [timestamp] = useState(() => new Date().toISOString());
@@ -17,7 +17,7 @@ export function ErrorPage({ code, title, message, proxy = true, destination = tr
   return (
     <main className="flex flex-col items-center mt-24 px-4 max-w-3xl mx-auto">
       {/* Error Code */}
-      <div className="text-sm text-netbird font-normal font-mono mb-3 z-10 relative">
+      <div className="text-sm text-anonbird font-normal font-mono mb-3 z-10 relative">
         Error {code}
       </div>
 
@@ -50,7 +50,7 @@ export function ErrorPage({ code, title, message, proxy = true, destination = tr
         </Button>
         <Button
           variant="secondary"
-          onClick={() => globalThis.open("https://docs.netbird.io", "_blank", "noopener,noreferrer")}
+          onClick={() => globalThis.open("https://github.com/Cr0me1ve/netbird/tree/main/docs", "_blank", "noopener,noreferrer")}
         >
           <BookText size={16} />
           Documentation
@@ -67,7 +67,7 @@ export function ErrorPage({ code, title, message, proxy = true, destination = tr
         </div>
       </div>
 
-      <PoweredByNetBird />
+      <PoweredByAnonBird />
     </main>
   );
 }

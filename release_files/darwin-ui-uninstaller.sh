@@ -2,13 +2,13 @@
 
 export PATH=$PATH:/usr/local/bin
 
-# check if netbird is installed
-NB_BIN=$(which netbird)
+# check if anonbird is installed
+NB_BIN=$(which anonbird)
 if [ -z "$NB_BIN" ]
 then
   exit 0
 fi
-# start netbird daemon service
-echo "netbird daemon service still running. You can uninstall it by running: "
-echo "sudo netbird service stop"
-echo "sudo netbird service uninstall"
+# start anonbird daemon service
+echo "anonbird daemon service still running. You can uninstall it by running: "
+echo "sudo anonbird service stop"
+echo "sudo anonbird service uninstall"

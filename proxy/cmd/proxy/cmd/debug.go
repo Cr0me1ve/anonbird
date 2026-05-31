@@ -134,13 +134,13 @@ Default output is human-readable text. Use --pcap or --output for pcap binary.
 Filter arguments after the account ID use BPF-like syntax.
 
 Examples:
-  netbird-proxy debug capture <account-id>
-  netbird-proxy debug capture <account-id> --duration 1m host 10.0.0.1
-  netbird-proxy debug capture <account-id> host 10.0.0.1 and tcp port 443
-  netbird-proxy debug capture <account-id> not port 22
-  netbird-proxy debug capture <account-id> -o capture.pcap
-  netbird-proxy debug capture <account-id> --pcap | tcpdump -r - -n
-  netbird-proxy debug capture <account-id> --pcap | tshark -r -`,
+  anonbird-proxy debug capture <account-id>
+  anonbird-proxy debug capture <account-id> --duration 1m host 10.0.0.1
+  anonbird-proxy debug capture <account-id> host 10.0.0.1 and tcp port 443
+  anonbird-proxy debug capture <account-id> not port 22
+  anonbird-proxy debug capture <account-id> -o capture.pcap
+  anonbird-proxy debug capture <account-id> --pcap | tcpdump -r - -n
+  anonbird-proxy debug capture <account-id> --pcap | tshark -r -`,
 	Args:         cobra.MinimumNArgs(1),
 	RunE:         runDebugCapture,
 	SilenceUsage: true,

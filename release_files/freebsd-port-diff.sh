@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# FreeBSD Port Diff Generator for NetBird
+# FreeBSD Port Diff Generator for AnonBird
 #
 # This script generates the diff file required for submitting a FreeBSD port update.
 # It works on macOS, Linux, and FreeBSD by fetching files from FreeBSD cgit and
@@ -13,9 +13,10 @@
 
 set -e
 
-GITHUB_REPO="netbirdio/netbird"
-PORTS_CGIT_BASE="https://cgit.freebsd.org/ports/plain/security/netbird"
-GO_PROXY="https://proxy.golang.org/github.com/netbirdio/netbird/@v"
+GITHUB_REPO="${ANONBIRD_GITHUB_REPO:-Cr0me1ve/netbird}"
+PORT_NAME="${ANONBIRD_FREEBSD_PORT_NAME:-anonbird}"
+PORTS_CGIT_BASE="${ANONBIRD_FREEBSD_PORTS_CGIT_BASE:-https://cgit.freebsd.org/ports/plain/security/${PORT_NAME}}"
+GO_PROXY="${ANONBIRD_GO_PROXY_URL:-}"
 OUTPUT_DIR="${OUTPUT_DIR:-.}"
 AWK_FIRST_FIELD='{print $1}'
 
@@ -50,6 +51,11 @@ fetch_ports_file() {
 
 compute_checksums() {
     local version="$1"
+    if [[ -z "$GO_PROXY" ]]; then
+        echo "Error: ANONBIRD_GO_PROXY_URL is required to compute FreeBSD distinfo checksums." >&2
+        echo "Set it to an AnonBird-owned module proxy URL or precompute distinfo manually from release artifacts." >&2
+        return 1
+    fi
     local tmpdir
     tmpdir=$(mktemp -d)
     # shellcheck disable=SC2064
@@ -90,10 +96,10 @@ compute_checksums() {
     fi
 
     echo "TIMESTAMP = $(date +%s)"
-    echo "SHA256 (go/security_netbird/netbird-v${version}/v${version}.mod) = ${mod_sha256}"
-    echo "SIZE (go/security_netbird/netbird-v${version}/v${version}.mod) = ${mod_size}"
-    echo "SHA256 (go/security_netbird/netbird-v${version}/v${version}.zip) = ${zip_sha256}"
-    echo "SIZE (go/security_netbird/netbird-v${version}/v${version}.zip) = ${zip_size}"
+    echo "SHA256 (go/security_${PORT_NAME}/${PORT_NAME}-v${version}/v${version}.mod) = ${mod_sha256}"
+    echo "SIZE (go/security_${PORT_NAME}/${PORT_NAME}-v${version}/v${version}.mod) = ${mod_size}"
+    echo "SHA256 (go/security_${PORT_NAME}/${PORT_NAME}-v${version}/v${version}.zip) = ${zip_sha256}"
+    echo "SIZE (go/security_${PORT_NAME}/${PORT_NAME}-v${version}/v${version}.zip) = ${zip_size}"
     return 0
 }
 
@@ -173,21 +179,21 @@ TMPDIR=$(mktemp -d)
 # shellcheck disable=SC2064
 trap "rm -rf '$TMPDIR'" EXIT
 
-mkdir -p "${TMPDIR}/a/security/netbird" "${TMPDIR}/b/security/netbird"
+mkdir -p "${TMPDIR}/a/security/${PORT_NAME}" "${TMPDIR}/b/security/${PORT_NAME}"
 
-echo "$OLD_MAKEFILE" > "${TMPDIR}/a/security/netbird/Makefile"
-echo "$OLD_DISTINFO" > "${TMPDIR}/a/security/netbird/distinfo"
-echo "$NEW_MAKEFILE" > "${TMPDIR}/b/security/netbird/Makefile"
-echo "$NEW_DISTINFO" > "${TMPDIR}/b/security/netbird/distinfo"
+echo "$OLD_MAKEFILE" > "${TMPDIR}/a/security/${PORT_NAME}/Makefile"
+echo "$OLD_DISTINFO" > "${TMPDIR}/a/security/${PORT_NAME}/distinfo"
+echo "$NEW_MAKEFILE" > "${TMPDIR}/b/security/${PORT_NAME}/Makefile"
+echo "$NEW_DISTINFO" > "${TMPDIR}/b/security/${PORT_NAME}/distinfo"
 
 # Generate diff
-OUTPUT_FILE="${OUTPUT_DIR}/netbird-${NEW_VERSION}.diff"
+OUTPUT_FILE="${OUTPUT_DIR}/${PORT_NAME}-${NEW_VERSION}.diff"
 
 echo "" >&2
 echo "Generating diff..." >&2
 
 # Generate diff and clean up temp paths to show standard a/b paths
-(cd "${TMPDIR}" && diff -ruN "a/security/netbird" "b/security/netbird") > "$OUTPUT_FILE" || true
+(cd "${TMPDIR}" && diff -ruN "a/security/${PORT_NAME}" "b/security/${PORT_NAME}") > "$OUTPUT_FILE" || true
 
 if [[ ! -s "$OUTPUT_FILE" ]]; then
     echo "Error: Generated diff is empty" >&2
@@ -209,8 +215,8 @@ echo "2. Submit to https://bugs.freebsd.org/bugzilla/"
 echo "3. Use ./freebsd-port-issue-body.sh to generate the issue content"
 echo ""
 echo "For FreeBSD testing (optional but recommended):"
-echo "  cd /usr/ports/security/netbird"
+echo "  cd /usr/ports/security/${PORT_NAME}"
 echo "  patch < ${OUTPUT_FILE}"
 echo "  make stage && make stage-qa && make package && make install"
-echo "  netbird status"
+echo "  anonbird status"
 echo "  make deinstall"

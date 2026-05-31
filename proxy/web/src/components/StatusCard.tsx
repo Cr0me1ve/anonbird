@@ -24,7 +24,7 @@ export function StatusCard({
           <Icon size={20} className="text-nb-gray-200" />
         </div>
         <span className="text-sm text-nb-gray-200 font-normal mt-1">{label}</span>
-        <span className={`text-xs font-medium uppercase ${success ? "text-green-500" : "text-netbird"}`}>
+        <span className={`text-xs font-medium uppercase ${success ? "text-green-500" : "text-anonbird"}`}>
           {success ? "Connected" : "Unreachable"}
         </span>
         {detail && (

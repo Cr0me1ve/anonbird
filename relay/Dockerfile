@@ -1,4 +1,4 @@
 FROM gcr.io/distroless/base:debug
-ENTRYPOINT [ "/go/bin/netbird-relay" ]
+ENTRYPOINT [ "/go/bin/anonbird-relay" ]
 ENV NB_LOG_FILE=console
-COPY netbird-relay /go/bin/netbird-relay
+COPY anonbird-relay /go/bin/anonbird-relay

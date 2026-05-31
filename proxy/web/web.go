@@ -14,7 +14,7 @@ import (
 
 // PathPrefix is the unique URL prefix for serving the proxy's own web assets.
 // Using a distinctive prefix prevents collisions with backend application routes.
-const PathPrefix = "/__netbird__"
+const PathPrefix = "/__anonbird__"
 
 //go:embed dist/*
 var files embed.FS

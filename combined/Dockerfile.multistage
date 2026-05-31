@@ -16,10 +16,10 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
     -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown') \
     -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
     -X main.builtBy=docker" \
-    -o netbird-server ./combined
+    -o anonbird-server ./combined
 
 FROM ubuntu:24.04
 RUN apt update && apt install -y ca-certificates && rm -fr /var/cache/apt
-ENTRYPOINT [ "/go/bin/netbird-server" ]
-CMD ["--config", "/etc/netbird/config.yaml"]
-COPY --from=builder /app/netbird-server /go/bin/netbird-server
+ENTRYPOINT [ "/go/bin/anonbird-server" ]
+CMD ["--config", "/etc/anonbird/config.yaml"]
+COPY --from=builder /app/anonbird-server /go/bin/anonbird-server
