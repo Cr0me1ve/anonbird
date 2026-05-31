@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,13 +74,20 @@ type migrationSourceBackup struct {
 }
 
 type migrationManifest struct {
-	Version       int                     `json:"version"`
-	CreatedAt     string                  `json:"created_at"`
-	Scope         string                  `json:"scope"`
-	Root          string                  `json:"root"`
-	Actions       []migrationAction       `json:"actions"`
-	TargetBackups []migrationBackupEntry  `json:"target_backups"`
-	SourceBackups []migrationSourceBackup `json:"source_backups"`
+	Version         int                              `json:"version"`
+	CreatedAt       string                           `json:"created_at"`
+	Scope           string                           `json:"scope"`
+	Root            string                           `json:"root"`
+	Actions         []migrationAction                `json:"actions"`
+	TargetBackups   []migrationBackupEntry           `json:"target_backups"`
+	SourceBackups   []migrationSourceBackup          `json:"source_backups"`
+	SystemdServices map[string]migrationSystemdState `json:"systemd_services,omitempty"`
+}
+
+type migrationSystemdState struct {
+	Known   bool `json:"known"`
+	Active  bool `json:"active"`
+	Enabled bool `json:"enabled"`
 }
 
 type migrationPlan struct {
@@ -264,6 +272,26 @@ func buildClientMigrationPlan(opts migrationOptions) (migrationPlan, error) {
 		}
 	}
 
+	for _, pair := range []struct {
+		source string
+		target string
+		desc   string
+	}{
+		{"/etc/sysconfig/netbird", "/etc/sysconfig/anonbird", "copy and rewrite sysconfig environment file"},
+		{"/etc/default/netbird", "/etc/default/anonbird", "copy and rewrite default environment file"},
+	} {
+		if opts.pathExists(pair.source) {
+			plan.Actions = append(plan.Actions, migrationAction{
+				Kind:        "copy",
+				Source:      pair.source,
+				Target:      pair.target,
+				Description: pair.desc,
+				Rewrite:     true,
+				Optional:    true,
+			})
+		}
+	}
+
 	if opts.CompatLink {
 		plan.Actions = append(plan.Actions, migrationAction{
 			Kind:        "symlink",
@@ -331,17 +359,20 @@ func applyClientMigrationPlan(out io.Writer, plan migrationPlan, opts migrationO
 		}
 	}
 
-	if opts.Root == "/" {
-		runSystemctl(out, false, "stop", "netbird.service")
-		runSystemctl(out, false, "disable", "netbird.service")
-	}
-
 	manifest := migrationManifest{
 		Version:   1,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		Scope:     plan.Scope,
 		Root:      opts.Root,
 		Actions:   plan.Actions,
+	}
+
+	if opts.Root == "/" {
+		manifest.SystemdServices = map[string]migrationSystemdState{
+			"netbird.service": captureSystemdServiceState("netbird.service"),
+		}
+		runSystemctl(out, false, "stop", "netbird.service")
+		runSystemctl(out, false, "disable", "netbird.service")
 	}
 
 	for _, action := range plan.Actions {
@@ -526,6 +557,13 @@ func hardenMigratedClientConfigs(out io.Writer, plan migrationPlan, opts migrati
 		if err != nil {
 			return err
 		}
+		helperUpdates, err := hardenMigratedClientHelperFiles(root, token)
+		if err != nil {
+			return err
+		}
+		for _, path := range helperUpdates {
+			updated = append(updated, opts.logicalPath(path))
+		}
 	}
 	for _, path := range updated {
 		fmt.Fprintf(out, "Hardened migrated config for anonymous rejoin: %s\n", path)
@@ -546,8 +584,18 @@ func hardenMigratedClientConfig(path string, token joinToken) (bool, error) {
 		return false, nil
 	}
 
+	managementURL, err := url.Parse(token.ManagementURL)
+	if err != nil {
+		return false, fmt.Errorf("parse rejoin management URL: %w", err)
+	}
+	adminURL, err := url.Parse("http://localhost:33071")
+	if err != nil {
+		return false, err
+	}
+
 	transport := anonymous.NormalizeTransport(token.Transport)
-	raw["ManagementURL"] = token.ManagementURL
+	raw["ManagementURL"] = managementURL
+	raw["AdminURL"] = adminURL
 	raw["anonymous_mode"] = true
 	raw["anonymous_transport"] = transport
 	raw["DisableAutoConnect"] = true
@@ -558,6 +606,34 @@ func hardenMigratedClientConfig(path string, token joinToken) (bool, error) {
 	}
 	rewritten = append(rewritten, '\n')
 	return true, os.WriteFile(path, rewritten, 0o600)
+}
+
+func hardenMigratedClientHelperFiles(configDir string, token joinToken) ([]string, error) {
+	var updated []string
+	managementURLPath := filepath.Join(configDir, "management-url")
+	if _, err := os.Lstat(managementURLPath); err == nil {
+		if err := os.WriteFile(managementURLPath, []byte(token.ManagementURL+"\n"), 0o644); err != nil {
+			return nil, fmt.Errorf("rewrite management-url helper: %w", err)
+		}
+		updated = append(updated, managementURLPath)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+
+	setupKeyPath := filepath.Join(configDir, "setup-key")
+	if _, err := os.Lstat(setupKeyPath); err == nil {
+		if err := os.WriteFile(setupKeyPath, []byte(token.SetupKey+"\n"), 0o600); err != nil {
+			return nil, fmt.Errorf("rewrite setup-key helper: %w", err)
+		}
+		if err := os.Chmod(setupKeyPath, 0o600); err != nil {
+			return nil, fmt.Errorf("chmod setup-key helper: %w", err)
+		}
+		updated = append(updated, setupKeyPath)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+
+	return updated, nil
 }
 
 func backupSource(source string, manifest *migrationManifest, opts migrationOptions, backupDir string) error {
@@ -671,7 +747,7 @@ func rollbackClientMigration(out io.Writer, opts migrationOptions) error {
 
 	if opts.Root == "/" {
 		runSystemctl(out, false, "daemon-reload")
-		runSystemctl(out, false, "start", "netbird.service")
+		restoreSystemdServiceState(out, manifest, "netbird.service")
 	}
 	fmt.Fprintln(out, "Client migration rollback applied.")
 	return nil
@@ -799,6 +875,33 @@ func runSystemctl(out io.Writer, required bool, args ...string) {
 	}
 }
 
+func captureSystemdServiceState(service string) migrationSystemdState {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return migrationSystemdState{}
+	}
+	return migrationSystemdState{
+		Known:   true,
+		Active:  exec.Command("systemctl", "is-active", "--quiet", service).Run() == nil,
+		Enabled: exec.Command("systemctl", "is-enabled", "--quiet", service).Run() == nil,
+	}
+}
+
+func restoreSystemdServiceState(out io.Writer, manifest migrationManifest, service string) {
+	state, ok := manifest.SystemdServices[service]
+	if !ok || !state.Known {
+		runSystemctl(out, false, "start", service)
+		return
+	}
+	if state.Enabled {
+		runSystemctl(out, false, "enable", service)
+	} else {
+		runSystemctl(out, false, "disable", service)
+	}
+	if state.Active {
+		runSystemctl(out, false, "start", service)
+	}
+}
+
 func runAnonBirdJoin(out io.Writer, token string) error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -859,9 +962,13 @@ func rewriteNetBirdUnit(content string) string {
 		"/usr/bin/netbird", "/usr/bin/anonbird",
 		"/usr/local/bin/netbird", "/usr/local/bin/anonbird",
 		"/etc/netbird", "/etc/anonbird",
+		"/etc/sysconfig/netbird", "/etc/sysconfig/anonbird",
+		"/etc/default/netbird", "/etc/default/anonbird",
 		"/var/lib/netbird", "/var/lib/anonbird",
 		"/var/log/netbird", "/var/log/anonbird",
 		"/var/run/netbird.sock", "/var/run/anonbird.sock",
+		"NB_CONFIG=/etc/netbird", "NB_CONFIG=/etc/anonbird",
+		"NB_LOG_FILE=/var/log/netbird", "NB_LOG_FILE=/var/log/anonbird",
 		"SYSTEMD_UNIT=netbird", "SYSTEMD_UNIT=anonbird",
 	)
 	return replacer.Replace(content)

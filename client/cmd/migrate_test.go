@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/netbirdio/netbird/client/internal/profilemanager"
 )
 
 func TestBuildClientMigrationPlanDetectsLegacyPaths(t *testing.T) {
@@ -33,10 +35,12 @@ func TestApplyClientMigrationPlanCopiesAndRewrites(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "etc/netbird/config.json"), `{"ManagementURL":"https://netbird.example"}`)
 	writeTestFile(t, filepath.Join(root, "var/lib/netbird/service.json"), `{"service":"netbird"}`)
 	writeTestFile(t, filepath.Join(root, "var/log/netbird/client.log"), "old log")
+	writeTestFile(t, filepath.Join(root, "etc/sysconfig/netbird"), "NB_CONFIG=/etc/netbird/config.json\nNB_LOG_FILE=/var/log/netbird/client.log\n")
 	writeTestFile(t, filepath.Join(root, "etc/systemd/system/netbird.service"), `[Unit]
 Description=NetBird
 [Service]
 ExecStart=/usr/bin/netbird service run --config /etc/netbird/config.json --log-file /var/log/netbird/client.log --daemon-addr unix:///var/run/netbird.sock
+EnvironmentFile=-/etc/sysconfig/netbird
 Environment=SYSTEMD_UNIT=netbird
 `)
 
@@ -62,7 +66,13 @@ Environment=SYSTEMD_UNIT=netbird
 	require.Contains(t, string(unit), "/etc/anonbird/config.json")
 	require.Contains(t, string(unit), "/var/log/anonbird/client.log")
 	require.Contains(t, string(unit), "unix:///var/run/anonbird.sock")
+	require.Contains(t, string(unit), "EnvironmentFile=-/etc/sysconfig/anonbird")
 	require.Contains(t, string(unit), "SYSTEMD_UNIT=anonbird")
+
+	envFile, err := os.ReadFile(filepath.Join(root, "etc/sysconfig/anonbird"))
+	require.NoError(t, err)
+	require.Contains(t, string(envFile), "NB_CONFIG=/etc/anonbird/config.json")
+	require.Contains(t, string(envFile), "NB_LOG_FILE=/var/log/anonbird/client.log")
 
 	require.FileExists(t, filepath.Join(root, "var/backups/anonbird/migration-test/manifest.json"))
 	require.FileExists(t, filepath.Join(root, "var/backups/anonbird/migration-test/source/etc/netbird/config.json"))
@@ -93,6 +103,8 @@ func TestApplyClientMigrationWithRejoinHardensConfig(t *testing.T) {
   "ManagementURL": "https://netbird.example",
   "PrivateKey": "legacy-private"
 }`)
+	writeTestFile(t, filepath.Join(root, "etc/netbird/management-url"), "https://api.netbird.io\n")
+	writeTestFile(t, filepath.Join(root, "etc/netbird/setup-key"), "OLD-SETUP-KEY\n")
 
 	rejoin := "anonbird://join?server=http%3A%2F%2Fmanagementexampleabcdefghijklmnop.onion&setup_key=NB-SETUP-xxxx&transport=tor-relay-only&tor_socks5=127.0.0.1%3A9051"
 	opts := migrationOptions{
@@ -109,7 +121,14 @@ func TestApplyClientMigrationWithRejoinHardensConfig(t *testing.T) {
 	require.NoError(t, err)
 	var migrated map[string]any
 	require.NoError(t, json.Unmarshal(data, &migrated))
-	require.Equal(t, "http://managementexampleabcdefghijklmnop.onion", migrated["ManagementURL"])
+	managementURL, ok := migrated["ManagementURL"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "http", managementURL["Scheme"])
+	require.Equal(t, "managementexampleabcdefghijklmnop.onion", managementURL["Host"])
+	adminURL, ok := migrated["AdminURL"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "http", adminURL["Scheme"])
+	require.Equal(t, "localhost:33071", adminURL["Host"])
 	require.Equal(t, true, migrated["anonymous_mode"])
 	require.Equal(t, true, migrated["DisableAutoConnect"])
 	transport, ok := migrated["anonymous_transport"].(map[string]any)
@@ -118,6 +137,18 @@ func TestApplyClientMigrationWithRejoinHardensConfig(t *testing.T) {
 	require.Equal(t, "127.0.0.1:9051", transport["tor_socks5"])
 	require.Equal(t, true, transport["require_anonymous"])
 	require.Equal(t, "legacy-private", migrated["PrivateKey"])
+
+	var config profilemanager.Config
+	require.NoError(t, json.Unmarshal(data, &config))
+	require.Equal(t, "http://managementexampleabcdefghijklmnop.onion", config.ManagementURL.String())
+	require.True(t, config.AnonymousMode)
+	require.True(t, config.DisableAutoConnect)
+
+	require.Equal(t, "http://managementexampleabcdefghijklmnop.onion\n", readTestFile(t, filepath.Join(root, "etc/anonbird/management-url")))
+	require.Equal(t, "NB-SETUP-xxxx\n", readTestFile(t, filepath.Join(root, "etc/anonbird/setup-key")))
+	setupKeyInfo, err := os.Stat(filepath.Join(root, "etc/anonbird/setup-key"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), setupKeyInfo.Mode().Perm())
 }
 
 func TestApplyClientMigrationAllowsUnsafeClearnetWithExplicitAck(t *testing.T) {
