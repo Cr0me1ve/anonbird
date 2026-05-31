@@ -39,23 +39,72 @@
 | ✓ I2P SAM STREAM control plane | ✓ Device approval support | ✓ Anonymous update checks disabled by default | ✓ Docker/Compose templates | ✓ Containers |
 | ✓ I2P SAM DATAGRAM peer transport | ✓ Setup invite tokens | ✓ Runtime anonymous checks | ✓ Release hardening audit commands | ✓ FreeBSD package helper |
 
-### Quickstart
+### One-command self-host quickstart
 
-AnonBird is self-hosted-first. The quickstart scripts expect a Linux VM with:
+AnonBird is self-hosted-first. The recommended open-source quickstart starts a
+single-host deployment with the dashboard, embedded IdP, management, signal and
+relay combined server, and Traefik TLS routing.
 
 - A Linux VM with at least **1 CPU** and **2 GB** of memory.
 - Docker with the Compose plugin.
-- A DNS name pointing to the VM for clearnet bootstrap or reverse proxy testing.
+- A DNS name pointing to the VM.
+- Open inbound `80/tcp` and `443/tcp`.
 - Tor and/or i2pd available on clients for anonymous transports.
 
 ```bash
-export NETBIRD_DOMAIN=anonbird.example.com
-curl -fsSL https://github.com/Cr0me1ve/netbird/releases/latest/download/getting-started.sh | bash
+curl -fsSL https://github.com/Cr0me1ve/netbird/releases/latest/download/getting-started.sh \
+  | bash -s -- --domain anonbird.example.com --email admin@example.com --yes
 ```
 
-The `NETBIRD_*` environment names are still accepted in deployment scripts for compatibility with the inherited configuration contract. New generated artifacts use AnonBird images, commands and filesystem paths.
+This renders `docker-compose.yml`, `dashboard.env` and `config.yaml`, then starts
+the stack. When it finishes, open:
+
+```text
+https://anonbird.example.com
+```
+
+The one-command installer uses the built-in Traefik mode by default. For a dry
+configuration render without starting containers:
+
+```bash
+curl -fsSL https://github.com/Cr0me1ve/netbird/releases/latest/download/getting-started.sh \
+  | bash -s -- --domain anonbird.example.com --email admin@example.com --yes --render-only
+```
+
+The `NETBIRD_*` environment names are still accepted in deployment scripts for
+compatibility with the inherited configuration contract. New generated artifacts
+use AnonBird images, commands and filesystem paths.
+
+### Dashboard and anonymous peer URLs
+
+The admin dashboard can be exposed on clearnet, a private network, or an onion
+service. Anonymous peer privacy depends on the management/signal/relay URL used
+by clients, not on where the administrator opens the dashboard.
+
+Common split deployment:
+
+```text
+Admin browser:
+  https://admin.example.com
+
+AnonBird peers:
+  http://managementxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.onion
+```
+
+Set the dashboard runtime configuration so browser API calls use the admin API
+origin, while generated peer setup commands use the onion/I2P management origin:
+
+```text
+NETBIRD_MGMT_API_ENDPOINT=https://admin.example.com
+NETBIRD_MGMT_GRPC_API_ENDPOINT=http://managementxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.onion
+```
+
+With that split, the administrator's browser can use clearnet, while peers still
+join through Tor/I2P and do not publish real endpoint candidates.
 
 ### Anonymous Client Examples
+
+Tor relay-only:
 
 ```bash
 anonbird up \
@@ -65,6 +114,8 @@ anonbird up \
   --anonymous-transport tor-relay-only \
   --tor-socks5 127.0.0.1:9050
 ```
+
+I2P datagram:
 
 ```bash
 anonbird up \
@@ -80,6 +131,26 @@ Run the local safety audit any time:
 ```bash
 anonbird debug anonymous-check
 ```
+
+Expected anonymous output includes:
+
+```text
+Anonymous mode: enabled
+STUN: disabled
+ICE: disabled
+Direct UDP: disabled
+Clearnet fallback: disabled
+Published endpoints: none
+Result: OK
+```
+
+### Release-readiness status
+
+The current branch contains a working anonymous MVP plus post-MVP production
+hardening tasks. Before a public production release, run the release-readiness
+plan in `anonbird_netbird_fork_plan.md`: release artifact install, migration from
+ordinary NetBird, rollback, Tor/I2P remote smoke, a real application test over
+the overlay, and a final leak sweep.
 
 ### Internals
 

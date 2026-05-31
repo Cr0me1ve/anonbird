@@ -158,6 +158,8 @@
 - Проверки 2026-05-31: финальный I2P remote smoke после redaction deploy — `213.108.3.228` `anonbird-i2p-combined.service` active и `/health` `healthy`; `anonbird debug anonymous-check` на `185.246.220.249` и `45.138.103.224` OK (`i2p-datagram`, management/signal/relay `i2p`, STUN/ICE/direct UDP/fallback disabled, published endpoints none, I2P destination registered, SAM reachable). Status показывает peer pair `P2P`, ICE candidate `i2p-datagram/i2p-datagram`, relay `.b32.i2p` available; ping `185→45` 8/8 avg `471.286 ms`, `45→185` 8/8 avg `489.559 ms`.
 - Проверки 2026-05-31: финальный I2P adversarial leak sweep — client log grep после fresh restart на `185.246.220.249` и `45.138.103.224` не нашёл `app.netbird`, package/metrics/debug hosts, STUN/ICE/NAT discovery/candidate/relayServerIP/serverIP shortcut или реальные серверные/client IP prefixes; redaction evidence в логах: `blocking route LAN access for N local networks (redacted in anonymous mode)` и nftables `source_count=...`. Server journal grep на `213.108.3.228` чистый по тем же patterns; sqlite `peers.location_connection_ip` пустой, `meta_network_addresses=[]`, `meta_anonymous_transport=i2p-datagram` для обоих peers.
 - Проверки 2026-05-31: final requirement-by-requirement completion audit — в плане не осталось незакрытых чекбоксов или рабочих пунктов по текущему MVP scope; Phase 0-6 имеют `Статус: выполнено/закрыто`; устаревших маркеров незавершённого remote smoke/goal-blocker больше нет; focused rg в netbird и dashboard не находит old upstream docs/cloud/package/forum/shared-actions hosts вне явно исключённых исторических audit docs; `git status --short` чистый в `/Users/kirill/Code/netbird` и `/Users/kirill/Code/dashboard` после push.
+- Проверки 2026-05-31: post-MVP production readiness start — `infrastructure_files/getting-started.sh` получил non-interactive one-command режим (`--domain`, `--email`, `--yes`, `--render-only`, proxy options), README обновлён open-source quickstart инструкцией. Проверено: `bash -n`, `--help`, `--render-only`, `docker compose config` для сгенерированного self-host stack, fail-fast без `--email` в non-interactive Traefik mode.
+- Проверки 2026-05-31: production path cleanup — default client/service paths переключены на `/etc/anonbird`, `/var/lib/anonbird`, `/var/log/anonbird`, `ProgramData\AnonBird`, `/var/db/anonbird`; legacy NetBird paths оставлены как source для миграции. Проверено: `gofmt`, `go test ./client/configs ./client/internal/profilemanager ./client/cmd -count=1 -timeout 240s`, `git diff --check`.
 - Проверки 2026-05-31: Tor benchmark preflight — SSH к `93.177.116.58` восстановился, Tor onion hostname `o2n24n6pjl4dkz2i3tlyfov3ozpnwcu4bhy26rtd65stqctn6rg3vpad.onion` доступен в конфиге, remote combined всё ещё старой сборки с `/health` 503 из-за onion DNS self-probe, но management/setup-key path через onion работоспособен.
 - Проверки 2026-05-31: Tor relay-only benchmark восстановлен на `93.177.116.58` + `185.246.220.249`/`45.138.103.224`; Tor management/signal/relay идут через `http://o2n24n6pjl4dkz2i3tlyfov3ozpnwcu4bhy26rtd65stqctn6rg3vpad.onion:80`, клиенты подключены `Relayed`, `anonymous-check` OK, STUN/ICE/direct UDP/clearnet fallback отсутствуют.
 - Проверки 2026-05-31: Tor relay-only ping между `185.246.220.249` (`100.79.204.47`) и `45.138.103.224` (`100.79.143.119`) — 10/10 packets в обе стороны, avg RTT `~1047 ms` и `~1092 ms`.
@@ -1260,6 +1262,11 @@ MVP считается успешным, если:
 
 ### 22.1. Linux command/package parity
 
+- [x] Добавить one-command self-host режим для управляющего сервера:
+  - `getting-started.sh --domain <domain> --email <email> --yes`;
+  - default stack: dashboard + embedded IdP + combined management/signal/relay server + Traefik TLS;
+  - `--render-only` для dry-run генерации `docker-compose.yml`, `dashboard.env`, `config.yaml`;
+  - README quickstart показывает одну команду для open-source установки.
 - [ ] Подготовить полноценную Linux install surface по аналогии с обычным `netbird`, но под AnonBird:
   - binary в `PATH`: `/usr/bin/anonbird` или `/usr/local/bin/anonbird`;
   - systemd unit: `anonbird.service`;

@@ -123,21 +123,22 @@ func Execute() error {
 }
 
 func init() {
-	defaultConfigPathDir = "/etc/netbird/"
-	defaultLogFileDir = "/var/log/netbird/"
+	defaultConfigPathDir = "/etc/anonbird/"
+	defaultLogFileDir = "/var/log/anonbird/"
 
-	oldDefaultConfigPathDir = "/etc/wiretrustee/"
-	oldDefaultLogFileDir = "/var/log/wiretrustee/"
+	oldDefaultConfigPathDir = "/etc/netbird/"
+	oldDefaultLogFileDir = "/var/log/netbird/"
 
 	switch runtime.GOOS {
 	case "windows":
-		defaultConfigPathDir = os.Getenv("PROGRAMDATA") + "\\Netbird\\"
-		defaultLogFileDir = os.Getenv("PROGRAMDATA") + "\\Netbird\\"
+		defaultConfigPathDir = os.Getenv("PROGRAMDATA") + "\\AnonBird\\"
+		defaultLogFileDir = os.Getenv("PROGRAMDATA") + "\\AnonBird\\"
 
-		oldDefaultConfigPathDir = os.Getenv("PROGRAMDATA") + "\\Wiretrustee\\"
-		oldDefaultLogFileDir = os.Getenv("PROGRAMDATA") + "\\Wiretrustee\\"
+		oldDefaultConfigPathDir = os.Getenv("PROGRAMDATA") + "\\Netbird\\"
+		oldDefaultLogFileDir = os.Getenv("PROGRAMDATA") + "\\Netbird\\"
 	case "freebsd":
-		defaultConfigPathDir = "/var/db/netbird/"
+		defaultConfigPathDir = "/var/db/anonbird/"
+		oldDefaultConfigPathDir = "/var/db/netbird/"
 	}
 
 	defaultConfigPath = defaultConfigPathDir + "config.json"

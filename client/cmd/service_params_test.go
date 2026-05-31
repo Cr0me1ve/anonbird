@@ -25,8 +25,8 @@ func TestServiceParamsPath(t *testing.T) {
 	original := configs.StateDir
 	t.Cleanup(func() { configs.StateDir = original })
 
-	configs.StateDir = "/var/lib/netbird"
-	assert.Equal(t, filepath.Join("/var/lib/netbird", "service.json"), serviceParamsPath())
+	configs.StateDir = "/var/lib/anonbird"
+	assert.Equal(t, filepath.Join("/var/lib/anonbird", "service.json"), serviceParamsPath())
 
 	configs.StateDir = "/custom/state"
 	assert.Equal(t, filepath.Join("/custom/state", "service.json"), serviceParamsPath())
@@ -43,8 +43,8 @@ func TestSaveAndLoadServiceParams(t *testing.T) {
 		LogLevel:              "debug",
 		DaemonAddr:            "unix:///var/run/anonbird.sock",
 		ManagementURL:         "https://my.server.com",
-		ConfigPath:            "/etc/netbird/config.json",
-		LogFiles:              []string{"/var/log/netbird/client.log", "console"},
+		ConfigPath:            "/etc/anonbird/config.json",
+		LogFiles:              []string{"/var/log/anonbird/client.log", "console"},
 		DisableProfiles:       true,
 		DisableUpdateSettings: false,
 		ServiceEnvVars:        map[string]string{"NB_LOG_FORMAT": "json", "CUSTOM": "val"},
@@ -202,8 +202,8 @@ func TestApplyServiceParams_OnlyUnchangedFlags(t *testing.T) {
 	logLevel = "info"
 	daemonAddr = "unix:///var/run/anonbird.sock"
 	managementURL = ""
-	configPath = "/etc/netbird/config.json"
-	logFiles = []string{"/var/log/netbird/client.log"}
+	configPath = "/etc/anonbird/config.json"
+	logFiles = []string{"/var/log/anonbird/client.log"}
 	profilesDisabled = false
 	updateSettingsDisabled = false
 	serviceEnvVars = nil

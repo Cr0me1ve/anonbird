@@ -16,6 +16,153 @@ readonly MSG_NEXT_STEPS="Next steps:"
 readonly MSG_SEPARATOR="=========================================="
 
 ############################################
+# CLI Arguments
+############################################
+
+print_usage() {
+  cat <<'EOF'
+AnonBird one-command self-host installer
+
+Usage:
+  getting-started.sh [options]
+
+Recommended production quickstart:
+  curl -fsSL https://github.com/Cr0me1ve/netbird/releases/latest/download/getting-started.sh \
+    | bash -s -- --domain anonbird.example.com --email admin@example.com --yes
+
+Options:
+  --domain DOMAIN              Public dashboard/management domain.
+  --use-ip                     Use this host's primary IP instead of a DNS name.
+  --email EMAIL                Let's Encrypt/ACME email for built-in Traefik.
+  --proxy TYPE                 Reverse proxy: traefik, external-traefik, nginx, npm, caddy, manual.
+  --enable-proxy               Enable the AnonBird reverse proxy service.
+  --enable-crowdsec            Enable CrowdSec for reverse proxy protection.
+  --bind-localhost             Bind exposed container ports to 127.0.0.1.
+  --bind-public                Bind exposed container ports to 0.0.0.0.
+  --traefik-network NAME       External Traefik Docker network.
+  --traefik-entrypoint NAME    External Traefik HTTPS entrypoint.
+  --traefik-certresolver NAME  External Traefik certificate resolver.
+  --external-proxy-network N   Docker network for nginx/npm/caddy reverse proxy.
+  --render-only                Render files and exit without starting containers.
+  --yes, -y                    Non-interactive mode; fail instead of prompting.
+  --help, -h                   Show this help.
+
+Environment aliases:
+  ANONBIRD_DOMAIN              Same as --domain when NETBIRD_DOMAIN is unset.
+  ANONBIRD_ADMIN_EMAIL         Same as --email when TRAEFIK_ACME_EMAIL is unset.
+  ANONBIRD_NONINTERACTIVE=true Same as --yes.
+EOF
+}
+
+proxy_choice_from_name() {
+  case "$1" in
+    0|traefik|builtin-traefik) echo "0" ;;
+    1|external-traefik) echo "1" ;;
+    2|nginx) echo "2" ;;
+    3|npm|nginx-proxy-manager) echo "3" ;;
+    4|caddy|external-caddy) echo "4" ;;
+    5|manual|other) echo "5" ;;
+    *)
+      echo "Unsupported proxy type: $1" > /dev/stderr
+      print_usage > /dev/stderr
+      exit 2
+      ;;
+  esac
+}
+
+require_arg() {
+  local flag="$1"
+  local value="${2:-}"
+  if [[ -z "$value" || "$value" == --* ]]; then
+    echo "${flag} requires a value." > /dev/stderr
+    print_usage > /dev/stderr
+    exit 2
+  fi
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --domain)
+        require_arg "$1" "${2:-}"
+        NETBIRD_DOMAIN="$2"
+        shift 2
+        ;;
+      --use-ip)
+        NETBIRD_DOMAIN="use-ip"
+        shift
+        ;;
+      --email|--admin-email|--acme-email)
+        require_arg "$1" "${2:-}"
+        TRAEFIK_ACME_EMAIL="$2"
+        shift 2
+        ;;
+      --proxy)
+        require_arg "$1" "${2:-}"
+        REVERSE_PROXY_TYPE=$(proxy_choice_from_name "$2")
+        shift 2
+        ;;
+      --enable-proxy)
+        ENABLE_PROXY="true"
+        shift
+        ;;
+      --enable-crowdsec)
+        ENABLE_PROXY="true"
+        ENABLE_CROWDSEC="true"
+        shift
+        ;;
+      --bind-localhost)
+        BIND_LOCALHOST_ONLY="true"
+        shift
+        ;;
+      --bind-public)
+        BIND_LOCALHOST_ONLY="false"
+        shift
+        ;;
+      --traefik-network)
+        require_arg "$1" "${2:-}"
+        TRAEFIK_EXTERNAL_NETWORK="$2"
+        REVERSE_PROXY_TYPE="1"
+        shift 2
+        ;;
+      --traefik-entrypoint)
+        require_arg "$1" "${2:-}"
+        TRAEFIK_ENTRYPOINT="$2"
+        shift 2
+        ;;
+      --traefik-certresolver)
+        require_arg "$1" "${2:-}"
+        TRAEFIK_CERTRESOLVER="$2"
+        shift 2
+        ;;
+      --external-proxy-network)
+        require_arg "$1" "${2:-}"
+        EXTERNAL_PROXY_NETWORK="$2"
+        shift 2
+        ;;
+      --render-only)
+        RENDER_ONLY="true"
+        NONINTERACTIVE="true"
+        shift
+        ;;
+      --yes|-y|--non-interactive)
+        NONINTERACTIVE="true"
+        shift
+        ;;
+      --help|-h)
+        print_usage
+        exit 0
+        ;;
+      *)
+        echo "Unknown option: $1" > /dev/stderr
+        print_usage > /dev/stderr
+        exit 2
+        ;;
+    esac
+  done
+}
+
+############################################
 # Utility Functions
 ############################################
 
@@ -302,6 +449,13 @@ wait_management_direct() {
 ############################################
 
 initialize_default_values() {
+  if [[ -z "${NETBIRD_DOMAIN:-}" && -n "${ANONBIRD_DOMAIN:-}" ]]; then
+    NETBIRD_DOMAIN="$ANONBIRD_DOMAIN"
+  fi
+
+  NONINTERACTIVE="${ANONBIRD_NONINTERACTIVE:-false}"
+  RENDER_ONLY="${ANONBIRD_RENDER_ONLY:-false}"
+
   NETBIRD_PORT=80
   NETBIRD_HTTP_PROTOCOL="http"
   NETBIRD_RELAY_PROTO="rel"
@@ -317,31 +471,36 @@ initialize_default_values() {
   NETBIRD_PROXY_IMAGE="ghcr.io/cr0me1ve/anonbird-reverse-proxy:latest"
 
   # Reverse proxy configuration
-  REVERSE_PROXY_TYPE="0"
-  TRAEFIK_EXTERNAL_NETWORK=""
-  TRAEFIK_ENTRYPOINT="websecure"
-  TRAEFIK_CERTRESOLVER=""
-  TRAEFIK_ACME_EMAIL=""
-  DASHBOARD_HOST_PORT="8080"
-  MANAGEMENT_HOST_PORT="8081"  # Combined server port (management + signal + relay)
-  BIND_LOCALHOST_ONLY="true"
-  EXTERNAL_PROXY_NETWORK=""
+  REVERSE_PROXY_TYPE="${ANONBIRD_REVERSE_PROXY_TYPE:-0}"
+  REVERSE_PROXY_TYPE=$(proxy_choice_from_name "$REVERSE_PROXY_TYPE")
+  TRAEFIK_EXTERNAL_NETWORK="${TRAEFIK_EXTERNAL_NETWORK:-}"
+  TRAEFIK_ENTRYPOINT="${TRAEFIK_ENTRYPOINT:-websecure}"
+  TRAEFIK_CERTRESOLVER="${TRAEFIK_CERTRESOLVER:-}"
+  TRAEFIK_ACME_EMAIL="${TRAEFIK_ACME_EMAIL:-${ANONBIRD_ADMIN_EMAIL:-}}"
+  DASHBOARD_HOST_PORT="${DASHBOARD_HOST_PORT:-8080}"
+  MANAGEMENT_HOST_PORT="${MANAGEMENT_HOST_PORT:-8081}"  # Combined server port (management + signal + relay)
+  BIND_LOCALHOST_ONLY="${BIND_LOCALHOST_ONLY:-true}"
+  EXTERNAL_PROXY_NETWORK="${EXTERNAL_PROXY_NETWORK:-}"
 
   # Traefik static IP within the internal bridge network
   TRAEFIK_IP="172.30.0.10"
 
   # AnonBird Proxy configuration
-  ENABLE_PROXY="false"
+  ENABLE_PROXY="${ANONBIRD_ENABLE_PROXY:-false}"
   PROXY_TOKEN=""
 
   # CrowdSec configuration
-  ENABLE_CROWDSEC="false"
+  ENABLE_CROWDSEC="${ANONBIRD_ENABLE_CROWDSEC:-false}"
   CROWDSEC_BOUNCER_KEY=""
   return 0
 }
 
 configure_domain() {
   if ! check_nb_domain "$NETBIRD_DOMAIN"; then
+    if [[ "$NONINTERACTIVE" == "true" ]]; then
+      echo "Set --domain, --use-ip, NETBIRD_DOMAIN, or ANONBIRD_DOMAIN for non-interactive setup." > /dev/stderr
+      exit 1
+    fi
     NETBIRD_DOMAIN=$(read_nb_domain)
   fi
 
@@ -358,6 +517,14 @@ configure_domain() {
 }
 
 configure_reverse_proxy() {
+  if [[ "$NONINTERACTIVE" == "true" ]]; then
+    if [[ "$REVERSE_PROXY_TYPE" == "0" && "$NETBIRD_HTTP_PROTOCOL" == "https" && -z "$TRAEFIK_ACME_EMAIL" ]]; then
+      echo "Built-in Traefik mode needs --email or ANONBIRD_ADMIN_EMAIL for Let's Encrypt." > /dev/stderr
+      exit 1
+    fi
+    return 0
+  fi
+
   # Prompt for reverse proxy type
   REVERSE_PROXY_TYPE=$(read_reverse_proxy_type)
 
@@ -562,6 +729,13 @@ start_services_and_show_instructions() {
     # External proxies (nginx, external Caddy, other) - need manual config first
     print_post_setup_instructions
 
+    if [[ "$NONINTERACTIVE" == "true" ]]; then
+      echo ""
+      echo "External proxy mode generated files and instructions. Configure your reverse proxy, then run:"
+      echo "  $DOCKER_COMPOSE_COMMAND up -d"
+      return 0
+    fi
+
     echo ""
     echo -n "Press Enter when your reverse proxy is configured (or Ctrl+C to exit)... "
     read -r < /dev/tty
@@ -581,14 +755,27 @@ start_services_and_show_instructions() {
 
 init_environment() {
   initialize_default_values
+  parse_args "$@"
   configure_domain
   configure_reverse_proxy
 
-  check_jq
-  DOCKER_COMPOSE_COMMAND=$(check_docker_compose)
+  if [[ "$RENDER_ONLY" == "true" ]]; then
+    DOCKER_COMPOSE_COMMAND="docker compose"
+  else
+    check_jq
+    DOCKER_COMPOSE_COMMAND=$(check_docker_compose)
+  fi
 
   check_existing_installation
   generate_configuration_files
+  if [[ "$RENDER_ONLY" == "true" ]]; then
+    echo "Rendered AnonBird self-host files in $(pwd):"
+    echo "  docker-compose.yml"
+    echo "  dashboard.env"
+    echo "  config.yaml"
+    echo "Run with the same options without --render-only to start containers."
+    return 0
+  fi
   start_services_and_show_instructions
   return 0
 }
@@ -1523,4 +1710,4 @@ print_post_setup_instructions() {
   return 0
 }
 
-init_environment
+init_environment "$@"
