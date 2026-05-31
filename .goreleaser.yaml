@@ -248,7 +248,6 @@ dockers_v2:
     platforms: &linux_platforms
       - linux/amd64
       - linux/arm64
-      - linux/arm/v6
 
   - id: anonbird-rootless
     ids:
