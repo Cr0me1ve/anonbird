@@ -576,6 +576,9 @@ jobs:
           name: release-ui
           path: release-ui
 
+      - name: Prepare download directory
+        run: New-Item -ItemType Directory -Force -Path $env:downloadPath | Out-Null
+
       - name: Stage binaries into dist
         run: |
           $workdir = "dist\${{ env.PackageWorkdir }}"
