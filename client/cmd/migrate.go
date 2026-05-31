@@ -791,7 +791,7 @@ func findLatestClientMigrationBackup(opts migrationOptions) (string, error) {
 		manifestPath := filepath.Join(base, entry.Name(), migrationManifestName)
 		manifest, err := readMigrationManifest(filepath.Dir(manifestPath))
 		if err == nil && manifest.Scope == "client" {
-			candidates = append(candidates, filepath.Join(logicalBase, entry.Name()))
+			candidates = append(candidates, logicalBase+"/"+entry.Name())
 		}
 	}
 	if len(candidates) == 0 {
@@ -920,10 +920,10 @@ func (o migrationOptions) mapPath(p string) string {
 	if p == "" {
 		return ""
 	}
-	if !filepath.IsAbs(p) || o.Root == "" || o.Root == "/" {
+	if !isMigrationLogicalAbs(p) || o.Root == "" || o.Root == "/" {
 		return filepath.Clean(p)
 	}
-	return filepath.Join(filepath.Clean(o.Root), strings.TrimPrefix(filepath.Clean(p), string(os.PathSeparator)))
+	return filepath.Join(filepath.Clean(o.Root), trimMigrationLogicalRoot(p))
 }
 
 func (o migrationOptions) logicalPath(mappedPath string) string {
@@ -933,8 +933,19 @@ func (o migrationOptions) logicalPath(mappedPath string) string {
 		return cleaned
 	}
 	if rel, err := filepath.Rel(root, cleaned); err == nil && !strings.HasPrefix(rel, "..") {
-		return string(os.PathSeparator) + rel
+		return "/" + filepath.ToSlash(rel)
 	}
+	return cleaned
+}
+
+func isMigrationLogicalAbs(p string) bool {
+	return filepath.IsAbs(p) || strings.HasPrefix(p, "/")
+}
+
+func trimMigrationLogicalRoot(p string) string {
+	cleaned := filepath.Clean(p)
+	cleaned = strings.TrimPrefix(cleaned, string(os.PathSeparator))
+	cleaned = strings.TrimPrefix(cleaned, "/")
 	return cleaned
 }
 

@@ -607,7 +607,7 @@ jobs:
         run: |
           $url = '${{ env.WINTUN_URL }}'
           $destination = '${{ env.downloadPath }}\wintun.zip'
-          Invoke-WebRequest -Uri $url -OutFile $destination
+          Invoke-WebRequest -Uri $url -OutFile $destination -MaximumRetryCount 5 -RetryIntervalSec 10
           $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
           if ($actual -ne $expected) {
@@ -627,7 +627,7 @@ jobs:
         run: |
           $url = '${{ env.MESA3D_WINDOWS_URL }}'
           $destination = '${{ env.downloadPath }}\mesa3d.7z'
-          Invoke-WebRequest -Uri $url -OutFile $destination
+          Invoke-WebRequest -Uri $url -OutFile $destination -MaximumRetryCount 5 -RetryIntervalSec 10
           $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = '71c7cb64ec229a1d6b8d62fa08e1889ed2bd17c0eeede8689daf0f25cb31d6b9'
           if ($actual -ne $expected) {
@@ -647,7 +647,7 @@ jobs:
         run: |
           $url = '${{ env.NSIS_ENVAR_PLUGIN_URL }}'
           $destination = '${{ github.workspace }}\envar_plugin.zip'
-          Invoke-WebRequest -Uri $url -OutFile $destination
+          Invoke-WebRequest -Uri $url -OutFile $destination -MaximumRetryCount 5 -RetryIntervalSec 10
           $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = 'e9aa92de351345ed82795251d838f1ae9041ba35af9d381a5780c7843b01f56a'
           if ($actual -ne $expected) {
@@ -663,7 +663,7 @@ jobs:
         run: |
           $url = '${{ env.NSIS_SHELL_EXEC_AS_USER_AMD64_PLUGIN_URL }}'
           $destination = '${{ github.workspace }}\ShellExecAsUser_amd64-Unicode.7z'
-          Invoke-WebRequest -Uri $url -OutFile $destination
+          Invoke-WebRequest -Uri $url -OutFile $destination -MaximumRetryCount 5 -RetryIntervalSec 10
           $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = '0a55ea25c7330a92cec028eda8afcaf1b1a7092e0dfb77c21c8f654564b4ff9d'
           if ($actual -ne $expected) {
