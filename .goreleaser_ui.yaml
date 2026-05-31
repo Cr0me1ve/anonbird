@@ -98,3 +98,6 @@ nfpms:
     rpm:
       signature:
         key_file: '{{ if index .Env "GPG_RPM_KEY_FILE" }}{{ .Env.GPG_RPM_KEY_FILE }}{{ end }}'
+
+release:
+  prerelease: auto
