@@ -38,6 +38,9 @@ var loginCmd = &cobra.Command{
 		if err := setEnvAndFlags(cmd); err != nil {
 			return fmt.Errorf("set env and flags: %v", err)
 		}
+		if err := validateAnonymousModePolicy(cmd); err != nil {
+			return err
+		}
 
 		ctx := internal.CtxInitState(context.Background())
 

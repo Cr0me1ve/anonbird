@@ -110,7 +110,6 @@ Tor relay-only:
 anonbird up \
   --management-url http://examplehiddenservice.onion \
   --setup-key "$SETUP_KEY" \
-  --anonymous-mode \
   --anonymous-transport tor-relay-only \
   --tor-socks5 127.0.0.1:9050
 ```
@@ -121,9 +120,19 @@ I2P datagram:
 anonbird up \
   --management-url http://example.b32.i2p \
   --setup-key "$SETUP_KEY" \
-  --anonymous-mode \
   --anonymous-transport i2p-datagram \
   --i2p-sam 127.0.0.1:7656
+```
+
+Anonymous mode is enabled by default for new CLI connections. Non-anonymous
+clearnet mode is intentionally hard to invoke: it prints a real-IP leak warning
+and requires an explicit override.
+
+```bash
+anonbird up \
+  --no-anonymous-mode \
+  --allow-unsafe-clearnet \
+  --yes-i-understand-this-may-leak-my-ip
 ```
 
 Run the local safety audit any time:

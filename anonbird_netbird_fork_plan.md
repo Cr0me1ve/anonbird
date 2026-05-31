@@ -163,6 +163,7 @@
 - Проверки 2026-05-31: migration CLI first pass — добавлен `anonbird migrate client|server|rollback`: client path делает dry-run/apply/backup/rollback для `/etc/netbird`, `/var/lib/netbird`, `/var/log/netbird` и systemd unit rewrite; server path запускает packaged `infrastructure_files/migrate.sh`, которому добавлен `--dry-run`; README получил migration раздел. Проверено: `go test ./client/cmd -run 'Test.*Migration|TestInitCommands' -count=1`, `go test ./client/configs ./client/internal/profilemanager ./client/cmd -count=1 -timeout 240s`, `go run ./client migrate --help`, `go run ./client migrate client --root /tmp/anonbird-missing-root --dry-run`, fake-root `migrate client --apply` + `migrate rollback --apply`, `bash -n infrastructure_files/migrate.sh`, `bash infrastructure_files/migrate.sh --help`.
 - Проверки 2026-05-31: dashboard anonymous setup hardening — `/Users/kirill/Code/dashboard` commit `4a59b20` больше не подставляет clearnet `NETBIRD_MGMT_GRPC_API_ENDPOINT` в peer setup команды; только `.onion`/`.i2p` URL попадают в `anonbird join`, `anonbird up`, Docker env и mobile/manual management steps. При clearnet endpoint dashboard показывает blocking warning и команды получают placeholder `ANONYMOUS_MANAGEMENT_URL_REQUIRED`. Проверено: `npx prettier --write ...`, `npx tsc --noEmit`, `npm run build`, Browser `/install` smoke с onion local config.
 - Проверки 2026-05-31: release testbed preflight после post-MVP изменений — SSH доступен ко всем четырём серверам `93.177.116.58`, `213.108.3.228`, `185.246.220.249`, `45.138.103.224`; server services `anonbird-combined.service` и `anonbird-i2p-combined.service` active; client services на `185` и `45` active, `Management/Signal Connected`, relays available. `anonbird debug anonymous-check` на обоих клиентах OK (`i2p-datagram`, management/signal/relay `i2p`, STUN/ICE/direct UDP/fallback disabled, published endpoints none). Overlay ping `185→45` `6/6` avg `522.747 ms`, `45→185` `6/6` avg `514.316 ms`.
+- Проверки 2026-05-31: CLI anonymous-by-default hardening — `--anonymous-mode` теперь default `true`; `up/login/set-config` применяют anonymous mode и Tor relay-only transport даже без явного флага; добавлены `--no-anonymous-mode`, `--allow-unsafe-clearnet`, `--yes-i-understand-this-may-leak-my-ip`. Unsafe clearnet режим печатает warning про real IP/NAT/local metadata и без подтверждения завершается ошибкой. Проверено: `go test ./client/configs ./client/internal/profilemanager ./client/cmd -count=1 -timeout 240s`, `go run ./client up --help` показывает новые flags/default, `go run ./client --no-anonymous-mode up` fail-fast с warning и required confirmation flags, `git diff --check`.
 - Проверки 2026-05-31: Tor benchmark preflight — SSH к `93.177.116.58` восстановился, Tor onion hostname `o2n24n6pjl4dkz2i3tlyfov3ozpnwcu4bhy26rtd65stqctn6rg3vpad.onion` доступен в конфиге, remote combined всё ещё старой сборки с `/health` 503 из-за onion DNS self-probe, но management/setup-key path через onion работоспособен.
 - Проверки 2026-05-31: Tor relay-only benchmark восстановлен на `93.177.116.58` + `185.246.220.249`/`45.138.103.224`; Tor management/signal/relay идут через `http://o2n24n6pjl4dkz2i3tlyfov3ozpnwcu4bhy26rtd65stqctn6rg3vpad.onion:80`, клиенты подключены `Relayed`, `anonymous-check` OK, STUN/ICE/direct UDP/clearnet fallback отсутствуют.
 - Проверки 2026-05-31: Tor relay-only ping между `185.246.220.249` (`100.79.204.47`) и `45.138.103.224` (`100.79.143.119`) — 10/10 packets в обе стороны, avg RTT `~1047 ms` и `~1092 ms`.
@@ -1288,16 +1289,16 @@ MVP считается успешным, если:
 
 ### 22.2. Anonymous-by-default UX
 
-- [ ] Сделать anonymous mode режимом по умолчанию для новых подключений:
+- [x] Сделать anonymous mode режимом по умолчанию для новых подключений:
   - `anonbird up` и `anonbird join` без явного override должны включать `--anonymous-mode`;
   - default transport: `tor-relay-only`;
   - Tor relay multipath должен быть включён по умолчанию на несколько streams/channels;
   - generated dashboard/setup commands должны всегда генерировать anonymous command по умолчанию.
-- [ ] Неанонимное подключение оставить только как явный unsafe override:
-  - например `--no-anonymous-mode --i-understand-this-may-leak-my-ip`;
+- [x] Неанонимное подключение оставить только как явный unsafe override:
+  - например `--no-anonymous-mode --allow-unsafe-clearnet --yes-i-understand-this-may-leak-my-ip`;
   - запрещать silent fallback из anonymous mode в clearnet;
   - не принимать clearnet management/signal/relay URLs без явного unsafe confirmation.
-- [ ] Для CLI interactive mode добавить жёсткое предупреждение перед non-anonymous connect:
+- [x] Для CLI interactive mode добавить жёсткое предупреждение перед non-anonymous connect:
 
 ```text
 WARNING: You are trying to connect without AnonBird anonymous mode.
@@ -1307,7 +1308,7 @@ to the management server, relay, and/or other peers.
 Type "I understand this may leak my real IP" to continue:
 ```
 
-- [ ] Для non-interactive/scripts требовать отдельный флаг подтверждения и писать warning в stderr/log:
+- [x] Для non-interactive/scripts требовать отдельный флаг подтверждения и писать warning в stderr/log:
   - `--allow-unsafe-clearnet`;
   - `--yes-i-understand-this-may-leak-my-ip`;
   - exit code != 0, если подтверждение отсутствует.
@@ -1316,7 +1317,7 @@ Type "I understand this may leak my real IP" to continue:
   - `anonbird join` строится только для `.onion`/`.i2p`;
   - `anonbird up`/Docker env не получают реальный clearnet management URL;
   - при unsafe dashboard config показывается blocking warning и placeholder вместо рабочей clearnet команды.
-- [ ] Добавить тесты:
+- [ ] Добавить/расширить тесты:
   - default `up/join` включает anonymous Tor relay-only;
   - clearnet URL без unsafe confirmation rejected;
   - unsafe confirmation required в non-interactive mode;

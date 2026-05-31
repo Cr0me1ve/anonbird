@@ -50,6 +50,9 @@ const (
 	i2pDaemonModeFlag        = "i2p-daemon-mode"
 	i2pDaemonPathFlag        = "i2pd-path"
 	i2pDataDirFlag           = "i2p-data-dir"
+	noAnonymousModeFlag      = "no-anonymous-mode"
+	allowUnsafeClearnetFlag  = "allow-unsafe-clearnet"
+	unsafeClearnetAckFlag    = "yes-i-understand-this-may-leak-my-ip"
 )
 
 var (
@@ -96,6 +99,9 @@ var (
 	i2pDaemonMode           string
 	i2pDaemonPath           string
 	i2pDataDir              string
+	noAnonymousMode         bool
+	allowUnsafeClearnet     bool
+	unsafeClearnetAck       bool
 
 	rootCmd = &cobra.Command{
 		Use:          "anonbird",
@@ -164,7 +170,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&hostName, "hostname", "n", "", "Sets a custom hostname for the device")
 	rootCmd.PersistentFlags().BoolVarP(&anonymizeFlag, "anonymize", "A", false, "anonymize IP addresses and external domains in logs and status output")
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", profilemanager.DefaultConfigPath, "Overrides the default profile file location")
-	rootCmd.PersistentFlags().BoolVar(&anonymousMode, anonymousModeFlag, false, "enable AnonBird anonymous mode")
+	rootCmd.PersistentFlags().BoolVar(&anonymousMode, anonymousModeFlag, true, "enable AnonBird anonymous mode")
 	rootCmd.PersistentFlags().StringVar(&anonymousTransport, anonymousTransportFlag, anonymous.TransportTorRelayOnly, "anonymous transport: tor-relay-only or i2p-datagram")
 	rootCmd.PersistentFlags().StringVar(&torSOCKS5, torSOCKS5Flag, anonymous.DefaultTorSOCKS5, "Tor SOCKS5 proxy address for anonymous mode")
 	rootCmd.PersistentFlags().StringVar(&i2pSAM, i2pSAMFlag, anonymous.DefaultI2PSAM, "I2P SAM bridge address for anonymous mode")
@@ -173,6 +179,9 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&i2pDaemonMode, i2pDaemonModeFlag, anonymous.DefaultI2PDaemonMode, "I2P daemon mode for anonymous mode: external, auto, or managed")
 	rootCmd.PersistentFlags().StringVar(&i2pDaemonPath, i2pDaemonPathFlag, anonymous.DefaultI2PDaemonPath, "i2pd executable path or name for auto/managed I2P mode")
 	rootCmd.PersistentFlags().StringVar(&i2pDataDir, i2pDataDirFlag, "", "i2pd data directory for auto/managed I2P mode")
+	rootCmd.PersistentFlags().BoolVar(&noAnonymousMode, noAnonymousModeFlag, false, "disable anonymous mode; requires unsafe clearnet confirmation")
+	rootCmd.PersistentFlags().BoolVar(&allowUnsafeClearnet, allowUnsafeClearnetFlag, false, "allow non-anonymous clearnet mode after explicit confirmation")
+	rootCmd.PersistentFlags().BoolVar(&unsafeClearnetAck, unsafeClearnetAckFlag, false, "confirm that non-anonymous mode may leak the real IP address")
 
 	rootCmd.AddCommand(upCmd)
 	rootCmd.AddCommand(joinCmd)

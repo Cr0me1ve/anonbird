@@ -109,8 +109,8 @@ func configurePlatformSpecificSettings(svcConfig *service.Config) error {
 }
 
 func configuredAnonymousRuntimeServiceDependencies() []string {
-	if anonymousMode || anonymousTransportFlagsChanged() {
-		return anonymousRuntimeServiceDependencies(anonymousMode, anonymousTransportFromFlags())
+	if shouldApplyAnonymousMode() || anonymousTransportFlagsChanged() {
+		return anonymousRuntimeServiceDependencies(effectiveAnonymousMode(), anonymousTransportFromFlags())
 	}
 
 	cfg, err := profilemanager.GetConfig(serviceDependencyConfigPath())

@@ -98,6 +98,10 @@ func upFunc(cmd *cobra.Command, args []string) error {
 
 	cmd.SetOut(cmd.OutOrStdout())
 
+	if err := validateAnonymousModePolicy(cmd); err != nil {
+		return err
+	}
+
 	err := util.InitLog(logLevel, util.LogConsole)
 	if err != nil {
 		return fmt.Errorf("failed initializing log %v", err)
@@ -732,20 +736,22 @@ func anonymousTransportFlagsChanged() bool {
 }
 
 func applyAnonymousConfigInput(ic *profilemanager.ConfigInput) {
-	if rootCmd.PersistentFlags().Changed(anonymousModeFlag) {
-		ic.AnonymousMode = &anonymousMode
+	effectiveMode := effectiveAnonymousMode()
+	if shouldApplyAnonymousMode() {
+		ic.AnonymousMode = &effectiveMode
 	}
-	if anonymousMode || anonymousTransportFlagsChanged() {
+	if effectiveMode || anonymousTransportFlagsChanged() {
 		transport := anonymousTransportFromFlags()
 		ic.AnonymousTransport = &transport
 	}
 }
 
 func applyAnonymousSetConfig(req *proto.SetConfigRequest) {
-	if rootCmd.PersistentFlags().Changed(anonymousModeFlag) {
-		req.AnonymousMode = &anonymousMode
+	effectiveMode := effectiveAnonymousMode()
+	if shouldApplyAnonymousMode() {
+		req.AnonymousMode = &effectiveMode
 	}
-	if anonymousMode || anonymousTransportFlagsChanged() {
+	if effectiveMode || anonymousTransportFlagsChanged() {
 		transport := anonymousTransportFromFlags()
 		req.AnonymousTransport = &transport.Type
 		req.TorSocks5 = &transport.TorSOCKS5
@@ -761,10 +767,11 @@ func applyAnonymousSetConfig(req *proto.SetConfigRequest) {
 }
 
 func applyAnonymousLoginRequest(req *proto.LoginRequest) {
-	if rootCmd.PersistentFlags().Changed(anonymousModeFlag) {
-		req.AnonymousMode = &anonymousMode
+	effectiveMode := effectiveAnonymousMode()
+	if shouldApplyAnonymousMode() {
+		req.AnonymousMode = &effectiveMode
 	}
-	if anonymousMode || anonymousTransportFlagsChanged() {
+	if effectiveMode || anonymousTransportFlagsChanged() {
 		transport := anonymousTransportFromFlags()
 		req.AnonymousTransport = &transport.Type
 		req.TorSocks5 = &transport.TorSOCKS5
