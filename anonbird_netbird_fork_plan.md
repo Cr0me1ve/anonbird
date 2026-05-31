@@ -1243,7 +1243,102 @@ MVP считается успешным, если:
 
 ---
 
-## 22. Короткий итог
+## 22. Post-MVP план доработок
+
+Этот раздел не блокирует уже закрытый MVP scope, но нужен перед удобным тестовым/production rollout.
+
+### 22.1. Linux command/package parity
+
+- [ ] Подготовить полноценную Linux install surface по аналогии с обычным `netbird`, но под AnonBird:
+  - binary в `PATH`: `/usr/bin/anonbird` или `/usr/local/bin/anonbird`;
+  - systemd unit: `anonbird.service`;
+  - daemon socket: `/var/run/anonbird.sock`;
+  - config/data/log paths: `/etc/anonbird`, `/var/lib/anonbird`, `/var/log/anonbird`;
+  - package postinstall/postremove/upgrade scripts;
+  - shell completion/man/help docs, если нужны для релиза.
+- [ ] Добавить временный compatibility option для тестовой миграции старых скриптов:
+  - optional symlink `netbird -> anonbird`;
+  - optional service alias или явное предупреждение, что canonical service name теперь `anonbird.service`.
+- [ ] Проверить clean install на Debian/Ubuntu/RHEL-like Linux:
+  - `anonbird service install --service anonbird`;
+  - `systemctl enable --now anonbird`;
+  - `anonbird status`;
+  - `anonbird debug anonymous-check`.
+
+### 22.2. Rename repository and local folders
+
+- [ ] Переименовать GitHub repository/project surface из NetBird fork naming в AnonBird:
+  - основной репозиторий: `netbird` -> `anonbird`;
+  - dashboard repository: `dashboard` -> `anonbird-dashboard` или другой выбранный canonical name;
+  - container/package/image/docs/release URLs должны использовать новое имя.
+- [ ] Переименовать локальные рабочие папки на компьютере:
+  - `/Users/kirill/Code/netbird` -> `/Users/kirill/Code/anonbird`;
+  - `/Users/kirill/Code/dashboard` -> `/Users/kirill/Code/anonbird-dashboard`.
+- [ ] Обновить git remotes, CI paths, docs, install commands, dashboard links и release scripts после rename.
+- [ ] Отдельно принять решение по Go module/import path:
+  - либо оставить `github.com/netbirdio/netbird` как compatibility module path;
+  - либо мигрировать на `github.com/Cr0me1ve/anonbird` с полным import rewrite, `go.mod`, ldflags, CI и downstream compatibility notes.
+
+### 22.3. Logo and visual identity
+
+- [ ] Нарисовать новый минималистичный логотип AnonBird:
+  - чёрная птица;
+  - красные глаза;
+  - небольшие рога как у дьявола;
+  - трезубец;
+  - flat/minimal design, хорошо читаемый в маленьком размере.
+- [ ] Подготовить asset set:
+  - source SVG;
+  - favicon/app icon sizes;
+  - dashboard logo;
+  - desktop tray/app icons;
+  - release/social preview, если нужен.
+- [ ] Заменить старые logo/icon assets в `netbird` и `dashboard`, пересобрать UI/proxy/dashboard bundles и проверить light/dark backgrounds.
+
+### 22.4. Migration command
+
+- [ ] Добавить простой Linux migration helper как first-class CLI command:
+
+```bash
+anonbird migrate server --dry-run
+anonbird migrate server --apply
+anonbird migrate client --dry-run
+anonbird migrate client --apply
+anonbird migrate client --apply --rejoin "anonbird://join?..."
+anonbird migrate rollback
+```
+
+Примечание: command name в Linux должен быть lowercase `anonbird`; бренд в тексте может оставаться `AnonBird`/`anonBird`.
+
+- [ ] `anonbird migrate server` должен покрывать happy-path self-host Linux install:
+  - detect existing NetBird services/processes;
+  - stop old services;
+  - backup `/etc/netbird`, `/var/lib/netbird`, `/var/log/netbird`, systemd units и DB;
+  - copy/move config/data to AnonBird paths;
+  - rewrite service/socket/path references;
+  - install/start `anonbird.service`;
+  - run management/dashboard/setup-key/peer-list sanity checks.
+- [ ] `anonbird migrate client` должен покрывать Linux client migration:
+  - backup old client config/profile/logs;
+  - migrate compatible profile fields;
+  - switch service/socket/path to AnonBird;
+  - optionally create temporary `netbird` compatibility symlink;
+  - support `--rejoin` for clean anonymous Tor/I2P enrollment.
+- [ ] `anonbird migrate rollback` должен восстанавливать backup:
+  - stop AnonBird services;
+  - restore previous NetBird config/data/unit files;
+  - restart old service;
+  - print exact manual recovery steps if rollback cannot be fully automatic.
+- [ ] Safety requirements:
+  - default mode is `--dry-run`;
+  - refuse to run without backup unless `--no-backup --force`;
+  - print all planned file/service changes before applying;
+  - do not delete old data during first migration pass;
+  - log migration report without secrets/setup keys/private keys.
+
+---
+
+## 23. Короткий итог
 
 Форк NetBird под anonymous private mesh реалистичен, если не пытаться сохранить обычную direct peer-to-peer модель. Главный принцип MVP:
 
