@@ -129,6 +129,9 @@ jobs:
 
   release:
     runs-on: ubuntu-24.04-8-core
+    permissions:
+      contents: write
+      packages: write
     outputs:
       release_artifact_url: ${{ steps.upload_release.outputs.artifact-url }}
       linux_packages_artifact_url: ${{ steps.upload_linux_packages.outputs.artifact-url }}
@@ -203,7 +206,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.CI_DOCKER_PUSH_GITHUB_TOKEN }}
+          password: ${{ secrets.CI_DOCKER_PUSH_GITHUB_TOKEN || github.token }}
       - name: Install OS build dependencies
         run: sudo apt update && sudo apt install -y -q gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
 
