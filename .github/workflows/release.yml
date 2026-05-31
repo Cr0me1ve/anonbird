@@ -42,10 +42,12 @@ jobs:
       - name: Check if diff was generated
         id: check_diff
         run: |
-          if ls anonbird-*.diff 1> /dev/null 2>&1; then
-            echo "diff_exists=true" >> $GITHUB_OUTPUT
+          shopt -s nullglob
+          diffs=(anonbird-*.diff)
+          if (( ${#diffs[@]} > 0 )); then
+            echo "diff_exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "diff_exists=false" >> $GITHUB_OUTPUT
+            echo "diff_exists=false" >> "$GITHUB_OUTPUT"
             echo "No diff file generated (port may already be up to date)"
           fi
 
@@ -53,10 +55,12 @@ jobs:
         if: steps.check_diff.outputs.diff_exists == 'true'
         id: version
         run: |
-          VERSION=$(ls anonbird-*.diff | sed 's/anonbird-\(.*\)\.diff/\1/')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          shopt -s nullglob
+          diffs=(anonbird-*.diff)
+          VERSION=$(basename "${diffs[0]}" | sed 's/anonbird-\(.*\)\.diff/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Generated files for version: $VERSION"
-          cat anonbird-*.diff
+          cat "${diffs[@]}"
 
       - name: Read Go version from go.mod
         id: goversion
@@ -128,7 +132,7 @@ jobs:
           retention-days: 30
 
   release:
-    runs-on: ubuntu-24.04-8-core
+    runs-on: ubuntu-latest-8-cores
     permissions:
       contents: write
       packages: write
@@ -171,7 +175,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: echo "flags=--snapshot" >> $GITHUB_ENV
+        run: echo "flags=--snapshot" >> "$GITHUB_ENV"
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
@@ -216,7 +220,7 @@ jobs:
           GPG_RPM_PRIVATE_KEY: ${{ secrets.GPG_RPM_PRIVATE_KEY }}
         run: |
           echo "$GPG_RPM_PRIVATE_KEY" | base64 -d > /tmp/gpg-rpm-signing-key.asc
-          echo "GPG_RPM_KEY_FILE=/tmp/gpg-rpm-signing-key.asc" >> $GITHUB_ENV
+          echo "GPG_RPM_KEY_FILE=/tmp/gpg-rpm-signing-key.asc" >> "$GITHUB_ENV"
 
       - name: Install goversioninfo
         run: go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@233067e
@@ -240,6 +244,7 @@ jobs:
       - name: Verify RPM signatures
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
+          # shellcheck disable=SC2016
           docker run --rm -v "$(pwd)/dist:/dist" -v "${GPG_RPM_KEY_FILE}:/tmp/rpm-signing-key.asc:ro" fedora:41 bash -c '
             dnf install -y -q rpm-sign gnupg2 >/dev/null 2>&1
             gpg --import /tmp/rpm-signing-key.asc >/dev/null 2>&1
@@ -260,6 +265,8 @@ jobs:
         if: |
           (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
           (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        env:
+          GORELEASER_ARTIFACTS: ${{ steps.goreleaser.outputs.artifacts }}
         run: |
           set -euo pipefail
 
@@ -294,9 +301,7 @@ jobs:
             done
           }
 
-          cat > /tmp/goreleaser-artifacts.json <<'JSON'
-          ${{ steps.goreleaser.outputs.artifacts }}
-          JSON
+          printf '%s\n' "$GORELEASER_ARTIFACTS" > /tmp/goreleaser-artifacts.json
 
           mapfile -t src_images < <(
             jq -r '.[] | select(.type == "Docker Image") | select(.goarch == "amd64") | .name | select(startswith("ghcr.io/"))' /tmp/goreleaser-artifacts.json
@@ -312,7 +317,7 @@ jobs:
               echo "_No GHCR images were pushed._"
             else
               printf '%s\n' "${image_refs[@]}" | sort -u | while read -r image; do
-                printf -- '- [`%s`](%s)\n' "$image" "$(ghcr_package_url "$image")"
+                printf -- "- [\`%s\`](%s)\n" "$image" "$(ghcr_package_url "$image")"
               done
             fi
             echo "EOF"
@@ -381,7 +386,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: echo "flags=--snapshot" >> $GITHUB_ENV
+        run: echo "flags=--snapshot" >> "$GITHUB_ENV"
 
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -413,7 +418,7 @@ jobs:
           GPG_RPM_PRIVATE_KEY: ${{ secrets.GPG_RPM_PRIVATE_KEY }}
         run: |
           echo "$GPG_RPM_PRIVATE_KEY" | base64 -d > /tmp/gpg-rpm-signing-key.asc
-          echo "GPG_RPM_KEY_FILE=/tmp/gpg-rpm-signing-key.asc" >> $GITHUB_ENV
+          echo "GPG_RPM_KEY_FILE=/tmp/gpg-rpm-signing-key.asc" >> "$GITHUB_ENV"
 
       - name: Install LLVM-MinGW for ARM64 cross-compilation
         run: |
@@ -421,7 +426,7 @@ jobs:
           wget -q https://github.com/mstorsjo/llvm-mingw/releases/download/20250709/llvm-mingw-20250709-ucrt-ubuntu-22.04-x86_64.tar.xz
           echo "60cafae6474c7411174cff1d4ba21a8e46cadbaeb05a1bace306add301628337  llvm-mingw-20250709-ucrt-ubuntu-22.04-x86_64.tar.xz" | sha256sum -c
           tar -xf llvm-mingw-20250709-ucrt-ubuntu-22.04-x86_64.tar.xz
-          echo "/tmp/llvm-mingw-20250709-ucrt-ubuntu-22.04-x86_64/bin" >> $GITHUB_PATH
+          echo "/tmp/llvm-mingw-20250709-ucrt-ubuntu-22.04-x86_64/bin" >> "$GITHUB_PATH"
       - name: Install goversioninfo
         run: go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@233067e
       - name: Generate windows syso amd64
@@ -444,6 +449,7 @@ jobs:
       - name: Verify RPM signatures
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
+          # shellcheck disable=SC2016
           docker run --rm -v "$(pwd)/dist:/dist" -v "${GPG_RPM_KEY_FILE}:/tmp/rpm-signing-key.asc:ro" fedora:41 bash -c '
             dnf install -y -q rpm-sign gnupg2 >/dev/null 2>&1
             gpg --import /tmp/rpm-signing-key.asc >/dev/null 2>&1
@@ -473,7 +479,7 @@ jobs:
       release_ui_darwin_artifact_url: ${{ steps.upload_release_ui_darwin.outputs.artifact-url }}
     steps:
       - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: echo "flags=--snapshot" >> $GITHUB_ENV
+        run: echo "flags=--snapshot" >> "$GITHUB_ENV"
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
