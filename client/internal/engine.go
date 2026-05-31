@@ -717,7 +717,11 @@ func (e *Engine) blockLanAccess() {
 		merr = multierror.Append(merr, fmt.Errorf("get local addresses: %w", err))
 	}
 
-	log.Infof("blocking route LAN access for networks: %v", toBlock)
+	if e.config.AnonymousMode {
+		log.Infof("blocking route LAN access for %d local networks (redacted in anonymous mode)", len(toBlock))
+	} else {
+		log.Infof("blocking route LAN access for networks: %v", toBlock)
+	}
 	v4 := netip.PrefixFrom(netip.IPv4Unspecified(), 0)
 	v6 := netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 	for _, network := range toBlock {

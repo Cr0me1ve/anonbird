@@ -469,7 +469,7 @@ func (r *router) AddRouteFiltering(
 
 	r.rules[string(ruleKey)] = rule
 
-	log.Debugf("added route rule: sources=%v, destination=%v, proto=%v, sPort=%v, dPort=%v, action=%v", sources, destination, proto, sPort, dPort, action)
+	log.Debugf("added route rule: source_count=%d, proto=%v, action=%v", len(sources), proto, action)
 
 	return ruleKey, nil
 }

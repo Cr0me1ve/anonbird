@@ -11,8 +11,12 @@ on:
 env:
   SIGN_PIPE_VER: "v0.1.5"
   GORELEASER_VER: "v2.14.3"
-  PRODUCT_NAME: "NetBird"
-  COPYRIGHT: "NetBird GmbH"
+  PRODUCT_NAME: "AnonBird"
+  COPYRIGHT: "AnonBird contributors"
+  WINTUN_URL: "https://www.wintun.net/builds/wintun-0.14.1.zip"
+  MESA3D_WINDOWS_URL: "https://downloads.fdossena.com/Projects/Mesa3D/Builds/MesaForWindows-x64-20.1.8.7z"
+  NSIS_ENVAR_PLUGIN_URL: "https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip"
+  NSIS_SHELL_EXEC_AS_USER_AMD64_PLUGIN_URL: "https://nsis.sourceforge.io/mediawiki/images/6/68/ShellExecAsUser_amd64-Unicode.7z"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || github.actor_id }}
@@ -141,7 +145,26 @@ jobs:
 
       - name: Parse semver string
         id: semver_parser
-        uses: netbirdio/shared-actions/actions/parse-semver@be5df6047383da2236e02243cceb857d8567c27e # v0.0.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+          else
+            version="0.0.0"
+            major="0"
+            minor="0"
+            patch="0"
+          fi
+          {
+            echo "fullversion=$version"
+            echo "major=$major"
+            echo "minor=$minor"
+            echo "patch=$patch"
+          } >> "$GITHUB_OUTPUT"
 
       - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: echo "flags=--snapshot" >> $GITHUB_ENV
@@ -211,10 +234,12 @@ jobs:
           GPG_RPM_KEY_FILE: ${{ env.GPG_RPM_KEY_FILE }}
           NFPM_NETBIRD_RPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
       - name: Verify RPM signatures
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
-          docker run --rm -v $(pwd)/dist:/dist fedora:41 bash -c '
-            dnf install -y -q rpm-sign curl >/dev/null 2>&1
-            curl -sSL https://pkgs.netbird.io/yum/repodata/repomd.xml.key -o /tmp/rpm-pub.key
+          docker run --rm -v "$(pwd)/dist:/dist" -v "${GPG_RPM_KEY_FILE}:/tmp/rpm-signing-key.asc:ro" fedora:41 bash -c '
+            dnf install -y -q rpm-sign gnupg2 >/dev/null 2>&1
+            gpg --import /tmp/rpm-signing-key.asc >/dev/null 2>&1
+            gpg --armor --export > /tmp/rpm-pub.key
             rpm --import /tmp/rpm-pub.key
             echo "=== Verifying RPM signatures ==="
             for rpm_file in /dist/*amd64*.rpm; do
@@ -330,7 +355,26 @@ jobs:
 
       - name: Parse semver string
         id: semver_parser
-        uses: netbirdio/shared-actions/actions/parse-semver@be5df6047383da2236e02243cceb857d8567c27e # v0.0.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+          else
+            version="0.0.0"
+            major="0"
+            minor="0"
+            patch="0"
+          fi
+          {
+            echo "fullversion=$version"
+            echo "major=$major"
+            echo "minor=$minor"
+            echo "patch=$patch"
+          } >> "$GITHUB_OUTPUT"
 
       - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: echo "flags=--snapshot" >> $GITHUB_ENV
@@ -394,10 +438,12 @@ jobs:
           GPG_RPM_KEY_FILE: ${{ env.GPG_RPM_KEY_FILE }}
           NFPM_NETBIRD_UI_RPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
       - name: Verify RPM signatures
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
-          docker run --rm -v $(pwd)/dist:/dist fedora:41 bash -c '
-            dnf install -y -q rpm-sign curl >/dev/null 2>&1
-            curl -sSL https://pkgs.netbird.io/yum/repodata/repomd.xml.key -o /tmp/rpm-pub.key
+          docker run --rm -v "$(pwd)/dist:/dist" -v "${GPG_RPM_KEY_FILE}:/tmp/rpm-signing-key.asc:ro" fedora:41 bash -c '
+            dnf install -y -q rpm-sign gnupg2 >/dev/null 2>&1
+            gpg --import /tmp/rpm-signing-key.asc >/dev/null 2>&1
+            gpg --armor --export > /tmp/rpm-pub.key
             rpm --import /tmp/rpm-pub.key
             echo "=== Verifying RPM signatures ==="
             for rpm_file in /dist/*.rpm; do
@@ -489,7 +535,26 @@ jobs:
 
       - name: Parse semver string
         id: semver_parser
-        uses: netbirdio/shared-actions/actions/parse-semver@be5df6047383da2236e02243cceb857d8567c27e # v0.0.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+          else
+            version="0.0.0"
+            major="0"
+            minor="0"
+            patch="0"
+          fi
+          {
+            echo "fullversion=$version"
+            echo "major=$major"
+            echo "minor=$minor"
+            echo "patch=$patch"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Add 7-Zip to PATH
         run: echo "C:\Program Files\7-Zip" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
@@ -522,11 +587,16 @@ jobs:
 
       - name: Download wintun
         id: download-wintun
-        uses: netbirdio/shared-actions/actions/win-download-and-verify@be5df6047383da2236e02243cceb857d8567c27e # v0.0.2
-        with:
-          url: https://pkgs.netbird.io/wintun/wintun-0.14.1.zip
-          destination: ${{ env.downloadPath }}\wintun.zip
-          sha256: 07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51
+        shell: pwsh
+        run: |
+          $url = '${{ env.WINTUN_URL }}'
+          $destination = '${{ env.downloadPath }}\wintun.zip'
+          Invoke-WebRequest -Uri $url -OutFile $destination
+          $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
+          if ($actual -ne $expected) {
+            throw "Checksum mismatch for $url. expected=$expected actual=$actual"
+          }
 
       - name: Decompress wintun files
         run: tar -xvf "${{ env.downloadPath }}\wintun.zip" -C ${{ env.downloadPath }}
@@ -537,11 +607,16 @@ jobs:
       - name: Download Mesa3D (amd64 only)
         id: download-mesa3d
         if: matrix.arch == 'amd64'
-        uses: netbirdio/shared-actions/actions/win-download-and-verify@be5df6047383da2236e02243cceb857d8567c27e # v0.0.2
-        with:
-          url: https://pkgs.netbird.io/mesa3d/MesaForWindows-x64-20.1.8.7z
-          destination: ${{ env.downloadPath }}\mesa3d.7z
-          sha256: 71c7cb64ec229a1d6b8d62fa08e1889ed2bd17c0eeede8689daf0f25cb31d6b9
+        shell: pwsh
+        run: |
+          $url = '${{ env.MESA3D_WINDOWS_URL }}'
+          $destination = '${{ env.downloadPath }}\mesa3d.7z'
+          Invoke-WebRequest -Uri $url -OutFile $destination
+          $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = '71c7cb64ec229a1d6b8d62fa08e1889ed2bd17c0eeede8689daf0f25cb31d6b9'
+          if ($actual -ne $expected) {
+            throw "Checksum mismatch for $url. expected=$expected actual=$actual"
+          }
 
       - name: Extract Mesa3D driver (amd64 only)
         if: matrix.arch == 'amd64'
@@ -552,22 +627,32 @@ jobs:
         run: mv ${{ env.downloadPath }}\opengl32.dll ${{ github.workspace }}\dist\${{ env.PackageWorkdir }}\
 
       - name: Download EnVar plugin for NSIS
-        uses: netbirdio/shared-actions/actions/win-download-and-verify@be5df6047383da2236e02243cceb857d8567c27e # v0.0.2
-        with:
-          url: https://pkgs.netbird.io/nsis/EnVar_plugin.zip
-          destination: ${{ github.workspace }}\envar_plugin.zip
-          sha256: e9aa92de351345ed82795251d838f1ae9041ba35af9d381a5780c7843b01f56a
+        shell: pwsh
+        run: |
+          $url = '${{ env.NSIS_ENVAR_PLUGIN_URL }}'
+          $destination = '${{ github.workspace }}\envar_plugin.zip'
+          Invoke-WebRequest -Uri $url -OutFile $destination
+          $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = 'e9aa92de351345ed82795251d838f1ae9041ba35af9d381a5780c7843b01f56a'
+          if ($actual -ne $expected) {
+            throw "Checksum mismatch for $url. expected=$expected actual=$actual"
+          }
 
       - name: Extract EnVar plugin
         run: 7z x -o"${{ github.workspace }}/NSIS_Plugins" "${{ github.workspace }}/envar_plugin.zip"
 
       - name: Download ShellExecAsUser plugin for NSIS (amd64 only)
         if: matrix.arch == 'amd64'
-        uses: netbirdio/shared-actions/actions/win-download-and-verify@be5df6047383da2236e02243cceb857d8567c27e # v0.0.2
-        with:
-          url: https://pkgs.netbird.io/nsis/ShellExecAsUser_amd64-Unicode.7z
-          destination: ${{ github.workspace }}\ShellExecAsUser_amd64-Unicode.7z
-          sha256: 0a55ea25c7330a92cec028eda8afcaf1b1a7092e0dfb77c21c8f654564b4ff9d
+        shell: pwsh
+        run: |
+          $url = '${{ env.NSIS_SHELL_EXEC_AS_USER_AMD64_PLUGIN_URL }}'
+          $destination = '${{ github.workspace }}\ShellExecAsUser_amd64-Unicode.7z'
+          Invoke-WebRequest -Uri $url -OutFile $destination
+          $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = '0a55ea25c7330a92cec028eda8afcaf1b1a7092e0dfb77c21c8f654564b4ff9d'
+          if ($actual -ne $expected) {
+            throw "Checksum mismatch for $url. expected=$expected actual=$actual"
+          }
 
       - name: Extract ShellExecAsUser plugin (amd64 only)
         if: matrix.arch == 'amd64'

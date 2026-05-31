@@ -292,7 +292,7 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 			return false, err
 		}
 	} else if input.AdminURL == "" && isLegacyAdminURL(config.AdminURL) {
-		log.Infof("migrating legacy Admin URL %s to AnonBird default %s", config.AdminURL, DefaultAdminURL)
+		log.Infof("migrating legacy Admin URL to AnonBird default %s", DefaultAdminURL)
 		config.AdminURL, err = parseURL("Admin URL", DefaultAdminURL)
 		if err != nil {
 			return updated, err

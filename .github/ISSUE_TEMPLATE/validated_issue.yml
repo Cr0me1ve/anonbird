@@ -7,7 +7,7 @@ body:
       value: |
         ## Discussion-first issue policy
 
-        Issues are maintainer-curated work items. Community reports and feature requests should start in [Discussions](https://github.com/netbirdio/netbird/discussions) so DevRel can validate, reproduce, and route them before engineering time is committed.
+        Issues are maintainer-curated work items. Community reports and feature requests should start in [Discussions](https://github.com/Cr0me1ve/netbird/discussions) so maintainers can validate, reproduce, and route them before engineering time is committed.
 
         Use this form when:
         - A discussion has been validated and should become actionable work.
@@ -46,7 +46,7 @@ body:
     attributes:
       label: Source discussion
       description: Link the GitHub Discussion that was validated. Maintainers bypassing the flow can write "Maintainer-created" and explain why below.
-      placeholder: https://github.com/netbirdio/netbird/discussions/1234
+      placeholder: https://github.com/Cr0me1ve/netbird/discussions/1234
     validations:
       required: true
 
@@ -65,10 +65,10 @@ body:
       label: Target repository
       description: Where should the implementation work happen?
       options:
-        - netbirdio/netbird
-        - netbirdio/dashboard
-        - netbirdio/kubernetes-operator
-        - netbirdio/docs
+        - Cr0me1ve/netbird
+        - Cr0me1ve/dashboard
+        - Cr0me1ve/kubernetes-operator
+        - Cr0me1ve/netbird docs
         - Multiple repositories
         - Unknown / needs routing
     validations:
