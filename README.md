@@ -29,7 +29,7 @@
 
 **AnonBird UX.** The CLI command is `anonbird`, the dashboard uses anonymous-aware install flows, and release packages install into AnonBird paths such as `/etc/anonbird`, `/var/lib/anonbird`, `/var/log/anonbird` and `/var/run/anonbird`.
 
-**Brand assets.** The production logo source is a raster PNG at `docs/media/anonbird-logo-source.png`; README, proxy web, dashboard, favicon, desktop tray/app icons and the social preview are generated from that PNG source.
+**Brand assets.** Current raster assets are checked in for the README, proxy web, dashboard, favicon and desktop UI. Visual identity can be replaced without changing the anonymous transport design.
 
 ### Key features
 
@@ -67,7 +67,31 @@ https://anonbird.your-domain.com
 
 The one-command installer uses the built-in Traefik mode by default and checks
 that the required AnonBird Docker images are available before it starts the
-stack. For a dry configuration render without starting containers:
+stack. Anonymous-safe server defaults are used: management version checks,
+geolocation downloads, anonymous metrics and STUN/UDP are disabled unless you
+explicitly opt in.
+
+After startup, check the deployment from the server:
+
+```bash
+docker compose ps
+curl -fsS https://anonbird.your-domain.com/oauth2/.well-known/openid-configuration >/dev/null
+curl -ksS -o /dev/null -w '%{http_code}\n' https://anonbird.your-domain.com/api/users
+```
+
+The unauthenticated API check should return `401`.
+
+To bootstrap an unattended setup key for anonymous clients:
+
+```bash
+docker compose exec -T anonbird-server \
+  /go/bin/anonbird-server setup-key bootstrap --config /etc/anonbird/config.yaml
+```
+
+Save the printed setup key once. Then enroll clients with the dashboard command
+or a join URL that points at your onion/I2P management address.
+
+For a dry configuration render without starting containers:
 
 ```bash
 curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
@@ -97,6 +121,17 @@ curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting
 The `NETBIRD_*` environment names are still accepted in deployment scripts for
 compatibility with the inherited configuration contract. New generated artifacts
 use AnonBird images, commands and filesystem paths.
+
+If you deliberately need legacy clearnet/STUN behavior for a compatibility
+test, make that choice explicit:
+
+```bash
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
+  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes --enable-clearnet-stun
+```
+
+Do not use that mode for anonymous clients unless you have accepted the real-IP
+exposure risk.
 
 ### Linux client install
 

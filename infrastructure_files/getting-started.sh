@@ -37,6 +37,7 @@ Options:
   --proxy TYPE                 Reverse proxy: traefik, external-traefik, nginx, npm, caddy, manual.
   --enable-proxy               Enable the AnonBird reverse proxy service.
   --enable-crowdsec            Enable CrowdSec for reverse proxy protection.
+  --enable-clearnet-stun       Expose STUN/UDP for explicit non-anonymous legacy clients.
   --bind-localhost             Bind exposed container ports to 127.0.0.1.
   --bind-public                Bind exposed container ports to 0.0.0.0.
   --traefik-network NAME       External Traefik Docker network.
@@ -56,6 +57,8 @@ Environment aliases:
   ANONBIRD_DASHBOARD_IMAGE     Override dashboard image.
   ANONBIRD_SERVER_IMAGE        Override combined server image.
   ANONBIRD_PROXY_IMAGE         Override reverse proxy image.
+  ANONBIRD_ENABLE_CLEARNET_STUN=true
+                                Same as --enable-clearnet-stun.
   ANONBIRD_SKIP_IMAGE_PREFLIGHT=true
                                 Same as --skip-image-preflight.
 EOF
@@ -116,6 +119,10 @@ parse_args() {
       --enable-crowdsec)
         ENABLE_PROXY="true"
         ENABLE_CROWDSEC="true"
+        shift
+        ;;
+      --enable-clearnet-stun)
+        ENABLE_CLEARNET_STUN="true"
         shift
         ;;
       --bind-localhost)
@@ -285,6 +292,36 @@ preflight_required_images() {
   echo "" > /dev/stderr
   echo "For a local development stack with images already handled another way, set ANONBIRD_SKIP_IMAGE_PREFLIGHT=true." > /dev/stderr
   exit 1
+}
+
+clearnet_stun_enabled() {
+  [[ "${ENABLE_CLEARNET_STUN:-false}" == "true" ]]
+}
+
+render_stun_ports_section() {
+  if clearnet_stun_enabled; then
+    cat <<EOF
+    ports:
+      - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
+EOF
+  fi
+}
+
+render_stun_port_line() {
+  if clearnet_stun_enabled; then
+    echo "      - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'"
+  fi
+}
+
+render_stun_ports_yaml() {
+  if clearnet_stun_enabled; then
+    cat <<EOF
+  stunPorts:
+    - $NETBIRD_STUN_PORT
+EOF
+  else
+    echo "  stunPorts: []"
+  fi
 }
 
 get_main_ip_address() {
@@ -585,6 +622,7 @@ initialize_default_values() {
 
   # AnonBird Proxy configuration
   ENABLE_PROXY="${ANONBIRD_ENABLE_PROXY:-false}"
+  ENABLE_CLEARNET_STUN="${ANONBIRD_ENABLE_CLEARNET_STUN:-false}"
   PROXY_TOKEN=""
 
   # CrowdSec configuration
@@ -1049,7 +1087,7 @@ $traefik_dynamic_volume
         max-size: "500m"
         max-file: "2"
 
-  # Combined server (Management + Signal + Relay + STUN)
+  # Combined server (Management + Signal + Relay)
   anonbird-server:
     image: $NETBIRD_SERVER_IMAGE
     container_name: anonbird-server
@@ -1057,8 +1095,7 @@ $traefik_dynamic_volume
     networks: [anonbird]
     environment:
       NB_DISABLE_GEOLOCATION: "true"
-    ports:
-      - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
+$(render_stun_ports_section)
     volumes:
       - anonbird_data:/var/lib/anonbird
       - ./config.yaml:/etc/anonbird/config.yaml
@@ -1112,8 +1149,7 @@ render_combined_yaml() {
 server:
   listenAddress: ":80"
   exposedAddress: "$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN:$NETBIRD_PORT"
-  stunPorts:
-    - $NETBIRD_STUN_PORT
+$(render_stun_ports_yaml)
   metricsPort: 9090
   healthcheckAddress: ":9000"
   logLevel: "info"
@@ -1247,7 +1283,7 @@ $(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-da
         max-size: "500m"
         max-file: "2"
 
-  # Combined server (Management + Signal + Relay + STUN)
+  # Combined server (Management + Signal + Relay)
   anonbird-server:
     image: $NETBIRD_SERVER_IMAGE
     container_name: anonbird-server
@@ -1255,8 +1291,7 @@ $(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-da
     networks: [$network_name]
     environment:
       NB_DISABLE_GEOLOCATION: "true"
-    ports:
-      - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
+$(render_stun_ports_section)
     volumes:
       - anonbird_data:/var/lib/anonbird
       - ./config.yaml:/etc/anonbird/config.yaml
@@ -1328,7 +1363,7 @@ services:
         max-size: "500m"
         max-file: "2"
 
-  # Combined server (Management + Signal + Relay + STUN)
+  # Combined server (Management + Signal + Relay)
   anonbird-server:
     image: $NETBIRD_SERVER_IMAGE
     container_name: anonbird-server
@@ -1338,7 +1373,7 @@ services:
       NB_DISABLE_GEOLOCATION: "true"
     ports:
       - '${bind_addr}:${MANAGEMENT_HOST_PORT}:80'
-      - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
+$(render_stun_port_line)
     volumes:
       - anonbird_data:/var/lib/anonbird
       - ./config.yaml:/etc/anonbird/config.yaml
@@ -1579,7 +1614,12 @@ print_builtin_traefik_instructions() {
   echo "Open ports:"
   echo "  - 443/tcp   (HTTPS - all AnonBird services)"
   echo "  - 80/tcp    (HTTP - redirects to HTTPS)"
-  echo "  - $NETBIRD_STUN_PORT/udp   (STUN - required for NAT traversal)"
+  if clearnet_stun_enabled; then
+    echo "  - $NETBIRD_STUN_PORT/udp   (STUN - explicitly enabled for non-anonymous legacy clients)"
+  else
+    echo "  - STUN/UDP is disabled by default for anonymous deployments."
+    echo "    Use --enable-clearnet-stun only if you deliberately accept legacy real-IP exposure."
+  fi
   if [[ "$ENABLE_PROXY" == "true" ]]; then
     echo "  - 51820/udp (WIREGUARD - (optional) for P2P proxy connections)"
   fi
