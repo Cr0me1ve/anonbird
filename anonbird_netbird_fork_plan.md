@@ -1415,6 +1415,8 @@ Type "I understand this may leak my real IP" to continue:
 
 Статус 2026-05-31: SVG-вариант отброшен после визуальной сверки как слишком шумный; logo pipeline переведён на raster PNG. После последнего уточнения знак перерисован заново как PNG: красная птица без глаз, без рогов и без трезубца, chroma-key фон вырезан в alpha, зелёный fringe на краях очищен. Source asset: `docs/media/anonbird-logo-source.png`, generated README PNGs `docs/media/logo.png`/`logo-full.png`, release/social preview `docs/media/anonbird-social-preview.png`, proxy web raster assets `proxy/web/src/assets/anonbird.png`/`anonbird-full.png`, dashboard raster assets `src/assets/anonbird-logo.png`/`anonbird-logo-full.png`, dashboard `apple-icon.png`/`favicon.ico`, desktop base/tray/app icons `client/ui/assets/*.png`, `*.ico`, `client/ui/Netbird.icns`; README фиксирует PNG source как canonical brand asset. Визуально проверено: знак красный, без глаз/рогов/трезубца; читается в small icon/tray preview. Проверено: `file`, alpha-channel check, proxy web `npm run build`, dashboard `npm run build`, targeted `go test ./client/ui -run '^$'`, `git diff --check` в `anonbird` и `anonbird-dashboard`.
 
+Заметка 2026-05-31: дальнейшие изменения иконки/логотипа/brand assets не выполнять без отдельной явной команды пользователя; пользователь забирает визуальную доработку на себя.
+
 ### 22.5. Migration command
 
 - [x] Добавить простой Linux migration helper как first-class CLI command:

@@ -6,7 +6,11 @@ on:
       - "v*"
     branches:
       - main
+    paths-ignore:
+      - "**/*.md"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
 
 env:
   SIGN_PIPE_VER: "v0.1.5"
