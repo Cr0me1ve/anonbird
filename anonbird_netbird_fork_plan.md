@@ -1270,6 +1270,8 @@ MVP считается успешным, если:
 - `185.246.220.249`
 - `45.138.103.224`
 
+Сверка 2026-05-31: это именно четыре сервера пользователя для финального release/open-source прогона; их нельзя заменять или исключать из отчёта без явной blocker-записи.
+
 Это фиксированный release testbed для финального прогона. Если сервер временно недоступен, это записывается как blocker/замена с причиной, а не молча исключается из матрицы.
 
 Роли по умолчанию для следующих прогонов:
@@ -1287,7 +1289,7 @@ Release-readiness gate нельзя закрывать только по лок�
 
 - подтвердить, что все четыре тестовых сервера из списка выше доступны по SSH и что их текущие роли/состояния записаны в release report;
 - поднять release-candidate управляющий сервер/dashboard так же просто, как self-hosted NetBird, без ручных патчей после установки;
-- выполнить полный test suite: targeted Go tests, dashboard/proxy build, package/install script lint, compose validation, focused leak/secrets sweep и remote smoke уже из release artifacts;
+- выполнить полный test suite: targeted Go tests, dashboard/proxy build, package/install script lint, compose validation, focused leak/secrets sweep, artifact checksum verification и remote smoke уже из release artifacts;
 - поднять реальный прикладной проект через AnonBird overlay: первым кандидатом использовать Marton-server, а если artifact/команды запуска недоступны, записать blocker и не закрывать Marton-specific gate smoke-сервисом;
 - прогнать миграцию с обычного self-hosted NetBird для server и clients: baseline install обычного NetBird, baseline client connectivity, `anonbird migrate server`, `anonbird migrate client`, post-migration connectivity/dashboard checks и rollback;
 - отдельно проверить replace-in-place сценарий для тестового проекта: удалить/остановить старый NetBird, поставить AnonBird documented commands, подтвердить, что dashboard/API/relay/client paths работают без ручных патчей;
@@ -1472,11 +1474,14 @@ anonbird migrate rollback
   - отдельно зафиксировать все несовместимости, ручные действия и blockers, если simple replacement пока невозможен.
 - [ ] Прогнать расширенный test suite:
   - targeted Go tests по anonymous/auth/management/relay/client/debug/release surfaces;
+  - minimum smoke на `go test ./...` или документированный список исключённых heavy/flaky пакетов с причиной;
   - dashboard `npm run build`;
   - proxy web build;
   - package scripts syntax/lint;
   - compose config validation;
   - focused rg leak sweep по old upstream hosts/secrets/private keys;
+  - secret scan по git tree/artifacts на setup keys, private I2P destinations, onion private keys, OAuth/JWT secrets и реальные testbed credentials;
+  - release artifact checksums, package install/uninstall smoke и container image pull/run smoke;
   - remote smoke на testbed после установки release artifacts, а не dev binaries.
 
 Статус 2026-05-31: package/install локальный preflight после AnonBird naming pass закрыт (`sh -n`, `shellcheck -S error`, YAML parse, WiX XML parse, targeted updater/cmd Go tests). Дополнительно закрыт self-host quickstart preflight и RC stack smoke: `getting-started.sh --render-only` генерирует валидный Compose stack, `--preflight-only`/image override path даёт fail-fast проверку release images до запуска контейнеров, а `93.177.116.58` подтвердил реальный dashboard/management startup через Traefik с RC-local images и без старых upstream release/geolocation fetches после fix. В `Code/dashboard` исправлен GHCR publishing workflow: PR builds no longer push, release tags publish semver/ref tags and `latest`, package metadata/docs match `anonbird-dashboard`; verified with `actionlint`, YAML parse and `npm run build`. Server-side migration E2E + rollback из upstream NetBird `v0.64.6` теперь проверены на `93.177.116.58`. Это не заменяет полный release suite: remote artifact install из опубликованных server/dashboard images, dashboard/proxy build, client migration E2E и Marton overlay test остаются обязательными.
@@ -1488,7 +1493,7 @@ anonbird migrate rollback
   - подтвердить, что service не доступен через real public IP и что логи AnonBird не раскрывают real peer IPs;
   - зафиксировать, какие ports/protocols Marton использовал, команды запуска и команды проверки с обеих сторон.
 
-Статус 2026-05-31: локальный и server-side поиск не нашёл Marton artifact/папку/command на `/Users/kirill/Code` и на четырёх testbed серверах, поэтому Marton-specific пункт остаётся открытым до появления конкретного artifact/команд запуска. Чтобы не блокировать application-layer проверку, добавлен повторяемый тестовый сервис `scripts/anonbird-overlay-smoke-server.py` (HTTP `/health`, HTTP `/echo`, WebSocket `/ws`) и прогнан через AnonBird I2P overlay:
+Статус 2026-05-31: ранний поиск ошибочно считал Marton artifact недоступным; повторная сверка нашла `/Users/kirill/Code/marten-server`, `/opt/marten-server-test` и `/opt/marten` на testbed, поэтому Marton-specific gate переведён из blocker в реальный release test case. Для базовой application-layer проверки также был добавлен повторяемый тестовый сервис `scripts/anonbird-overlay-smoke-server.py` (HTTP `/health`, HTTP `/echo`, WebSocket `/ws`) и прогнан через AnonBird I2P overlay:
 
 - server peer: `45.138.103.224`, overlay bind только `100.119.114.3:18080`, systemd unit `anonbird-overlay-smoke.service` временно создан и после теста удалён;
 - client peer: `185.246.220.249` (`100.119.42.220`);
@@ -1500,7 +1505,23 @@ anonbird migrate rollback
 - overlay ping during app test: `185 -> 45` `4/4`, avg `1058.082 ms` during transient I2P latency spike; subsequent status on both peers `Peers count: 2/2 Connected`, `i2p-datagram/i2p-datagram`, `anonymous-check` OK;
 - journal grep on `45`, `185` and `213` for public IPs `45.138.103.224|185.246.220.249|213.108.3.228|93.177.116.58` after the app test was empty. Smoke app logs intentionally omit peer addresses and contain only request lines.
 
-Открыто: заменить smoke service реальным Marton-server test, когда будет доступен artifact/команды запуска, и повторить тот же HTTP/WebSocket/actual-protocol matrix для Marton.
+Статус 2026-05-31: реальный Marton edge-server overlay smoke частично закрыт на testbed без заглушек:
+
+- source/artifact: `/Users/kirill/Code/marten-server/cmd/edge-server`, remote tree `/opt/marten-server-test` на `45.138.103.224`;
+- build note: обычный `CGO_ENABLED=0` build непригоден, потому что `github.com/mattn/go-sqlite3` требует CGO; Alpine dynamic build тоже непереносим на Ubuntu host из-за musl loader, поэтому для smoke собран static CGO linux/amd64 binary;
+- server peer: `45.138.103.224`, Marton edge bind только `100.119.114.3:18082`, metrics bind только `100.119.114.3:19092`;
+- client peer: `185.246.220.249` (`100.119.42.220`);
+- listener evidence: `ss -ltnp` показывал `100.119.114.3:18082` и `100.119.114.3:19092`, без public `0.0.0.0`/`45.138.103.224` listener;
+- overlay ping `185 -> 45`: `4/4`, avg `439.845 ms`;
+- Marton health over overlay: `curl http://100.119.114.3:18082/healthz` -> `200 {"status":"ok"}`;
+- Marton import route over overlay: `curl -D- "http://100.119.114.3:18082/sub/anonbird-test/import?name=AnonBird"` -> `302 Location: marten://import?...url=http%3A%2F%2F100.119.114.3%3A18082%2Fsub%2Fanonbird-test`;
+- Marton metrics over overlay: `curl http://100.119.114.3:19092/metrics` -> `200`, Prometheus metrics emitted;
+- public IP negative test from `185.246.220.249`: `curl http://45.138.103.224:18082/healthz` failed with connection refused / HTTP code `000`;
+- `anonbird debug anonymous-check` на `45` и `185` после test: OK, `i2p-datagram`, management/signal/relay `i2p`, STUN/ICE/direct UDP/fallback disabled, published endpoints none;
+- journal grep on `45`, `185` and I2P server `213` after Marton test was empty for public testbed IPs, old upstream hosts and STUN/ICE/NAT discovery patterns;
+- temporary Marton process stopped after test; static test binary left in `/opt/marten-server-test/marten-edge-overlay` for repeatability.
+
+Открыто: full Marton master-backed subscription flow всё ещё не закрыт, потому что этот smoke запускал edge-server с dummy upstream master URL и проверял только реальные edge HTTP/import/metrics endpoints. Для финального release gate нужно поднять Marton master+edge или существующий Marton stack так, чтобы `/sub/{token}` возвращал полноценный subscription payload через AnonBird overlay, затем повторить public-negative и leak/log sweep.
 - [ ] Выполнить release-candidate install/upgrade flow:
   - clean install server/dashboard/client из release packages/images;
   - upgrade с предыдущего AnonBird dev build;
