@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 )
 
 const migrationManifestName = "manifest.json"
@@ -44,6 +46,9 @@ type migrationOptions struct {
 	ServerScript string
 	ServerDir    string
 	AssumeYes    bool
+
+	AllowUnsafeClearnet bool
+	UnsafeClearnetAck   bool
 }
 
 type migrationAction struct {
@@ -206,6 +211,9 @@ func currentMigrationOptions() (migrationOptions, error) {
 		ServerScript: strings.TrimSpace(migrateServerScript),
 		ServerDir:    strings.TrimSpace(migrateServerDir),
 		AssumeYes:    migrateAssumeYes,
+
+		AllowUnsafeClearnet: allowUnsafeClearnet,
+		UnsafeClearnetAck:   unsafeClearnetAck,
 	}
 	return opts, nil
 }
@@ -269,6 +277,11 @@ func buildClientMigrationPlan(opts migrationOptions) (migrationPlan, error) {
 	if opts.Rejoin != "" {
 		plan.Notes = append(plan.Notes, "validated --rejoin token; apply mode will run anonbird join after file migration when migrating the live root")
 	}
+	if unsafeConfigs, err := findUnsafeMigratedClientConfigs(opts); err != nil {
+		return migrationPlan{}, err
+	} else if len(unsafeConfigs) > 0 {
+		plan.Notes = append(plan.Notes, fmt.Sprintf("found %d legacy non-anonymous NetBird config file(s); apply requires --rejoin or explicit unsafe clearnet confirmation", len(unsafeConfigs)))
+	}
 	if len(plan.Actions) == 0 {
 		plan.Notes = append(plan.Notes, "no legacy NetBird client paths were found")
 	}
@@ -308,6 +321,9 @@ func applyClientMigrationPlan(out io.Writer, plan migrationPlan, opts migrationO
 	if len(plan.Actions) == 0 {
 		fmt.Fprintln(out, "Nothing to migrate.")
 		return nil
+	}
+	if err := validateClientMigrationSafety(opts); err != nil {
+		return err
 	}
 	if !opts.NoBackup {
 		if err := os.MkdirAll(plan.BackupDir, 0o700); err != nil {
@@ -356,6 +372,16 @@ func applyClientMigrationPlan(out io.Writer, plan migrationPlan, opts migrationO
 		}
 	}
 
+	if opts.Rejoin != "" {
+		token, err := parseJoinToken(opts.Rejoin)
+		if err != nil {
+			return fmt.Errorf("validate --rejoin token: %w", err)
+		}
+		if err := hardenMigratedClientConfigs(out, plan, opts, token); err != nil {
+			return err
+		}
+	}
+
 	if !opts.NoBackup {
 		if err := writeMigrationManifest(plan.BackupDir, manifest); err != nil {
 			return err
@@ -378,6 +404,160 @@ func applyClientMigrationPlan(out io.Writer, plan migrationPlan, opts migrationO
 
 	fmt.Fprintln(out, "Client migration applied.")
 	return nil
+}
+
+func validateClientMigrationSafety(opts migrationOptions) error {
+	unsafeConfigs, err := findUnsafeMigratedClientConfigs(opts)
+	if err != nil {
+		return err
+	}
+	if len(unsafeConfigs) == 0 {
+		return nil
+	}
+	if opts.Rejoin != "" {
+		return nil
+	}
+	if opts.AllowUnsafeClearnet && opts.UnsafeClearnetAck {
+		return nil
+	}
+
+	return fmt.Errorf("client migration would copy non-anonymous NetBird config(s): %s. Provide --rejoin \"anonbird://join?...\" to migrate into anonymous mode, or pass --%s and --%s to allow unsafe clearnet migration", strings.Join(unsafeConfigs, ", "), allowUnsafeClearnetFlag, unsafeClearnetAckFlag)
+}
+
+func findUnsafeMigratedClientConfigs(opts migrationOptions) ([]string, error) {
+	var unsafeConfigs []string
+	for _, root := range []string{"/etc/netbird", "/var/lib/netbird"} {
+		mappedRoot := opts.mapPath(root)
+		if _, err := os.Lstat(mappedRoot); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("inspect %s: %w", root, err)
+		}
+		err := filepath.WalkDir(mappedRoot, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				return nil
+			}
+			unsafe, err := isUnsafeClientConfig(path)
+			if err != nil {
+				return fmt.Errorf("inspect client config %s: %w", path, err)
+			}
+			if unsafe {
+				unsafeConfigs = append(unsafeConfigs, opts.logicalPath(path))
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	sort.Strings(unsafeConfigs)
+	return unsafeConfigs, nil
+}
+
+func isUnsafeClientConfig(path string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false, nil
+	}
+	if !hasClientManagementURL(raw) {
+		return false, nil
+	}
+	if anonymousMode, ok := raw["anonymous_mode"].(bool); ok && anonymousMode {
+		return false, nil
+	}
+	return true, nil
+}
+
+func hasClientManagementURL(raw map[string]any) bool {
+	for _, key := range []string{"ManagementURL", "management_url", "managementURL"} {
+		value, ok := raw[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case string:
+			return strings.TrimSpace(typed) != ""
+		case map[string]any:
+			return len(typed) > 0
+		default:
+			return value != nil
+		}
+	}
+	return false
+}
+
+func hardenMigratedClientConfigs(out io.Writer, plan migrationPlan, opts migrationOptions, token joinToken) error {
+	var updated []string
+	for _, action := range plan.Actions {
+		if action.Kind != "copy" || action.Target != "/etc/anonbird" {
+			continue
+		}
+		root := opts.mapPath(action.Target)
+		if _, err := os.Lstat(root); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return fmt.Errorf("inspect migrated config dir: %w", err)
+		}
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				return nil
+			}
+			changed, err := hardenMigratedClientConfig(path, token)
+			if err != nil {
+				return fmt.Errorf("harden migrated config %s: %w", path, err)
+			}
+			if changed {
+				updated = append(updated, opts.logicalPath(path))
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	for _, path := range updated {
+		fmt.Fprintf(out, "Hardened migrated config for anonymous rejoin: %s\n", path)
+	}
+	return nil
+}
+
+func hardenMigratedClientConfig(path string, token joinToken) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false, nil
+	}
+	if !hasClientManagementURL(raw) {
+		return false, nil
+	}
+
+	transport := anonymous.NormalizeTransport(token.Transport)
+	raw["ManagementURL"] = token.ManagementURL
+	raw["anonymous_mode"] = true
+	raw["anonymous_transport"] = transport
+	raw["DisableAutoConnect"] = true
+
+	rewritten, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	rewritten = append(rewritten, '\n')
+	return true, os.WriteFile(path, rewritten, 0o600)
 }
 
 func backupSource(source string, manifest *migrationManifest, opts migrationOptions, backupDir string) error {
@@ -641,6 +821,18 @@ func (o migrationOptions) mapPath(p string) string {
 		return filepath.Clean(p)
 	}
 	return filepath.Join(filepath.Clean(o.Root), strings.TrimPrefix(filepath.Clean(p), string(os.PathSeparator)))
+}
+
+func (o migrationOptions) logicalPath(mappedPath string) string {
+	cleaned := filepath.Clean(mappedPath)
+	root := filepath.Clean(o.Root)
+	if root == "" || root == "/" {
+		return cleaned
+	}
+	if rel, err := filepath.Rel(root, cleaned); err == nil && !strings.HasPrefix(rel, "..") {
+		return string(os.PathSeparator) + rel
+	}
+	return cleaned
 }
 
 func (o migrationOptions) pathExists(p string) bool {

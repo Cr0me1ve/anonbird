@@ -41,9 +41,11 @@ Environment=SYSTEMD_UNIT=netbird
 `)
 
 	opts := migrationOptions{
-		Apply:     true,
-		Root:      root,
-		BackupDir: "/var/backups/anonbird/migration-test",
+		Apply:               true,
+		Root:                root,
+		BackupDir:           "/var/backups/anonbird/migration-test",
+		AllowUnsafeClearnet: true,
+		UnsafeClearnetAck:   true,
 	}
 	plan, err := buildClientMigrationPlan(opts)
 	require.NoError(t, err)
@@ -66,16 +68,87 @@ Environment=SYSTEMD_UNIT=netbird
 	require.FileExists(t, filepath.Join(root, "var/backups/anonbird/migration-test/source/etc/netbird/config.json"))
 }
 
+func TestApplyClientMigrationRefusesUnsafeClearnetConfig(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "etc/netbird/config.json"), `{"ManagementURL":"https://netbird.example","anonymous_mode":false}`)
+
+	opts := migrationOptions{
+		Apply:     true,
+		Root:      root,
+		BackupDir: "/var/backups/anonbird/migration-test",
+	}
+	plan, err := buildClientMigrationPlan(opts)
+	require.NoError(t, err)
+
+	err = applyClientMigrationPlan(noopWriter{}, plan, opts)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--rejoin")
+	require.Contains(t, err.Error(), "--allow-unsafe-clearnet")
+	require.NoFileExists(t, filepath.Join(root, "etc/anonbird/config.json"))
+}
+
+func TestApplyClientMigrationWithRejoinHardensConfig(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "etc/netbird/config.json"), `{
+  "ManagementURL": "https://netbird.example",
+  "PrivateKey": "legacy-private"
+}`)
+
+	rejoin := "anonbird://join?server=http%3A%2F%2Fmanagementexampleabcdefghijklmnop.onion&setup_key=NB-SETUP-xxxx&transport=tor-relay-only&tor_socks5=127.0.0.1%3A9051"
+	opts := migrationOptions{
+		Apply:     true,
+		Root:      root,
+		BackupDir: "/var/backups/anonbird/migration-test",
+		Rejoin:    rejoin,
+	}
+	plan, err := buildClientMigrationPlan(opts)
+	require.NoError(t, err)
+	require.NoError(t, applyClientMigrationPlan(noopWriter{}, plan, opts))
+
+	data, err := os.ReadFile(filepath.Join(root, "etc/anonbird/config.json"))
+	require.NoError(t, err)
+	var migrated map[string]any
+	require.NoError(t, json.Unmarshal(data, &migrated))
+	require.Equal(t, "http://managementexampleabcdefghijklmnop.onion", migrated["ManagementURL"])
+	require.Equal(t, true, migrated["anonymous_mode"])
+	require.Equal(t, true, migrated["DisableAutoConnect"])
+	transport, ok := migrated["anonymous_transport"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "tor-relay-only", transport["type"])
+	require.Equal(t, "127.0.0.1:9051", transport["tor_socks5"])
+	require.Equal(t, true, transport["require_anonymous"])
+	require.Equal(t, "legacy-private", migrated["PrivateKey"])
+}
+
+func TestApplyClientMigrationAllowsUnsafeClearnetWithExplicitAck(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "etc/netbird/config.json"), `{"ManagementURL":"https://netbird.example","anonymous_mode":false}`)
+
+	opts := migrationOptions{
+		Apply:               true,
+		Root:                root,
+		BackupDir:           "/var/backups/anonbird/migration-test",
+		AllowUnsafeClearnet: true,
+		UnsafeClearnetAck:   true,
+	}
+	plan, err := buildClientMigrationPlan(opts)
+	require.NoError(t, err)
+	require.NoError(t, applyClientMigrationPlan(noopWriter{}, plan, opts))
+	require.FileExists(t, filepath.Join(root, "etc/anonbird/config.json"))
+}
+
 func TestRollbackClientMigrationRestoresExistingTarget(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "etc/netbird/config.json"), "from netbird")
 	writeTestFile(t, filepath.Join(root, "etc/anonbird/config.json"), "existing anonbird")
 
 	opts := migrationOptions{
-		Apply:     true,
-		Root:      root,
-		BackupDir: "/var/backups/anonbird/migration-test",
-		Force:     true,
+		Apply:               true,
+		Root:                root,
+		BackupDir:           "/var/backups/anonbird/migration-test",
+		Force:               true,
+		AllowUnsafeClearnet: true,
+		UnsafeClearnetAck:   true,
 	}
 	plan, err := buildClientMigrationPlan(opts)
 	require.NoError(t, err)

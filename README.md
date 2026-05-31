@@ -202,14 +202,22 @@ Client migration:
 
 ```bash
 anonbird migrate client --dry-run
-sudo anonbird migrate client --apply
-```
-
-For a clean anonymous re-enrollment during client migration:
-
-```bash
 sudo anonbird migrate client --apply --rejoin "anonbird://join?server=http%3A%2F%2Fexample.onion&setup_key=..."
 ```
+
+If a legacy NetBird config contains a non-anonymous management URL, apply mode
+refuses to start AnonBird unless you provide `--rejoin` or explicitly accept an
+unsafe clearnet migration:
+
+```bash
+sudo anonbird migrate client --apply \
+  --allow-unsafe-clearnet \
+  --yes-i-understand-this-may-leak-my-ip
+```
+
+With `--rejoin`, migrated config files are rewritten to anonymous mode and
+`DisableAutoConnect=true` before the service starts, so the old clearnet profile
+does not connect during migration.
 
 Self-hosted server migration uses the packaged AnonBird migration script for the
 legacy Docker Compose stack:
