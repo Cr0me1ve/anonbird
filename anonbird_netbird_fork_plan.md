@@ -1265,7 +1265,39 @@ MVP считается успешным, если:
   - `anonbird status`;
   - `anonbird debug anonymous-check`.
 
-### 22.2. Rename repository and local folders
+### 22.2. Anonymous-by-default UX
+
+- [ ] Сделать anonymous mode режимом по умолчанию для новых подключений:
+  - `anonbird up` и `anonbird join` без явного override должны включать `--anonymous-mode`;
+  - default transport: `tor-relay-only`;
+  - Tor relay multipath должен быть включён по умолчанию на несколько streams/channels;
+  - generated dashboard/setup commands должны всегда генерировать anonymous command по умолчанию.
+- [ ] Неанонимное подключение оставить только как явный unsafe override:
+  - например `--no-anonymous-mode --i-understand-this-may-leak-my-ip`;
+  - запрещать silent fallback из anonymous mode в clearnet;
+  - не принимать clearnet management/signal/relay URLs без явного unsafe confirmation.
+- [ ] Для CLI interactive mode добавить жёсткое предупреждение перед non-anonymous connect:
+
+```text
+WARNING: You are trying to connect without AnonBird anonymous mode.
+Your real IP address, NAT endpoint, and local network metadata may be visible
+to the management server, relay, and/or other peers.
+
+Type "I understand this may leak my real IP" to continue:
+```
+
+- [ ] Для non-interactive/scripts требовать отдельный флаг подтверждения и писать warning в stderr/log:
+  - `--allow-unsafe-clearnet`;
+  - `--yes-i-understand-this-may-leak-my-ip`;
+  - exit code != 0, если подтверждение отсутствует.
+- [ ] В dashboard добавить такой же unsafe warning для любых UI flows, которые создают non-anonymous setup/install command.
+- [ ] Добавить тесты:
+  - default `up/join` включает anonymous Tor relay-only;
+  - clearnet URL без unsafe confirmation rejected;
+  - unsafe confirmation required в non-interactive mode;
+  - warning text не содержит secrets/setup keys.
+
+### 22.3. Rename repository and local folders
 
 - [ ] Переименовать GitHub repository/project surface из NetBird fork naming в AnonBird:
   - основной репозиторий: `netbird` -> `anonbird`;
@@ -1279,7 +1311,7 @@ MVP считается успешным, если:
   - либо оставить `github.com/netbirdio/netbird` как compatibility module path;
   - либо мигрировать на `github.com/Cr0me1ve/anonbird` с полным import rewrite, `go.mod`, ldflags, CI и downstream compatibility notes.
 
-### 22.3. Logo and visual identity
+### 22.4. Logo and visual identity
 
 - [ ] Нарисовать новый минималистичный логотип AnonBird:
   - чёрная птица;
@@ -1295,7 +1327,7 @@ MVP считается успешным, если:
   - release/social preview, если нужен.
 - [ ] Заменить старые logo/icon assets в `netbird` и `dashboard`, пересобрать UI/proxy/dashboard bundles и проверить light/dark backgrounds.
 
-### 22.4. Migration command
+### 22.5. Migration command
 
 - [ ] Добавить простой Linux migration helper как first-class CLI command:
 
