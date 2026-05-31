@@ -154,6 +154,10 @@ check_dependencies() {
     missing+=("curl")
   fi
 
+  if ! command -v tar &>/dev/null; then
+    missing+=("tar")
+  fi
+
   if [[ ${#missing[@]} -gt 0 ]]; then
     log_error "Missing required dependencies: ${missing[*]}"
     echo "Please install them and re-run the script."
@@ -699,6 +703,8 @@ create_backup() {
     cp -r "$INSTALL_DIR/artifacts" "$BACKUP_DIR/artifacts"
   fi
 
+  backup_management_volume
+
   # Record state
   {
     echo "# AnonBird migration backup state"
@@ -715,6 +721,29 @@ create_backup() {
   generate_rollback_script
 
   log_success "Backup created at: $BACKUP_DIR"
+  return 0
+}
+
+backup_management_volume() {
+  if [[ -z "$MGMT_VOLUME" ]]; then
+    log_warn "No existing management volume detected; rollback will restore files only."
+    return 0
+  fi
+
+  log_info "Backing up management volume: $MGMT_VOLUME"
+
+  local mountpoint
+  mountpoint=$(docker volume inspect "$MGMT_VOLUME" --format '{{.Mountpoint}}' 2>/dev/null || echo "")
+  if [[ -z "$mountpoint" || ! -d "$mountpoint" ]]; then
+    log_error "Cannot inspect Docker volume mountpoint for: $MGMT_VOLUME"
+    echo "Refusing to continue because rollback would not be able to restore management data." >&2
+    exit 1
+  fi
+
+  echo "$MGMT_VOLUME" > "$BACKUP_DIR/management-volume.name"
+  tar -C "$mountpoint" -czf "$BACKUP_DIR/management-volume.tar.gz" .
+
+  log_success "Management volume backup created"
   return 0
 }
 
@@ -764,6 +793,23 @@ for f in config.yaml; do
     echo "  Removed: \$f"
   fi
 done
+
+# Restore management Docker volume if a snapshot was captured.
+if [[ -f "\$BACKUP_DIR/management-volume.tar.gz" && -f "\$BACKUP_DIR/management-volume.name" ]]; then
+  VOLUME_NAME=\$(cat "\$BACKUP_DIR/management-volume.name")
+  echo "Restoring management Docker volume: \$VOLUME_NAME"
+  docker volume inspect "\$VOLUME_NAME" >/dev/null 2>&1 || docker volume create "\$VOLUME_NAME" >/dev/null
+  VOLUME_MOUNTPOINT=\$(docker volume inspect "\$VOLUME_NAME" --format '{{.Mountpoint}}')
+  if [[ -z "\$VOLUME_MOUNTPOINT" || ! -d "\$VOLUME_MOUNTPOINT" ]]; then
+    echo "ERROR: cannot find Docker volume mountpoint for \$VOLUME_NAME" >&2
+    exit 1
+  fi
+  find "\$VOLUME_MOUNTPOINT" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  tar -C "\$VOLUME_MOUNTPOINT" -xzf "\$BACKUP_DIR/management-volume.tar.gz"
+  echo "  Restored: management Docker volume"
+else
+  echo "WARNING: no management volume snapshot found in backup; only files were restored."
+fi
 
 # Restart old containers
 echo "Starting old containers..."
