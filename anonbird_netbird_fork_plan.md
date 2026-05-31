@@ -4,9 +4,10 @@
 
 Дата: 2026-05-31
 
-- Статус: реализовано; финальный requirement-by-requirement audit пройден 2026-05-31.
-- Текущий фокус: Phase 1-4, Phase 5 Tor relay stream multipath/per-channel health и Phase 6 direct-I2P MVP закрыты на code/unit + стендовом уровне; leak-map audit закрывает найденные clearnet side channels, reconnect/failure soak прошёл, dashboard/runtime/release packaging/proxy web/docs/infrastructure surface hardened. Финальный Tor/I2P remote smoke и adversarial log sweep закрыты; goal готов к закрытию в рамках текущего ТЗ/MVP scope.
+- Статус: MVP anonymous mesh реализован и прошёл requirement-by-requirement audit 2026-05-31; post-MVP production/open-source release gate остаётся открытым до полного release-candidate прогона.
+- Текущий фокус: Phase 1-4, Phase 5 Tor relay stream multipath/per-channel health и Phase 6 direct-I2P MVP закрыты на code/unit + стендовом уровне; leak-map audit закрывает найденные clearnet side channels, reconnect/failure soak прошёл, dashboard/runtime/release packaging/proxy web/docs/infrastructure surface hardened. Сейчас идёт production-readiness слой: published artifacts/images, full release test suite, реальный Marton через overlay, NetBird->AnonBird migration server+clients, rollback/uninstall/reinstall и итоговый open-source release report.
 - Правило выполнения: каждая реализованная часть отмечается здесь или в соответствующем чеклисте ниже; если в ходе сверки с ТЗ появляются ограничения или риски, они фиксируются в заметках.
+- Сверка с новым ТЗ: четыре сервера пользователя для финального testbed зафиксированы в разделе 22.0; release/open-source readiness нельзя закрывать без полного remote прогона, Marton через виртуальную сеть, server/client migration с обычного NetBird и финального verdict, можно ли заменить NetBird на AnonBird без ручных исправлений.
 - Заметка: проектное имя клиента и пользовательских команд — AnonBird; CLI должен использовать `anonbird`.
 - Реализовано: Phase 0 документы `docs/leak-map.md` и `docs/netbird-transport-analysis.md` добавлены с конкретными code paths, runtime запретами и тестовыми целями.
 - Реализовано: клиентский `anonymous_mode` с transport config `tor-relay-only`, CLI flags, daemon proto/config persistence и runtime validation.
@@ -1266,6 +1267,8 @@ MVP считается успешным, если:
 - `185.246.220.249`
 - `45.138.103.224`
 
+Это фиксированный release testbed для финального прогона. Если сервер временно недоступен, это записывается как blocker/замена с причиной, а не молча исключается из матрицы.
+
 Роли по умолчанию для следующих прогонов:
 
 - `93.177.116.58`: baseline/self-host management server для Tor/onion и NetBird->AnonBird server migration;
@@ -1283,7 +1286,8 @@ Release-readiness gate нельзя закрывать только по лок�
 - поднять release-candidate управляющий сервер/dashboard так же просто, как self-hosted NetBird, без ручных патчей после установки;
 - выполнить полный test suite: targeted Go tests, dashboard/proxy build, package/install script lint, compose validation, focused leak/secrets sweep и remote smoke уже из release artifacts;
 - поднять реальный прикладной проект через AnonBird overlay: первым кандидатом использовать Marton-server, а если artifact/команды запуска недоступны, записать blocker и не закрывать Marton-specific gate smoke-сервисом;
-- прогнать миграцию с обычного self-hosted NetBird для server и clients: baseline install, baseline connectivity, `anonbird migrate server`, `anonbird migrate client`, post-migration connectivity/dashboard checks и rollback;
+- прогнать миграцию с обычного self-hosted NetBird для server и clients: baseline install обычного NetBird, baseline client connectivity, `anonbird migrate server`, `anonbird migrate client`, post-migration connectivity/dashboard checks и rollback;
+- отдельно проверить replace-in-place сценарий для тестового проекта: удалить/остановить старый NetBird, поставить AnonBird documented commands, подтвердить, что dashboard/API/relay/client paths работают без ручных патчей;
 - финальный verdict должен прямо ответить, можно ли на тестовом проекте удалить обычный NetBird, поставить AnonBird/`anonbird`, и получить рабочий результат без ручных исправлений.
 
 ### 22.1. Linux command/package parity
