@@ -1,4 +1,5 @@
 FROM gcr.io/distroless/base:debug
 ENTRYPOINT [ "/go/bin/anonbird-signal","run" ]
 CMD ["--log-file", "console"]
-COPY anonbird-signal /go/bin/anonbird-signal
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/anonbird-signal /go/bin/anonbird-signal

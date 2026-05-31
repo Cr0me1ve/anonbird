@@ -1,7 +1,7 @@
 # build & run locally with:
 #   cd "$(git rev-parse --show-toplevel)"
 #   CGO_ENABLED=0 go build -o anonbird ./client
-#   sudo podman build -t localhost/anonbird:latest -f client/Dockerfile --ignorefile .dockerignore-client .
+#   sudo podman build --build-arg TARGETPLATFORM=. -t localhost/anonbird:latest -f client/Dockerfile --ignorefile .dockerignore-client .
 #   sudo podman run --rm -it --cap-add={BPF,NET_ADMIN,NET_RAW} localhost/anonbird:latest
 
 FROM alpine:3.23.3
@@ -22,6 +22,7 @@ ENV \
 
 ENTRYPOINT [ "/usr/local/bin/anonbird-entrypoint.sh" ]
 
+ARG TARGETPLATFORM
 ARG ANONBIRD_BINARY=anonbird
 COPY client/anonbird-entrypoint.sh /usr/local/bin/anonbird-entrypoint.sh
-COPY "${ANONBIRD_BINARY}"  /usr/local/bin/anonbird
+COPY ${TARGETPLATFORM}/${ANONBIRD_BINARY} /usr/local/bin/anonbird

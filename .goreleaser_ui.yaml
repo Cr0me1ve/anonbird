@@ -49,11 +49,11 @@ builds:
 archives:
   - id: linux-arch
     name_template: "{{ .ProjectName }}-linux_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    builds:
+    ids:
       - anonbird-ui
   - id: windows-arch
     name_template: "{{ .ProjectName }}-windows_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    builds:
+    ids:
       - anonbird-ui-windows-amd64
       - anonbird-ui-windows-arm64
 
@@ -63,7 +63,7 @@ nfpms:
     homepage: https://github.com/Cr0me1ve/anonbird
     id: anonbird_ui_deb
     package_name: anonbird-ui
-    builds:
+    ids:
       - anonbird-ui
     formats:
       - deb
@@ -82,7 +82,7 @@ nfpms:
     homepage: https://github.com/Cr0me1ve/anonbird
     id: anonbird_ui_rpm
     package_name: anonbird-ui
-    builds:
+    ids:
       - anonbird-ui
     formats:
       - rpm

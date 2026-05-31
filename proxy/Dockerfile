@@ -7,7 +7,8 @@ RUN echo "anonbird:x:1000:1000:anonbird:/var/lib/anonbird:/sbin/nologin" > /tmp/
     mkdir -p /tmp/certs
 
 FROM gcr.io/distroless/base:debug
-COPY anonbird-proxy /go/bin/anonbird-proxy
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/anonbird-proxy /go/bin/anonbird-proxy
 COPY --from=builder /tmp/passwd /etc/passwd
 COPY --from=builder /tmp/group /etc/group
 COPY --from=builder --chown=1000:1000 /tmp/var/lib/anonbird /var/lib/anonbird

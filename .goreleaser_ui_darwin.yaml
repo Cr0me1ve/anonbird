@@ -27,7 +27,7 @@ universal_binaries:
   - id: anonbird-ui-darwin
 
 archives:
-  - builds:
+  - ids:
       - anonbird-ui-darwin
 
 checksum:

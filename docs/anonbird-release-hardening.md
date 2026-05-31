@@ -48,6 +48,10 @@ fork release path. RPM signing is enabled when `GPG_RPM_PRIVATE_KEY` is
 configured; otherwise the workflow still builds GitHub release artifacts and
 GHCR images so a clean one-command self-host smoke can run.
 
+The GoReleaser configuration uses `dockers_v2` multi-platform images for the
+server-side GHCR artifacts. `goreleaser check` must stay clean on the CI-pinned
+GoReleaser version before a public tag is cut.
+
 ## Debug Upload
 
 Debug bundle upload is opt-in.

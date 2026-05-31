@@ -178,16 +178,17 @@ universal_binaries:
   - id: anonbird
 
 archives:
-  - builds:
+  - ids:
       - anonbird
       - anonbird-static
   - id: anonbird-wasm
-    builds:
+    ids:
       - anonbird-wasm
     name_template: "{{ .ProjectName }}_{{ .Version }}"
-    format: binary
+    formats:
+      - binary
   - id: anonbird-idp-migrate
-    builds:
+    ids:
       - anonbird-idp-migrate
     name_template: "anonbird-idp-migrate_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
@@ -199,7 +200,7 @@ nfpms:
     id: anonbird_deb
     package_name: anonbird
     bindir: /usr/bin
-    builds:
+    ids:
       - anonbird
     formats:
       - deb
@@ -214,7 +215,7 @@ nfpms:
     id: anonbird_rpm
     package_name: anonbird
     bindir: /usr/bin
-    builds:
+    ids:
       - anonbird
     formats:
       - rpm
@@ -224,538 +225,128 @@ nfpms:
     rpm:
       signature:
         key_file: '{{ if index .Env "GPG_RPM_KEY_FILE" }}{{ .Env.GPG_RPM_KEY_FILE }}{{ end }}'
-dockers:
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-amd64
-    ids:
-      - anonbird
-    goarch: amd64
-    use: buildx
-    dockerfile: client/Dockerfile
-    extra_files:
-      - client/anonbird-entrypoint.sh
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm64v8
-    ids:
-      - anonbird
-    goarch: arm64
-    use: buildx
-    dockerfile: client/Dockerfile
-    extra_files:
-      - client/anonbird-entrypoint.sh
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm
-    ids:
-      - anonbird
-    goarch: arm
-    goarm: 6
-    use: buildx
-    dockerfile: client/Dockerfile
-    extra_files:
-      - client/anonbird-entrypoint.sh
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
 
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-amd64
+dockers_v2:
+  - id: anonbird
     ids:
       - anonbird
-    goarch: amd64
-    use: buildx
-    dockerfile: client/Dockerfile-rootless
+    dockerfile: client/Dockerfile
+    images:
+      - ghcr.io/cr0me1ve/anonbird
+    tags:
+      - "{{ .Version }}"
+      - latest
     extra_files:
       - client/anonbird-entrypoint.sh
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-arm64v8
-    ids:
-      - anonbird
-    goarch: arm64
-    use: buildx
-    dockerfile: client/Dockerfile-rootless
-    extra_files:
-      - client/anonbird-entrypoint.sh
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-arm
-    ids:
-      - anonbird
-    goarch: arm
-    goarm: 6
-    use: buildx
-    dockerfile: client/Dockerfile-rootless
-    extra_files:
-      - client/anonbird-entrypoint.sh
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
+    labels: &oci_labels
+      "org.opencontainers.image.created": "{{ .Date }}"
+      "org.opencontainers.image.title": "{{ .ProjectName }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.source": "https://github.com/Cr0me1ve/anonbird"
+      maintainer: dev@anonbird.local
+    platforms: &linux_platforms
+      - linux/amd64
+      - linux/arm64
+      - linux/arm/v6
 
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-amd64
+  - id: anonbird-rootless
+    ids:
+      - anonbird
+    dockerfile: client/Dockerfile-rootless
+    images:
+      - ghcr.io/cr0me1ve/anonbird
+    tags:
+      - "{{ .Version }}-rootless"
+      - rootless-latest
+    extra_files:
+      - client/anonbird-entrypoint.sh
+    labels: *oci_labels
+    platforms: *linux_platforms
+
+  - id: anonbird-relay
     ids:
       - anonbird-relay
-    goarch: amd64
-    use: buildx
     dockerfile: relay/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-arm64v8
-    ids:
-      - anonbird-relay
-    goarch: arm64
-    use: buildx
-    dockerfile: relay/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-arm
-    ids:
-      - anonbird-relay
-    goarch: arm
-    goarm: 6
-    use: buildx
-    dockerfile: relay/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-amd64
+    images:
+      - ghcr.io/cr0me1ve/anonbird-relay
+    tags:
+      - "{{ .Version }}"
+      - latest
+    labels: *oci_labels
+    platforms: *linux_platforms
+
+  - id: anonbird-signal
     ids:
       - anonbird-signal
-    goarch: amd64
-    use: buildx
     dockerfile: signal/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-arm64v8
-    ids:
-      - anonbird-signal
-    goarch: arm64
-    use: buildx
-    dockerfile: signal/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-arm
-    ids:
-      - anonbird-signal
-    goarch: arm
-    goarm: 6
-    use: buildx
-    dockerfile: signal/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-amd64
-    ids:
-      - anonbird-mgmt
-    goarch: amd64
-    use: buildx
-    dockerfile: management/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-arm64v8
-    ids:
-      - anonbird-mgmt
-    goarch: arm64
-    use: buildx
-    dockerfile: management/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-arm
-    ids:
-      - anonbird-mgmt
-    goarch: arm
-    goarm: 6
-    use: buildx
-    dockerfile: management/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-amd64
-    ids:
-      - anonbird-mgmt
-    goarch: amd64
-    use: buildx
-    dockerfile: management/Dockerfile.debug
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-arm64v8
-    ids:
-      - anonbird-mgmt
-    goarch: arm64
-    use: buildx
-    dockerfile: management/Dockerfile.debug
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
+    images:
+      - ghcr.io/cr0me1ve/anonbird-signal
+    tags:
+      - "{{ .Version }}"
+      - latest
+    labels: *oci_labels
+    platforms: *linux_platforms
 
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-arm
+  - id: anonbird-management
     ids:
       - anonbird-mgmt
-    goarch: arm
-    goarm: 6
-    use: buildx
+    dockerfile: management/Dockerfile
+    images:
+      - ghcr.io/cr0me1ve/anonbird-management
+    tags:
+      - "{{ .Version }}"
+      - latest
+    labels: *oci_labels
+    platforms: *linux_platforms
+
+  - id: anonbird-management-debug
+    ids:
+      - anonbird-mgmt
     dockerfile: management/Dockerfile.debug
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-amd64
+    images:
+      - ghcr.io/cr0me1ve/anonbird-management
+    tags:
+      - "{{ .Version }}-debug"
+      - debug-latest
+    labels: *oci_labels
+    platforms: *linux_platforms
+
+  - id: anonbird-upload
     ids:
       - anonbird-upload
-    goarch: amd64
-    use: buildx
     dockerfile: upload-server/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-arm64v8
-    ids:
-      - anonbird-upload
-    goarch: arm64
-    use: buildx
-    dockerfile: upload-server/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-arm
-    ids:
-      - anonbird-upload
-    goarch: arm
-    goarm: 6
-    use: buildx
-    dockerfile: upload-server/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-amd64
+    images:
+      - ghcr.io/cr0me1ve/anonbird-upload
+    tags:
+      - "{{ .Version }}"
+      - latest
+    labels: *oci_labels
+    platforms: *linux_platforms
+
+  - id: anonbird-server
     ids:
       - anonbird-server
-    goarch: amd64
-    use: buildx
     dockerfile: combined/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm64v8
-    ids:
-      - anonbird-server
-    goarch: arm64
-    use: buildx
-    dockerfile: combined/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm
-    ids:
-      - anonbird-server
-    goarch: arm
-    goarm: 6
-    use: buildx
-    dockerfile: combined/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
+    images:
+      - ghcr.io/cr0me1ve/anonbird-server
+    tags:
+      - "{{ .Version }}"
+      - latest
+    labels: *oci_labels
+    platforms: *linux_platforms
+
+  - id: anonbird-reverse-proxy
     ids:
       - anonbird-proxy
-    goarch: amd64
-    use: buildx
     dockerfile: proxy/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
-    ids:
-      - anonbird-proxy
-    goarch: arm64
-    use: buildx
-    dockerfile: proxy/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-  - image_templates:
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
-    ids:
-      - anonbird-proxy
-    goarch: arm
-    goarm: 6
-    use: buildx
-    dockerfile: proxy/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
-      - "--label=maintainer=dev@anonbird.local"
-docker_manifests:
-  - name_template: ghcr.io/cr0me1ve/anonbird:{{ .Version }}
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird:latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-arm64v8
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-arm
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird:rootless-latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-arm64v8
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-arm
-      - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-relay:latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-signal:latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-management:latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-management:debug-latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-arm
-      - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-upload:latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-server:latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
-
-  - name_template: ghcr.io/cr0me1ve/anonbird-reverse-proxy:latest
-    image_templates:
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
-      - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
+    images:
+      - ghcr.io/cr0me1ve/anonbird-reverse-proxy
+    tags:
+      - "{{ .Version }}"
+      - latest
+    labels: *oci_labels
+    platforms: *linux_platforms
 
 checksum:
   extra_files:
