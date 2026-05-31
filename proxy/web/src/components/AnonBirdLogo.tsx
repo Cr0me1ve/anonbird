@@ -1,6 +1,6 @@
 import { cn } from "@/utils/helpers";
-import anonbirdFull from "@/assets/anonbird-full.svg";
-import anonbirdMark from "@/assets/anonbird.svg";
+import anonbirdFull from "@/assets/anonbird-full.png";
+import anonbirdMark from "@/assets/anonbird.png";
 
 type Props = {
   size?: "small" | "default" | "large";
