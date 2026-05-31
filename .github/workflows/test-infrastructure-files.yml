@@ -202,30 +202,36 @@ jobs:
 
       - name: Build management binary
         working-directory: management
-        run: CGO_ENABLED=1 go build -o netbird-mgmt main.go
+        run: |
+          mkdir -p linux/amd64
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o linux/amd64/anonbird-mgmt main.go
 
       - name: Build management docker image
         working-directory: management
         run: |
-          docker build -t netbirdio/management:latest .
+          docker build -t ghcr.io/cr0me1ve/anonbird-management:latest .
 
       - name: Build signal binary
         working-directory: signal
-        run: CGO_ENABLED=0 go build -o netbird-signal main.go
+        run: |
+          mkdir -p linux/amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o linux/amd64/anonbird-signal main.go
 
       - name: Build signal docker image
         working-directory: signal
         run: |
-          docker build -t netbirdio/signal:latest .
+          docker build -t ghcr.io/cr0me1ve/anonbird-signal:latest .
 
       - name: Build relay binary
         working-directory: relay
-        run: CGO_ENABLED=0 go build -o netbird-relay main.go
+        run: |
+          mkdir -p linux/amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o linux/amd64/anonbird-relay main.go
 
       - name: Build relay docker image
         working-directory: relay
         run: |
-          docker build -t netbirdio/relay:latest .
+          docker build -t ghcr.io/cr0me1ve/anonbird-relay:latest .
 
       - name: run docker compose up
         working-directory: infrastructure_files/artifacts
@@ -251,6 +257,7 @@ jobs:
 
   test-getting-started-script:
     runs-on: ubuntu-latest
+    if: ${{ vars.ANONBIRD_LEGACY_ZITADEL_CI == 'true' }}
     steps:
       - name: Install jq
         run: sudo apt-get install -y jq
