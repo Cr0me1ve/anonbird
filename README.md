@@ -53,22 +53,43 @@ relay combined server, and Traefik TLS routing.
 
 ```bash
 curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
-  | bash -s -- --domain anonbird.example.com --email admin@example.com --yes
+  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes
 ```
 
 This renders `docker-compose.yml`, `dashboard.env` and `config.yaml`, then starts
 the stack. When it finishes, open:
 
 ```text
-https://anonbird.example.com
+https://anonbird.your-domain.com
 ```
 
-The one-command installer uses the built-in Traefik mode by default. For a dry
-configuration render without starting containers:
+The one-command installer uses the built-in Traefik mode by default and checks
+that the required AnonBird Docker images are available before it starts the
+stack. For a dry configuration render without starting containers:
 
 ```bash
 curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
-  | bash -s -- --domain anonbird.example.com --email admin@example.com --yes --render-only
+  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes --render-only
+```
+
+To check release image availability without writing files or starting
+containers:
+
+```bash
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
+  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes --preflight-only
+```
+
+Release-candidate and private registry tests can override images without
+editing the script:
+
+```bash
+export ANONBIRD_DASHBOARD_IMAGE=registry.example.com/anonbird-dashboard:rc
+export ANONBIRD_SERVER_IMAGE=registry.example.com/anonbird-server:rc
+export ANONBIRD_PROXY_IMAGE=registry.example.com/anonbird-reverse-proxy:rc
+
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
+  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes
 ```
 
 The `NETBIRD_*` environment names are still accepted in deployment scripts for

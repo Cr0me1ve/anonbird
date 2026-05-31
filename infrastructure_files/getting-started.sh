@@ -27,8 +27,8 @@ Usage:
   getting-started.sh [options]
 
 Recommended production quickstart:
-  curl -fsSL https://github.com/Cr0me1ve/netbird/releases/latest/download/getting-started.sh \
-    | bash -s -- --domain anonbird.example.com --email admin@example.com --yes
+  curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
+    | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes
 
 Options:
   --domain DOMAIN              Public dashboard/management domain.
@@ -44,6 +44,8 @@ Options:
   --traefik-certresolver NAME  External Traefik certificate resolver.
   --external-proxy-network N   Docker network for nginx/npm/caddy reverse proxy.
   --render-only                Render files and exit without starting containers.
+  --preflight-only             Check required AnonBird Docker images and exit.
+  --skip-image-preflight       Start without checking custom AnonBird images first.
   --yes, -y                    Non-interactive mode; fail instead of prompting.
   --help, -h                   Show this help.
 
@@ -51,6 +53,11 @@ Environment aliases:
   ANONBIRD_DOMAIN              Same as --domain when NETBIRD_DOMAIN is unset.
   ANONBIRD_ADMIN_EMAIL         Same as --email when TRAEFIK_ACME_EMAIL is unset.
   ANONBIRD_NONINTERACTIVE=true Same as --yes.
+  ANONBIRD_DASHBOARD_IMAGE     Override dashboard image.
+  ANONBIRD_SERVER_IMAGE        Override combined server image.
+  ANONBIRD_PROXY_IMAGE         Override reverse proxy image.
+  ANONBIRD_SKIP_IMAGE_PREFLIGHT=true
+                                Same as --skip-image-preflight.
 EOF
 }
 
@@ -145,6 +152,15 @@ parse_args() {
         NONINTERACTIVE="true"
         shift
         ;;
+      --preflight-only)
+        PREFLIGHT_ONLY="true"
+        NONINTERACTIVE="true"
+        shift
+        ;;
+      --skip-image-preflight)
+        SKIP_IMAGE_PREFLIGHT="true"
+        shift
+        ;;
       --yes|-y|--non-interactive)
         NONINTERACTIVE="true"
         shift
@@ -189,6 +205,86 @@ check_jq() {
     exit 1
   fi
   return 0
+}
+
+run_with_timeout() {
+  local timeout_seconds="$1"
+  shift
+
+  "$@" >/dev/null 2>&1 &
+  local command_pid=$!
+  local elapsed=0
+
+  while kill -0 "$command_pid" 2>/dev/null; do
+    if [[ "$elapsed" -ge "$timeout_seconds" ]]; then
+      kill "$command_pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "$command_pid" >/dev/null 2>&1 || true
+      wait "$command_pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  wait "$command_pid"
+  return $?
+}
+
+check_docker_image_available() {
+  local image="$1"
+  local timeout_seconds="${ANONBIRD_IMAGE_PREFLIGHT_TIMEOUT:-20}"
+
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  run_with_timeout "$timeout_seconds" docker manifest inspect "$image"
+  local manifest_status=$?
+  if [[ "$manifest_status" -eq 0 ]]; then
+    return 0
+  fi
+
+  return "$manifest_status"
+}
+
+preflight_required_images() {
+  if [[ "$SKIP_IMAGE_PREFLIGHT" == "true" ]]; then
+    echo "Skipping AnonBird Docker image preflight because ANONBIRD_SKIP_IMAGE_PREFLIGHT=true or --skip-image-preflight was set."
+    return 0
+  fi
+
+  local images=("$DASHBOARD_IMAGE" "$NETBIRD_SERVER_IMAGE")
+  if [[ "$ENABLE_PROXY" == "true" ]]; then
+    images+=("$NETBIRD_PROXY_IMAGE")
+  fi
+
+  local missing_images=()
+  local image
+  for image in "${images[@]}"; do
+    if ! check_docker_image_available "$image"; then
+      missing_images+=("$image")
+    fi
+  done
+
+  if [[ ${#missing_images[@]} -eq 0 ]]; then
+    echo "AnonBird Docker image preflight passed."
+    return 0
+  fi
+
+  echo "ERROR: AnonBird Docker image preflight failed." > /dev/stderr
+  echo "The following required image(s) are not available locally and could not be inspected remotely:" > /dev/stderr
+  for image in "${missing_images[@]}"; do
+    echo "  - $image" > /dev/stderr
+  done
+  echo "" > /dev/stderr
+  echo "Publish the release images, run 'docker login ghcr.io' if they are private, or override them with:" > /dev/stderr
+  echo "  ANONBIRD_DASHBOARD_IMAGE=<image>" > /dev/stderr
+  echo "  ANONBIRD_SERVER_IMAGE=<image>" > /dev/stderr
+  echo "  ANONBIRD_PROXY_IMAGE=<image>  # only when --enable-proxy is used" > /dev/stderr
+  echo "" > /dev/stderr
+  echo "For a local development stack with images already handled another way, set ANONBIRD_SKIP_IMAGE_PREFLIGHT=true." > /dev/stderr
+  exit 1
 }
 
 get_main_ip_address() {
@@ -455,6 +551,8 @@ initialize_default_values() {
 
   NONINTERACTIVE="${ANONBIRD_NONINTERACTIVE:-false}"
   RENDER_ONLY="${ANONBIRD_RENDER_ONLY:-false}"
+  PREFLIGHT_ONLY="${ANONBIRD_PREFLIGHT_ONLY:-false}"
+  SKIP_IMAGE_PREFLIGHT="${ANONBIRD_SKIP_IMAGE_PREFLIGHT:-false}"
 
   NETBIRD_PORT=80
   NETBIRD_HTTP_PROTOCOL="http"
@@ -465,10 +563,10 @@ initialize_default_values() {
   NETBIRD_STUN_PORT=3478
 
   # Docker images
-  DASHBOARD_IMAGE="ghcr.io/cr0me1ve/anonbird-dashboard:latest"
+  DASHBOARD_IMAGE="${DASHBOARD_IMAGE:-${ANONBIRD_DASHBOARD_IMAGE:-ghcr.io/cr0me1ve/anonbird-dashboard:latest}}"
   # Combined server replaces separate signal, relay, and management containers
-  NETBIRD_SERVER_IMAGE="ghcr.io/cr0me1ve/anonbird-server:latest"
-  NETBIRD_PROXY_IMAGE="ghcr.io/cr0me1ve/anonbird-reverse-proxy:latest"
+  NETBIRD_SERVER_IMAGE="${NETBIRD_SERVER_IMAGE:-${ANONBIRD_SERVER_IMAGE:-ghcr.io/cr0me1ve/anonbird-server:latest}}"
+  NETBIRD_PROXY_IMAGE="${NETBIRD_PROXY_IMAGE:-${ANONBIRD_PROXY_IMAGE:-ghcr.io/cr0me1ve/anonbird-reverse-proxy:latest}}"
 
   # Reverse proxy configuration
   REVERSE_PROXY_TYPE="${ANONBIRD_REVERSE_PROXY_TYPE:-0}"
@@ -761,9 +859,16 @@ init_environment() {
 
   if [[ "$RENDER_ONLY" == "true" ]]; then
     DOCKER_COMPOSE_COMMAND="docker compose"
+  elif [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+    DOCKER_COMPOSE_COMMAND=$(check_docker_compose)
   else
     check_jq
     DOCKER_COMPOSE_COMMAND=$(check_docker_compose)
+  fi
+
+  if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+    preflight_required_images
+    return 0
   fi
 
   check_existing_installation
@@ -776,6 +881,7 @@ init_environment() {
     echo "Run with the same options without --render-only to start containers."
     return 0
   fi
+  preflight_required_images
   start_services_and_show_instructions
   return 0
 }
@@ -1473,8 +1579,8 @@ print_builtin_traefik_instructions() {
   echo "For enterprise environments requiring high availability and advanced integrations,"
   echo "consider a commercial on-prem license or scaling your open source deployment:"
   echo ""
-  echo "  Project: https://github.com/Cr0me1ve/netbird"
-  echo "  Docs:      https://github.com/Cr0me1ve/netbird/tree/main/docs"
+  echo "  Project: https://github.com/Cr0me1ve/anonbird"
+  echo "  Docs:      https://github.com/Cr0me1ve/anonbird/tree/main/docs"
   echo ""
   if [[ "$ENABLE_PROXY" == "true" ]]; then
     echo "AnonBird Proxy:"
@@ -1566,7 +1672,7 @@ print_nginx_instructions() {
     echo "  4. Test and reload: nginx -t && systemctl reload nginx"
     echo ""
     echo "For detailed TLS setup instructions, see:"
-    echo "https://github.com/Cr0me1ve/netbird/tree/main/docs"
+    echo "https://github.com/Cr0me1ve/anonbird/tree/main/docs"
     echo ""
     echo "Container ports (bound to ${bind_addr}):"
     echo "  Dashboard:     ${DASHBOARD_HOST_PORT}"
