@@ -18,8 +18,8 @@ set -euo pipefail
 ############################################
 
 readonly SCRIPT_VERSION="1.0.0"
-readonly DASHBOARD_IMAGE="ghcr.io/cr0me1ve/anonbird-dashboard:latest"
-readonly NETBIRD_SERVER_IMAGE="ghcr.io/cr0me1ve/anonbird-server:latest"
+readonly DEFAULT_DASHBOARD_IMAGE="ghcr.io/cr0me1ve/anonbird-dashboard:latest"
+readonly DEFAULT_NETBIRD_SERVER_IMAGE="ghcr.io/cr0me1ve/anonbird-server:latest"
 readonly SED_STRIP_PADDING='s/=//g'
 readonly MSG_SEPARATOR="=========================================="
 readonly PROXY_TYPE_CADDY="caddy_embedded"
@@ -47,6 +47,9 @@ INSTALL_DIR=""
 NON_INTERACTIVE=false
 DRY_RUN=false
 DOCKER_COMPOSE_CMD=""
+DASHBOARD_IMAGE="${ANONBIRD_DASHBOARD_IMAGE:-$DEFAULT_DASHBOARD_IMAGE}"
+NETBIRD_SERVER_IMAGE="${ANONBIRD_SERVER_IMAGE:-$DEFAULT_NETBIRD_SERVER_IMAGE}"
+SKIP_IMAGE_PREFLIGHT="${ANONBIRD_SKIP_IMAGE_PREFLIGHT:-false}"
 
 # Detection results
 PROXY_TYPE=""          # caddy_embedded | traefik | external
@@ -159,6 +162,83 @@ check_dependencies() {
 
   log_success "All dependencies found (docker compose: '$DOCKER_COMPOSE_CMD')"
   return 0
+}
+
+run_with_timeout() {
+  local timeout_seconds="$1"
+  shift
+
+  "$@" >/dev/null 2>&1 &
+  local command_pid=$!
+  local elapsed=0
+
+  while kill -0 "$command_pid" 2>/dev/null; do
+    if [[ "$elapsed" -ge "$timeout_seconds" ]]; then
+      kill "$command_pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "$command_pid" >/dev/null 2>&1 || true
+      wait "$command_pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  wait "$command_pid"
+  return $?
+}
+
+check_docker_image_available() {
+  local image="$1"
+  local timeout_seconds="${ANONBIRD_IMAGE_PREFLIGHT_TIMEOUT:-20}"
+
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  run_with_timeout "$timeout_seconds" docker manifest inspect "$image"
+  local manifest_status=$?
+  if [[ "$manifest_status" -eq 0 ]]; then
+    return 0
+  fi
+
+  return "$manifest_status"
+}
+
+preflight_required_images() {
+  if [[ "$SKIP_IMAGE_PREFLIGHT" == "true" ]]; then
+    log_warn "Skipping AnonBird Docker image preflight because ANONBIRD_SKIP_IMAGE_PREFLIGHT=true or --skip-image-preflight was set."
+    return 0
+  fi
+
+  log_info "Checking AnonBird migration target images..."
+
+  local images=("$DASHBOARD_IMAGE" "$NETBIRD_SERVER_IMAGE")
+  local missing_images=()
+  local image
+  for image in "${images[@]}"; do
+    if ! check_docker_image_available "$image"; then
+      missing_images+=("$image")
+    fi
+  done
+
+  if [[ ${#missing_images[@]} -eq 0 ]]; then
+    log_success "AnonBird target images are available"
+    return 0
+  fi
+
+  log_error "AnonBird Docker image preflight failed."
+  echo "The following required image(s) are not available locally and could not be inspected remotely:" >&2
+  for image in "${missing_images[@]}"; do
+    echo "  - $image" >&2
+  done
+  echo "" >&2
+  echo "Publish the release images, run 'docker login ghcr.io' if they are private, or override them with:" >&2
+  echo "  ANONBIRD_DASHBOARD_IMAGE=<image>" >&2
+  echo "  ANONBIRD_SERVER_IMAGE=<image>" >&2
+  echo "" >&2
+  echo "For a local development migration test with images handled another way, set ANONBIRD_SKIP_IMAGE_PREFLIGHT=true." >&2
+  exit 1
 }
 
 detect_install_dir() {
@@ -417,7 +497,7 @@ detect_domain() {
     local issuer
     issuer=$(jq -r '.EmbeddedIdP.Issuer // ""' "$MANAGEMENT_JSON_PATH" 2>/dev/null || echo "")
     if [[ -n "$issuer" && "$issuer" != "null" ]]; then
-      DOMAIN=$(echo "$issuer" | sed 's|https\?://||' | sed 's|/.*||' | sed 's|:.*||')
+      DOMAIN=$(echo "$issuer" | sed -E 's|^https?://||' | sed 's|/.*||' | sed 's|:.*||')
     fi
   fi
 
@@ -426,7 +506,7 @@ detect_domain() {
     local issuer
     issuer=$(jq -r '.HttpConfig.AuthIssuer // ""' "$MANAGEMENT_JSON_PATH" 2>/dev/null || echo "")
     if [[ -n "$issuer" && "$issuer" != "null" ]]; then
-      DOMAIN=$(echo "$issuer" | sed 's|https\?://||' | sed 's|/.*||' | sed 's|:.*||')
+      DOMAIN=$(echo "$issuer" | sed -E 's|^https?://||' | sed 's|/.*||' | sed 's|:.*||')
     fi
   fi
 
@@ -435,7 +515,7 @@ detect_domain() {
     local endpoint
     endpoint=$(grep '^NETBIRD_MGMT_API_ENDPOINT=' "$INSTALL_DIR/dashboard.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo "")
     if [[ -n "$endpoint" ]]; then
-      DOMAIN=$(echo "$endpoint" | sed 's|https\?://||' | sed 's|/.*||' | sed 's|:.*||')
+      DOMAIN=$(echo "$endpoint" | sed -E 's|^https?://||' | sed 's|/.*||' | sed 's|:.*||')
     fi
   fi
 
@@ -572,6 +652,8 @@ print_detection_summary() {
   fi
   echo "  Encryption key:     ${ENCRYPTION_KEY:0:8}..."
   echo "  Relay secret:       ${RELAY_SECRET:0:8}..."
+  echo "  Dashboard image:    $DASHBOARD_IMAGE"
+  echo "  Server image:       $NETBIRD_SERVER_IMAGE"
   echo ""
 
   if [[ "$PROXY_TYPE" == "$PROXY_TYPE_CADDY" ]]; then
@@ -1229,8 +1311,30 @@ main() {
         DRY_RUN=true
         shift
         ;;
+      --dashboard-image)
+        local dashboard_image_value="${2:-}"
+        if [[ -z "$dashboard_image_value" || "$dashboard_image_value" == --* ]]; then
+          log_error "--dashboard-image requires a value"
+          exit 1
+        fi
+        DASHBOARD_IMAGE="$dashboard_image_value"
+        shift 2
+        ;;
+      --server-image)
+        local server_image_value="${2:-}"
+        if [[ -z "$server_image_value" || "$server_image_value" == --* ]]; then
+          log_error "--server-image requires a value"
+          exit 1
+        fi
+        NETBIRD_SERVER_IMAGE="$server_image_value"
+        shift 2
+        ;;
+      --skip-image-preflight)
+        SKIP_IMAGE_PREFLIGHT=true
+        shift
+        ;;
       --help|-h)
-        echo "Usage: $0 [--install-dir /path/to/netbird] [--dry-run] [--non-interactive]"
+        echo "Usage: $0 [--install-dir /path/to/netbird] [--dry-run] [--non-interactive] [image options]"
         echo ""
         echo "Migrates a pre-v0.65.0 NetBird deployment into the AnonBird combined container setup."
         echo ""
@@ -1238,7 +1342,14 @@ main() {
         echo "  --install-dir DIR    Path to existing NetBird installation"
         echo "  --dry-run            Detect and print planned migration without changing files or containers"
         echo "  --non-interactive    Skip confirmation prompts (for automation)"
+        echo "  --dashboard-image I  Override AnonBird dashboard image"
+        echo "  --server-image I     Override AnonBird combined server image"
+        echo "  --skip-image-preflight"
+        echo "                       Skip checking target images before applying migration"
         echo "  -h, --help           Show this help message"
+        echo ""
+        echo "Environment:"
+        echo "  ANONBIRD_DASHBOARD_IMAGE, ANONBIRD_SERVER_IMAGE, ANONBIRD_SKIP_IMAGE_PREFLIGHT"
         exit 0
         ;;
       *)
@@ -1272,6 +1383,8 @@ main() {
     echo "$MSG_SEPARATOR"
     return 0
   fi
+
+  preflight_required_images
 
   confirm_action "Proceed with migration?"
 
