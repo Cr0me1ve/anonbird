@@ -1273,6 +1273,15 @@ MVP считается успешным, если:
 
 Release-readiness gate нельзя закрывать только по локальным unit tests: финальная отметка требует реального release-candidate install/upgrade, NetBird->AnonBird migration server+clients, Marton через overlay и leak/log sweep на этих четырёх серверах.
 
+Обязательный финальный прогон перед отметкой `production-ready`/публичным open-source релизом:
+
+- подтвердить, что все четыре тестовых сервера из списка выше доступны по SSH и что их текущие роли/состояния записаны в release report;
+- поднять release-candidate управляющий сервер/dashboard так же просто, как self-hosted NetBird, без ручных патчей после установки;
+- выполнить полный test suite: targeted Go tests, dashboard/proxy build, package/install script lint, compose validation, focused leak/secrets sweep и remote smoke уже из release artifacts;
+- поднять реальный прикладной проект через AnonBird overlay: первым кандидатом использовать Marton-server, а если artifact/команды запуска недоступны, записать blocker и не закрывать Marton-specific gate smoke-сервисом;
+- прогнать миграцию с обычного self-hosted NetBird для server и clients: baseline install, baseline connectivity, `anonbird migrate server`, `anonbird migrate client`, post-migration connectivity/dashboard checks и rollback;
+- финальный verdict должен прямо ответить, можно ли на тестовом проекте удалить обычный NetBird, поставить AnonBird/`anonbird`, и получить рабочий результат без ручных исправлений.
+
 ### 22.1. Linux command/package parity
 
 - [x] Добавить one-command self-host режим для управляющего сервера:
@@ -1438,6 +1447,12 @@ anonbird migrate rollback
   - secrets, setup keys, private I2P destinations, onion private keys и тестовые credentials отсутствуют в git history/artifacts;
   - issue/PR templates, workflows, release signing, package signing и container publishing работают на fork infrastructure.
   - release verdict должен явно ответить, можно ли заменить обычный NetBird на AnonBird/anonbird на тестовом проекте без ручных патчей.
+- [ ] Проверить replace-in-place сценарий на реальном baseline проекте:
+  - поднять обычный upstream/self-hosted NetBird server + dashboard + минимум два клиента на testbed;
+  - зафиксировать baseline состояние до миграции: dashboard login, peers, groups, policies, DNS, setup keys, routes и app connectivity;
+  - заменить server/dashboard/client surface на AnonBird через documented install/migration commands;
+  - подтвердить, что dashboard, management, signal, relay, DNS/ACL и peer connectivity работают после замены;
+  - отдельно зафиксировать все несовместимости, ручные действия и blockers, если simple replacement пока невозможен.
 - [ ] Прогнать расширенный test suite:
   - targeted Go tests по anonymous/auth/management/relay/client/debug/release surfaces;
   - dashboard `npm run build`;
