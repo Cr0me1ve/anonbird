@@ -1055,6 +1055,8 @@ $traefik_dynamic_volume
     container_name: anonbird-server
     restart: unless-stopped
     networks: [anonbird]
+    environment:
+      NB_DISABLE_GEOLOCATION: "true"
     ports:
       - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
     volumes:
@@ -1119,6 +1121,9 @@ server:
 
   authSecret: "$NETBIRD_RELAY_AUTH_SECRET"
   dataDir: "/var/lib/anonbird"
+  disableAnonymousMetrics: true
+  disableGeoliteUpdate: true
+  disableVersionCheck: true
 
   auth:
     issuer: "$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN/oauth2"
@@ -1248,6 +1253,8 @@ $(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-da
     container_name: anonbird-server
     restart: unless-stopped
     networks: [$network_name]
+    environment:
+      NB_DISABLE_GEOLOCATION: "true"
     ports:
       - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
     volumes:
@@ -1327,6 +1334,8 @@ services:
     container_name: anonbird-server
     restart: unless-stopped
     networks: ${networks}
+    environment:
+      NB_DISABLE_GEOLOCATION: "true"
     ports:
       - '${bind_addr}:${MANAGEMENT_HOST_PORT}:80'
       - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'

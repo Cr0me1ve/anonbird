@@ -88,13 +88,12 @@ server:
   # Management Settings
   # ============================================================================
 
-  # Metrics and updates
-  # Automatically disabled when exposedAddress uses a .onion or .i2p host.
-  disableAnonymousMetrics: false
-  # Automatically disabled when exposedAddress uses a .onion or .i2p host.
-  disableGeoliteUpdate: false
-  # Automatically disabled when exposedAddress uses a .onion or .i2p host.
-  disableVersionCheck: false
+  # Metrics and update/geolocation downloads are disabled by default in AnonBird
+  # examples. Operators can opt in explicitly for non-anonymous deployments.
+  # These are also forced off when exposedAddress uses a .onion or .i2p host.
+  disableAnonymousMetrics: true
+  disableGeoliteUpdate: true
+  disableVersionCheck: true
 
   # Embedded authentication/identity provider (Dex) configuration (always enabled)
   auth:

@@ -768,6 +768,9 @@ server:
 
   authSecret: "${RELAY_SECRET}"
   dataDir: "/var/lib/anonbird"
+  disableAnonymousMetrics: true
+  disableGeoliteUpdate: true
+  disableVersionCheck: true
 
   auth:
     issuer: "https://${DOMAIN}/oauth2"
@@ -912,6 +915,8 @@ services:
     container_name: anonbird-server
     restart: unless-stopped
     networks: [anonbird]
+    environment:
+      NB_DISABLE_GEOLOCATION: "true"
     ports:
       - '3478:3478/udp'
     volumes:
@@ -998,6 +1003,8 @@ services:
     container_name: anonbird-server
     restart: unless-stopped
     networks: [anonbird]
+    environment:
+      NB_DISABLE_GEOLOCATION: "true"
     ports:
       - '127.0.0.1:8081:80'
       - '3478:3478/udp'
