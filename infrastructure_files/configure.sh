@@ -141,7 +141,7 @@ if [[ -z "${NETBIRD_AUTH_OIDC_CONFIGURATION_ENDPOINT}" ]]; then
   echo "It seems like you provided an old setup.env file."
   echo "Since the release of v0.8.10, we introduced a new set of properties."
   echo "The script is backward compatible and will continue automatically."
-  echo "In future versions it will be deprecated. Please refer to the AnonBird docs in https://github.com/Cr0me1ve/netbird/tree/main/docs"
+  echo "In future versions it will be deprecated. Please refer to the AnonBird docs in https://github.com/Cr0me1ve/anonbird/tree/main/docs"
 
   export NETBIRD_AUTH_OIDC_CONFIGURATION_ENDPOINT="https://${NETBIRD_AUTH0_DOMAIN}/.well-known/openid-configuration"
   export NETBIRD_USE_AUTH0="true"

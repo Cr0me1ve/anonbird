@@ -442,7 +442,7 @@ func checkFileStoreEngine(kind types.Engine, dataDir string) error {
 		storeFile := filepath.Join(dataDir, storeFileName)
 		if util.FileExists(storeFile) {
 			return fmt.Errorf("%s is not supported. Please refer to the documentation for migrating to SQLite: "+
-				"https://github.com/Cr0me1ve/netbird/tree/main/docs", types.FileStoreEngine)
+				"https://github.com/Cr0me1ve/anonbird/tree/main/docs", types.FileStoreEngine)
 		}
 	}
 	return nil

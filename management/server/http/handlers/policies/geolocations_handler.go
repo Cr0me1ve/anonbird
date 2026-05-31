@@ -72,7 +72,7 @@ func (l *geolocationsHandler) getCitiesByCountry(w http.ResponseWriter, r *http.
 
 	if l.geolocationManager == nil {
 		util.WriteError(r.Context(), status.Errorf(status.PreconditionFailed, "Geo location database is not initialized. "+
-			"Check the self-hosted Geo database documentation at https://github.com/Cr0me1ve/netbird/tree/main/docs"), w)
+			"Check the self-hosted Geo database documentation at https://github.com/Cr0me1ve/anonbird/tree/main/docs"), w)
 		return
 	}
 

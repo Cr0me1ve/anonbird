@@ -14,7 +14,7 @@ type RoutesAPI struct {
 }
 
 // List list all routes
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *RoutesAPI) List(ctx context.Context) ([]api.Route, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/routes", nil, nil)
 	if err != nil {
@@ -28,7 +28,7 @@ func (a *RoutesAPI) List(ctx context.Context) ([]api.Route, error) {
 }
 
 // Get get route info
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *RoutesAPI) Get(ctx context.Context, routeID string) (*api.Route, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/routes/"+routeID, nil, nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func (a *RoutesAPI) Get(ctx context.Context, routeID string) (*api.Route, error)
 }
 
 // Create create new route
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *RoutesAPI) Create(ctx context.Context, request api.PostApiRoutesJSONRequestBody) (*api.Route, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -60,7 +60,7 @@ func (a *RoutesAPI) Create(ctx context.Context, request api.PostApiRoutesJSONReq
 }
 
 // Update update route info
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *RoutesAPI) Update(ctx context.Context, routeID string, request api.PutApiRoutesRouteIdJSONRequestBody) (*api.Route, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -78,7 +78,7 @@ func (a *RoutesAPI) Update(ctx context.Context, routeID string, request api.PutA
 }
 
 // Delete delete route
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *RoutesAPI) Delete(ctx context.Context, routeID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/routes/"+routeID, nil, nil)
 	if err != nil {

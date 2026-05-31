@@ -15,7 +15,7 @@ type EventStreamingAPI struct {
 }
 
 // List retrieves all event streaming integrations
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EventStreamingAPI) List(ctx context.Context) ([]api.IntegrationResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/event-streaming", nil, nil)
 	if err != nil {
@@ -29,7 +29,7 @@ func (a *EventStreamingAPI) List(ctx context.Context) ([]api.IntegrationResponse
 }
 
 // Get retrieves a specific event streaming integration by ID
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EventStreamingAPI) Get(ctx context.Context, integrationID int) (*api.IntegrationResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/event-streaming/"+strconv.Itoa(integrationID), nil, nil)
 	if err != nil {
@@ -43,7 +43,7 @@ func (a *EventStreamingAPI) Get(ctx context.Context, integrationID int) (*api.In
 }
 
 // Create creates a new event streaming integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EventStreamingAPI) Create(ctx context.Context, request api.CreateIntegrationRequest) (*api.IntegrationResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -61,7 +61,7 @@ func (a *EventStreamingAPI) Create(ctx context.Context, request api.CreateIntegr
 }
 
 // Update updates an existing event streaming integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EventStreamingAPI) Update(ctx context.Context, integrationID int, request api.CreateIntegrationRequest) (*api.IntegrationResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -79,7 +79,7 @@ func (a *EventStreamingAPI) Update(ctx context.Context, integrationID int, reque
 }
 
 // Delete deletes an event streaming integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EventStreamingAPI) Delete(ctx context.Context, integrationID int) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/event-streaming/"+strconv.Itoa(integrationID), nil, nil)
 	if err != nil {

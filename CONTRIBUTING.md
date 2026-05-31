@@ -136,7 +136,7 @@ checked out and set up:
 4. Add the original AnonBird repository as `upstream` to your forked repository
 
    ```
-   git remote add upstream https://github.com/Cr0me1ve/netbird.git
+   git remote add upstream https://github.com/Cr0me1ve/anonbird.git
    ```
 
 5. Install all Go dependencies:
@@ -230,7 +230,7 @@ To start AnonBird the signal service:
 ```
 
 #### Management service
-> You may need to generate a configuration file for management. Follow steps 2 to 5 from our [self-hosting guide](https://github.com/Cr0me1ve/netbird/tree/main/docs).
+> You may need to generate a configuration file for management. Follow steps 2 to 5 from our [self-hosting guide](https://github.com/Cr0me1ve/anonbird/tree/main/docs).
 
 To start AnonBird's management, execute:
 
@@ -306,8 +306,8 @@ As a critical network service and open-source project, we must enforce a few thi
 
 AnonBird project is composed of 3 main repositories:
 - AnonBird: This repository, which contains the code for the agents and control plane services.
-- Dashboard: https://github.com/Cr0me1ve/dashboard, contains the Administration UI for the management service
-- Documentation: https://github.com/Cr0me1ve/netbird/tree/main/docs
+- Dashboard: https://github.com/Cr0me1ve/anonbird-dashboard, contains the Administration UI for the management service
+- Documentation: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 
 ## Contributor License Agreement
 

@@ -164,7 +164,7 @@ func (p *postureChecksHandler) savePostureChecks(w http.ResponseWriter, r *http.
 	if geoLocationCheck := req.Checks.GeoLocationCheck; geoLocationCheck != nil {
 		if p.geolocationManager == nil {
 			util.WriteError(r.Context(), status.Errorf(status.PreconditionFailed, "Geo location database is not initialized. "+
-				"Check the self-hosted Geo database documentation at https://github.com/Cr0me1ve/netbird/tree/main/docs"), w)
+				"Check the self-hosted Geo database documentation at https://github.com/Cr0me1ve/anonbird/tree/main/docs"), w)
 			return
 		}
 	}

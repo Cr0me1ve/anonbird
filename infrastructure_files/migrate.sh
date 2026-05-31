@@ -406,7 +406,7 @@ detect_idp_type() {
     echo "a fresh installation using getting-started.sh."
     echo ""
     echo "Please refer to the AnonBird documentation for upgrade instructions:"
-    echo "  https://github.com/Cr0me1ve/netbird/tree/main/docs"
+    echo "  https://github.com/Cr0me1ve/anonbird/tree/main/docs"
     exit 1
   fi
 

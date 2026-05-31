@@ -14,7 +14,7 @@ type EDRAPI struct {
 }
 
 // GetIntuneIntegration retrieves the EDR Intune integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) GetIntuneIntegration(ctx context.Context) (*api.EDRIntuneResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/edr/intune", nil, nil)
 	if err != nil {
@@ -28,7 +28,7 @@ func (a *EDRAPI) GetIntuneIntegration(ctx context.Context) (*api.EDRIntuneRespon
 }
 
 // CreateIntuneIntegration creates a new EDR Intune integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) CreateIntuneIntegration(ctx context.Context, request api.EDRIntuneRequest) (*api.EDRIntuneResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -46,7 +46,7 @@ func (a *EDRAPI) CreateIntuneIntegration(ctx context.Context, request api.EDRInt
 }
 
 // UpdateIntuneIntegration updates an existing EDR Intune integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) UpdateIntuneIntegration(ctx context.Context, request api.EDRIntuneRequest) (*api.EDRIntuneResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -64,7 +64,7 @@ func (a *EDRAPI) UpdateIntuneIntegration(ctx context.Context, request api.EDRInt
 }
 
 // DeleteIntuneIntegration deletes the EDR Intune integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) DeleteIntuneIntegration(ctx context.Context) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/integrations/edr/intune", nil, nil)
 	if err != nil {
@@ -77,7 +77,7 @@ func (a *EDRAPI) DeleteIntuneIntegration(ctx context.Context) error {
 }
 
 // GetSentinelOneIntegration retrieves the EDR SentinelOne integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) GetSentinelOneIntegration(ctx context.Context) (*api.EDRSentinelOneResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/edr/sentinelone", nil, nil)
 	if err != nil {
@@ -91,7 +91,7 @@ func (a *EDRAPI) GetSentinelOneIntegration(ctx context.Context) (*api.EDRSentine
 }
 
 // CreateSentinelOneIntegration creates a new EDR SentinelOne integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) CreateSentinelOneIntegration(ctx context.Context, request api.EDRSentinelOneRequest) (*api.EDRSentinelOneResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -109,7 +109,7 @@ func (a *EDRAPI) CreateSentinelOneIntegration(ctx context.Context, request api.E
 }
 
 // UpdateSentinelOneIntegration updates an existing EDR SentinelOne integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) UpdateSentinelOneIntegration(ctx context.Context, request api.EDRSentinelOneRequest) (*api.EDRSentinelOneResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -127,7 +127,7 @@ func (a *EDRAPI) UpdateSentinelOneIntegration(ctx context.Context, request api.E
 }
 
 // DeleteSentinelOneIntegration deletes the EDR SentinelOne integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) DeleteSentinelOneIntegration(ctx context.Context) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/integrations/edr/sentinelone", nil, nil)
 	if err != nil {
@@ -140,7 +140,7 @@ func (a *EDRAPI) DeleteSentinelOneIntegration(ctx context.Context) error {
 }
 
 // GetFalconIntegration retrieves the EDR Falcon integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) GetFalconIntegration(ctx context.Context) (*api.EDRFalconResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/edr/falcon", nil, nil)
 	if err != nil {
@@ -154,7 +154,7 @@ func (a *EDRAPI) GetFalconIntegration(ctx context.Context) (*api.EDRFalconRespon
 }
 
 // CreateFalconIntegration creates a new EDR Falcon integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) CreateFalconIntegration(ctx context.Context, request api.EDRFalconRequest) (*api.EDRFalconResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -172,7 +172,7 @@ func (a *EDRAPI) CreateFalconIntegration(ctx context.Context, request api.EDRFal
 }
 
 // UpdateFalconIntegration updates an existing EDR Falcon integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) UpdateFalconIntegration(ctx context.Context, request api.EDRFalconRequest) (*api.EDRFalconResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -190,7 +190,7 @@ func (a *EDRAPI) UpdateFalconIntegration(ctx context.Context, request api.EDRFal
 }
 
 // DeleteFalconIntegration deletes the EDR Falcon integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) DeleteFalconIntegration(ctx context.Context) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/integrations/edr/falcon", nil, nil)
 	if err != nil {
@@ -203,7 +203,7 @@ func (a *EDRAPI) DeleteFalconIntegration(ctx context.Context) error {
 }
 
 // GetHuntressIntegration retrieves the EDR Huntress integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) GetHuntressIntegration(ctx context.Context) (*api.EDRHuntressResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/edr/huntress", nil, nil)
 	if err != nil {
@@ -217,7 +217,7 @@ func (a *EDRAPI) GetHuntressIntegration(ctx context.Context) (*api.EDRHuntressRe
 }
 
 // CreateHuntressIntegration creates a new EDR Huntress integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) CreateHuntressIntegration(ctx context.Context, request api.EDRHuntressRequest) (*api.EDRHuntressResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -235,7 +235,7 @@ func (a *EDRAPI) CreateHuntressIntegration(ctx context.Context, request api.EDRH
 }
 
 // UpdateHuntressIntegration updates an existing EDR Huntress integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) UpdateHuntressIntegration(ctx context.Context, request api.EDRHuntressRequest) (*api.EDRHuntressResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -253,7 +253,7 @@ func (a *EDRAPI) UpdateHuntressIntegration(ctx context.Context, request api.EDRH
 }
 
 // DeleteHuntressIntegration deletes the EDR Huntress integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) DeleteHuntressIntegration(ctx context.Context) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/integrations/edr/huntress", nil, nil)
 	if err != nil {
@@ -325,7 +325,7 @@ func (a *EDRAPI) DeleteFleetDMIntegration(ctx context.Context) error {
 }
 
 // BypassPeerCompliance bypasses compliance for a non-compliant peer
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) BypassPeerCompliance(ctx context.Context, peerID string) (*api.BypassResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "POST", "/api/peers/"+peerID+"/edr/bypass", nil, nil)
 	if err != nil {
@@ -339,7 +339,7 @@ func (a *EDRAPI) BypassPeerCompliance(ctx context.Context, peerID string) (*api.
 }
 
 // RevokePeerBypass revokes the compliance bypass for a peer
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) RevokePeerBypass(ctx context.Context, peerID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/peers/"+peerID+"/edr/bypass", nil, nil)
 	if err != nil {
@@ -352,7 +352,7 @@ func (a *EDRAPI) RevokePeerBypass(ctx context.Context, peerID string) error {
 }
 
 // ListBypassedPeers returns all peers that have compliance bypassed
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EDRAPI) ListBypassedPeers(ctx context.Context) ([]api.BypassResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/peers/edr/bypassed", nil, nil)
 	if err != nil {

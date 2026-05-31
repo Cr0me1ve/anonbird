@@ -14,7 +14,7 @@ type SCIMAPI struct {
 }
 
 // List retrieves all SCIM IDP integrations
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *SCIMAPI) List(ctx context.Context) ([]api.ScimIntegration, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/scim-idp", nil, nil)
 	if err != nil {
@@ -28,7 +28,7 @@ func (a *SCIMAPI) List(ctx context.Context) ([]api.ScimIntegration, error) {
 }
 
 // Get retrieves a specific SCIM IDP integration by ID
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *SCIMAPI) Get(ctx context.Context, integrationID string) (*api.ScimIntegration, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/scim-idp/"+integrationID, nil, nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func (a *SCIMAPI) Get(ctx context.Context, integrationID string) (*api.ScimInteg
 }
 
 // Create creates a new SCIM IDP integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *SCIMAPI) Create(ctx context.Context, request api.CreateScimIntegrationRequest) (*api.ScimIntegration, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -60,7 +60,7 @@ func (a *SCIMAPI) Create(ctx context.Context, request api.CreateScimIntegrationR
 }
 
 // Update updates an existing SCIM IDP integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *SCIMAPI) Update(ctx context.Context, integrationID string, request api.UpdateScimIntegrationRequest) (*api.ScimIntegration, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -78,7 +78,7 @@ func (a *SCIMAPI) Update(ctx context.Context, integrationID string, request api.
 }
 
 // Delete deletes a SCIM IDP integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *SCIMAPI) Delete(ctx context.Context, integrationID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/integrations/scim-idp/"+integrationID, nil, nil)
 	if err != nil {
@@ -91,7 +91,7 @@ func (a *SCIMAPI) Delete(ctx context.Context, integrationID string) error {
 }
 
 // RegenerateToken regenerates the SCIM API token for an integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *SCIMAPI) RegenerateToken(ctx context.Context, integrationID string) (*api.ScimTokenResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "POST", "/api/integrations/scim-idp/"+integrationID+"/token", nil, nil)
 	if err != nil {
@@ -105,7 +105,7 @@ func (a *SCIMAPI) RegenerateToken(ctx context.Context, integrationID string) (*a
 }
 
 // GetLogs retrieves synchronization logs for an SCIM IDP integration
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *SCIMAPI) GetLogs(ctx context.Context, integrationID string) ([]api.IdpIntegrationSyncLog, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/scim-idp/"+integrationID+"/logs", nil, nil)
 	if err != nil {

@@ -83,7 +83,7 @@ func NetworkTrafficEndDate(t time.Time) NetworkTrafficOption {
 }
 
 // ListAuditEvents list all audit events
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EventsAPI) ListAuditEvents(ctx context.Context) ([]api.Event, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/events/audit", nil, nil)
 	if err != nil {
@@ -97,7 +97,7 @@ func (a *EventsAPI) ListAuditEvents(ctx context.Context) ([]api.Event, error) {
 }
 
 // ListNetworkTrafficEvents list network traffic events
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *EventsAPI) ListNetworkTrafficEvents(ctx context.Context, opts ...NetworkTrafficOption) (*api.NetworkTrafficEventsResponse, error) {
 	query := make(map[string]string)
 	for _, o := range opts {

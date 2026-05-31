@@ -14,7 +14,7 @@ type DNSAPI struct {
 }
 
 // ListNameserverGroups list all nameserver groups
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *DNSAPI) ListNameserverGroups(ctx context.Context) ([]api.NameserverGroup, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/dns/nameservers", nil, nil)
 	if err != nil {
@@ -28,7 +28,7 @@ func (a *DNSAPI) ListNameserverGroups(ctx context.Context) ([]api.NameserverGrou
 }
 
 // GetNameserverGroup get nameserver group info
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *DNSAPI) GetNameserverGroup(ctx context.Context, nameserverGroupID string) (*api.NameserverGroup, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/dns/nameservers/"+nameserverGroupID, nil, nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func (a *DNSAPI) GetNameserverGroup(ctx context.Context, nameserverGroupID strin
 }
 
 // CreateNameserverGroup create new nameserver group
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *DNSAPI) CreateNameserverGroup(ctx context.Context, request api.PostApiDnsNameserversJSONRequestBody) (*api.NameserverGroup, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -60,7 +60,7 @@ func (a *DNSAPI) CreateNameserverGroup(ctx context.Context, request api.PostApiD
 }
 
 // UpdateNameserverGroup update nameserver group info
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *DNSAPI) UpdateNameserverGroup(ctx context.Context, nameserverGroupID string, request api.PutApiDnsNameserversNsgroupIdJSONRequestBody) (*api.NameserverGroup, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -78,7 +78,7 @@ func (a *DNSAPI) UpdateNameserverGroup(ctx context.Context, nameserverGroupID st
 }
 
 // DeleteNameserverGroup delete nameserver group
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *DNSAPI) DeleteNameserverGroup(ctx context.Context, nameserverGroupID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/dns/nameservers/"+nameserverGroupID, nil, nil)
 	if err != nil {
@@ -92,7 +92,7 @@ func (a *DNSAPI) DeleteNameserverGroup(ctx context.Context, nameserverGroupID st
 }
 
 // GetSettings get DNS settings
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *DNSAPI) GetSettings(ctx context.Context) (*api.DNSSettings, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/dns/settings", nil, nil)
 	if err != nil {
@@ -106,7 +106,7 @@ func (a *DNSAPI) GetSettings(ctx context.Context) (*api.DNSSettings, error) {
 }
 
 // UpdateSettings update DNS settings
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *DNSAPI) UpdateSettings(ctx context.Context, request api.PutApiDnsSettingsJSONRequestBody) (*api.DNSSettings, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {

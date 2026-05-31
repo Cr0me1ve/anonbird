@@ -14,7 +14,7 @@ type MSPAPI struct {
 }
 
 // ListTenants retrieves all MSP tenants
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *MSPAPI) ListTenants(ctx context.Context) (*api.GetTenantsResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/msp/tenants", nil, nil)
 	if err != nil {
@@ -28,7 +28,7 @@ func (a *MSPAPI) ListTenants(ctx context.Context) (*api.GetTenantsResponse, erro
 }
 
 // CreateTenant creates a new MSP tenant
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *MSPAPI) CreateTenant(ctx context.Context, request api.CreateTenantRequest) (*api.TenantResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -46,7 +46,7 @@ func (a *MSPAPI) CreateTenant(ctx context.Context, request api.CreateTenantReque
 }
 
 // UpdateTenant updates an existing MSP tenant
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *MSPAPI) UpdateTenant(ctx context.Context, tenantID string, request api.UpdateTenantRequest) (*api.TenantResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -64,7 +64,7 @@ func (a *MSPAPI) UpdateTenant(ctx context.Context, tenantID string, request api.
 }
 
 // DeleteTenant deletes an MSP tenant
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *MSPAPI) DeleteTenant(ctx context.Context, tenantID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/integrations/msp/tenants/"+tenantID, nil, nil)
 	if err != nil {
@@ -77,7 +77,7 @@ func (a *MSPAPI) DeleteTenant(ctx context.Context, tenantID string) error {
 }
 
 // UnlinkTenant unlinks a tenant from the MSP account
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *MSPAPI) UnlinkTenant(ctx context.Context, tenantID, owner string) error {
 	params := map[string]string{"owner": owner}
 	requestBytes, err := json.Marshal(params)
@@ -95,7 +95,7 @@ func (a *MSPAPI) UnlinkTenant(ctx context.Context, tenantID, owner string) error
 }
 
 // VerifyTenantDNS verifies a tenant domain DNS challenge
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *MSPAPI) VerifyTenantDNS(ctx context.Context, tenantID string) error {
 	resp, err := a.c.NewRequest(ctx, "POST", "/api/integrations/msp/tenants/"+tenantID+"/dns", nil, nil)
 	if err != nil {
@@ -108,7 +108,7 @@ func (a *MSPAPI) VerifyTenantDNS(ctx context.Context, tenantID string) error {
 }
 
 // InviteTenant invites an existing account as a tenant to the MSP account
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *MSPAPI) InviteTenant(ctx context.Context, tenantID string) (*api.TenantResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "POST", "/api/integrations/msp/tenants/"+tenantID+"/invite", nil, nil)
 	if err != nil {

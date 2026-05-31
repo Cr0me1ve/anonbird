@@ -660,7 +660,7 @@ func (s *DefaultServer) applyConfiguration(update nbdns.Config) error {
 
 	if s.service.RuntimePort() != DefaultPort && !s.hostManager.supportCustomPort() {
 		log.Warnf("the DNS manager of this peer doesn't support custom port. Disabling primary DNS setup. " +
-			"See AnonBird DNS operations docs at: https://github.com/Cr0me1ve/netbird/tree/main/docs")
+			"See AnonBird DNS operations docs at: https://github.com/Cr0me1ve/anonbird/tree/main/docs")
 		s.currentConfig.RouteAll = false
 	}
 

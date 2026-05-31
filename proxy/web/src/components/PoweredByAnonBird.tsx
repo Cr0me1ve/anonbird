@@ -3,7 +3,7 @@ import { AnonBirdLogo } from "./AnonBirdLogo";
 export function PoweredByAnonBird() {
   return (
     <a
-      href="https://github.com/Cr0me1ve/netbird"
+      href="https://github.com/Cr0me1ve/anonbird"
       target="_blank"
       rel="noopener noreferrer"
       className="flex items-center justify-center mt-8 gap-2 group cursor-pointer"

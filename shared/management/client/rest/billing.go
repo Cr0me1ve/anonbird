@@ -12,7 +12,7 @@ type BillingAPI struct {
 }
 
 // GetUsage retrieves current usage statistics for the account
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *BillingAPI) GetUsage(ctx context.Context) (*api.UsageStats, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/billing/usage", nil, nil)
 	if err != nil {
@@ -26,7 +26,7 @@ func (a *BillingAPI) GetUsage(ctx context.Context) (*api.UsageStats, error) {
 }
 
 // GetSubscription retrieves the current subscription details
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *BillingAPI) GetSubscription(ctx context.Context) (*api.Subscription, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/billing/subscription", nil, nil)
 	if err != nil {
@@ -40,7 +40,7 @@ func (a *BillingAPI) GetSubscription(ctx context.Context) (*api.Subscription, er
 }
 
 // GetInvoices retrieves the account's paid invoices
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *BillingAPI) GetInvoices(ctx context.Context) ([]api.InvoiceResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/billing/invoices", nil, nil)
 	if err != nil {
@@ -54,7 +54,7 @@ func (a *BillingAPI) GetInvoices(ctx context.Context) ([]api.InvoiceResponse, er
 }
 
 // GetInvoicePDF retrieves the invoice PDF URL
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *BillingAPI) GetInvoicePDF(ctx context.Context, invoiceID string) (*api.InvoicePDFResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/billing/invoices/"+invoiceID+"/pdf", nil, nil)
 	if err != nil {
@@ -68,7 +68,7 @@ func (a *BillingAPI) GetInvoicePDF(ctx context.Context, invoiceID string) (*api.
 }
 
 // GetInvoiceCSV retrieves the invoice CSV content
-// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
+// See more: https://github.com/Cr0me1ve/anonbird/tree/main/docs
 func (a *BillingAPI) GetInvoiceCSV(ctx context.Context, invoiceID string) (string, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/integrations/billing/invoices/"+invoiceID+"/csv", nil, nil)
 	if err != nil {

@@ -50,7 +50,7 @@ export function ErrorPage({ code, title, message, proxy = true, destination = tr
         </Button>
         <Button
           variant="secondary"
-          onClick={() => globalThis.open("https://github.com/Cr0me1ve/netbird/tree/main/docs", "_blank", "noopener,noreferrer")}
+          onClick={() => globalThis.open("https://github.com/Cr0me1ve/anonbird/tree/main/docs", "_blank", "noopener,noreferrer")}
         >
           <BookText size={16} />
           Documentation

@@ -6,7 +6,7 @@
 
 - Статус: MVP anonymous mesh реализован и прошёл requirement-by-requirement audit 2026-05-31; post-MVP production/open-source release gate остаётся открытым до полного release-candidate прогона.
 - Текущий фокус: Phase 1-4, Phase 5 Tor relay stream multipath/per-channel health и Phase 6 direct-I2P MVP закрыты на code/unit + стендовом уровне; leak-map audit закрывает найденные clearnet side channels, reconnect/failure soak прошёл, dashboard/runtime/release packaging/proxy web/docs/infrastructure surface hardened. Сейчас идёт production-readiness слой: published artifacts/images, full release test suite, Marton Tor repeat/release-artifact repeat, NetBird->AnonBird migration server+clients, rollback/uninstall/reinstall и итоговый open-source release report.
-- Оценка остатка на 2026-05-31 после GoReleaser cleanup: примерно 91% от ТЗ закрыто; главный незакрытый блок — настоящий tag/release run, public GHCR manifests, clean one-command self-host из опубликованных образов, двухклиентная миграция NetBird->AnonBird и финальный release report.
+- Оценка остатка на 2026-05-31 после GoReleaser cleanup и GitHub repo rename: примерно 92% от ТЗ закрыто; главный незакрытый блок — настоящий tag/release run, public GHCR manifests, clean one-command self-host из опубликованных образов, двухклиентная миграция NetBird->AnonBird, локальный folder rename и финальный release report.
 - Правило выполнения: каждая реализованная часть отмечается здесь или в соответствующем чеклисте ниже; если в ходе сверки с ТЗ появляются ограничения или риски, они фиксируются в заметках.
 - Сверка с новым ТЗ: четыре сервера пользователя для финального testbed зафиксированы в разделе 22.0; release/open-source readiness нельзя закрывать без полного remote прогона, Marton через виртуальную сеть, server/client migration с обычного NetBird и финального verdict, можно ли заменить NetBird на AnonBird без ручных исправлений.
 - Заметка: проектное имя клиента и пользовательских команд — AnonBird; CLI должен использовать `anonbird`.
@@ -1321,7 +1321,7 @@ Release-readiness gate нельзя закрывать только по лок�
   - `anonbird debug anonymous-check`.
 - [x] Проверить clean install на RHEL-like Linux с теми же критериями.
 
-Статус 2026-05-31: Linux install/package surface приведён к canonical AnonBird naming. `release_files/install.sh` ставит release binaries из `Cr0me1ve/anonbird` по умолчанию, поддерживает `--no-service`, `--no-start`, `--compat-symlink`, `--force-compat-symlink` и env overrides для RC до фактического repo rename. DEB/RPM postinstall/preremove умеют безопасно создавать/удалять временный `/usr/bin/netbird -> /usr/bin/anonbird` только по явному `ANONBIRD_COMPAT_SYMLINK=true`. Release metadata, updater artifact URLs, Windows/macOS installer naming, README install commands и GitHub release workflow artifact names переключены на `anonbird*`. Проверено локально: `sh -n`, `shellcheck -S error`, YAML parse, WiX XML parse, targeted `go test` по updater/cmd. Открыто: реальный clean install/upgrade из RC artifacts на testbed.
+Статус 2026-05-31: Linux install/package surface приведён к canonical AnonBird naming. `release_files/install.sh` ставит release binaries из `Cr0me1ve/anonbird` по умолчанию, поддерживает `--no-service`, `--no-start`, `--compat-symlink`, `--force-compat-symlink` и env overrides для RC/tag release testing. DEB/RPM postinstall/preremove умеют безопасно создавать/удалять временный `/usr/bin/netbird -> /usr/bin/anonbird` только по явному `ANONBIRD_COMPAT_SYMLINK=true`. Release metadata, updater artifact URLs, Windows/macOS installer naming, README install commands и GitHub release workflow artifact names переключены на `anonbird*`. Проверено локально: `sh -n`, `shellcheck -S error`, YAML parse, WiX XML parse, targeted `go test` по updater/cmd. Открыто: реальный clean install/upgrade из RC artifacts на testbed.
 
 Статус 2026-05-31: one-command self-host script дополнительно hardened для release artifacts: добавлены image overrides (`ANONBIRD_DASHBOARD_IMAGE`, `ANONBIRD_SERVER_IMAGE`, `ANONBIRD_PROXY_IMAGE`), `--preflight-only`, `--skip-image-preflight` и Docker image preflight перед запуском контейнеров. Если AnonBird release images не опубликованы/приватны/недоступны, installer теперь падает до `docker compose up` с точным списком образов и командами исправления. Generated config теперь отключает anonymous metrics, geolocation downloads и management version checks, а server containers получают `NB_DISABLE_GEOLOCATION=true`. Проверено локально: `bash -n`, `shellcheck -S error`, `--help`, `--render-only` + `docker compose config`, preflight failure для missing images и skip path. Проверено на `93.177.116.58`: one-command RC stack с local RC images поднял dashboard/management/signal/relay через Traefik на `anonbird.93.177.116.58.sslip.io`, dashboard/OIDC отвечают `200`, API без auth `401`, setup-key bootstrap работает, old-upstream/version/geolocation leak grep пустой после fix. Открыто: опубликовать/подтвердить реальные `ghcr.io/cr0me1ve/anonbird-*` release images и прогнать полный server/dashboard clean install именно из published release artifacts.
 
@@ -1381,17 +1381,19 @@ Type "I understand this may leak my real IP" to continue:
 
 ### 22.3. Rename repository and local folders
 
-- [ ] Переименовать GitHub repository/project surface из NetBird fork naming в AnonBird:
+- [x] Переименовать GitHub repository/project surface из NetBird fork naming в AnonBird:
   - основной репозиторий: `netbird` -> `anonbird`;
   - dashboard repository: `dashboard` -> `anonbird-dashboard` или другой выбранный canonical name;
   - container/package/image/docs/release URLs должны использовать новое имя.
 - [ ] Переименовать локальные рабочие папки на компьютере:
   - `/Users/kirill/Code/netbird` -> `/Users/kirill/Code/anonbird`;
   - `/Users/kirill/Code/dashboard` -> `/Users/kirill/Code/anonbird-dashboard`.
-- [ ] Обновить git remotes, CI paths, docs, install commands, dashboard links и release scripts после rename.
+- [x] Обновить git remotes, CI paths, docs, install commands, dashboard links и release scripts после rename.
 - [ ] Отдельно принять решение по Go module/import path:
   - либо оставить `github.com/netbirdio/netbird` как compatibility module path;
   - либо мигрировать на `github.com/Cr0me1ve/anonbird` с полным import rewrite, `go.mod`, ldflags, CI и downstream compatibility notes.
+
+Статус 2026-05-31: GitHub repositories переименованы: `Cr0me1ve/netbird` -> `Cr0me1ve/anonbird`, `Cr0me1ve/dashboard` -> `Cr0me1ve/anonbird-dashboard`. Локальные git remotes обновлены на новые SSH URLs. Основной repo и dashboard больше не содержат ссылок `Cr0me1ve/netbird`/`Cr0me1ve/dashboard` в tracked source/docs outside `.git`; они заменены на `Cr0me1ve/anonbird`/`Cr0me1ve/anonbird-dashboard`. Открыто: физически переименовать локальные папки `/Users/kirill/Code/netbird` и `/Users/kirill/Code/dashboard` после завершения текущих активных проверок/пушей, чтобы не ломать рабочую сессию; Go module path остаётся compatibility decision и пока намеренно не переписан.
 
 ### 22.4. Logo and visual identity
 

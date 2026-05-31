@@ -9,7 +9,7 @@ const (
 	ProjectURLEnv  = "ANONBIRD_PROJECT_URL"
 	DownloadURLEnv = "ANONBIRD_DOWNLOAD_URL"
 
-	defaultProjectURL  = "https://github.com/Cr0me1ve/netbird"
+	defaultProjectURL  = "https://github.com/Cr0me1ve/anonbird"
 	defaultDownloadURL = defaultProjectURL + "/releases"
 )
 
