@@ -109,15 +109,21 @@ func configurePlatformSpecificSettings(svcConfig *service.Config) error {
 }
 
 func configuredAnonymousRuntimeServiceDependencies() []string {
-	if shouldApplyAnonymousMode() || anonymousTransportFlagsChanged() {
+	if anonymousRuntimeFlagsChanged() {
 		return anonymousRuntimeServiceDependencies(effectiveAnonymousMode(), anonymousTransportFromFlags())
 	}
 
 	cfg, err := profilemanager.GetConfig(serviceDependencyConfigPath())
 	if err != nil {
-		return nil
+		return anonymousRuntimeServiceDependencies(effectiveAnonymousMode(), anonymousTransportFromFlags())
 	}
 	return anonymousRuntimeServiceDependencies(cfg.AnonymousMode, cfg.AnonymousTransport)
+}
+
+func anonymousRuntimeFlagsChanged() bool {
+	return rootCmd.PersistentFlags().Changed(anonymousModeFlag) ||
+		noAnonymousMode ||
+		anonymousTransportFlagsChanged()
 }
 
 func serviceDependencyConfigPath() string {
@@ -132,8 +138,12 @@ func anonymousRuntimeServiceDependencies(enabled bool, transport anonymous.Trans
 		return nil
 	}
 
-	switch anonymous.NormalizeTransport(transport).Type {
+	transport = anonymous.NormalizeTransport(transport)
+	switch transport.Type {
 	case anonymous.TransportI2PDatagram:
+		if transport.I2PDaemonMode != anonymous.I2PDaemonExternal {
+			return nil
+		}
 		return []string{"Wants=i2pd.service", "After=i2pd.service"}
 	case anonymous.TransportTorRelayOnly:
 		return []string{"Wants=tor.service", "After=tor.service"}

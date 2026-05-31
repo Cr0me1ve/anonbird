@@ -74,9 +74,10 @@ The generated client config disables non-required local proxies:
 
 ## Systemd
 
-Linux service installation adds runtime dependencies:
+Linux service installation adds runtime dependencies according to the selected I2P daemon mode:
 
-- `i2p-datagram`: `Wants=i2pd.service` and `After=i2pd.service`
+- `i2p-datagram` + `external`: `Wants=i2pd.service` and `After=i2pd.service`
+- `i2p-datagram` + `auto`/`managed`: no `i2pd.service` dependency; AnonBird starts and owns a managed `i2pd` process when SAM is unavailable
 - `tor-relay-only`: `Wants=tor.service` and `After=tor.service`
 
 For `external` mode, keep `i2pd.service` enabled:
@@ -86,7 +87,13 @@ systemctl enable --now i2pd
 systemctl restart anonbird
 ```
 
-For `auto`/`managed`, the dependency still helps when a system SAM bridge exists, but AnonBird can start its own `i2pd` if the configured SAM bridge is unavailable.
+For `auto`/`managed`, do not rely on a system `i2pd.service` as the runtime owner. This avoids a failure mode where AnonBird connects to a system SAM bridge during startup, then the system `i2pd` crashes later and the client loses I2P without owning a process it can restart. In these modes, verify the managed process instead:
+
+```bash
+pgrep -a i2pd
+ss -ltnp | grep 7656
+anonbird debug anonymous-check
+```
 
 ## Server-side I2P tunnel
 

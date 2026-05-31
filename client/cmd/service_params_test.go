@@ -19,6 +19,7 @@ import (
 
 	"github.com/netbirdio/netbird/client/configs"
 	"github.com/netbirdio/netbird/client/internal/anonymous"
+	"github.com/netbirdio/netbird/client/internal/profilemanager"
 )
 
 func TestServiceParamsPath(t *testing.T) {
@@ -96,10 +97,18 @@ func TestAnonymousRuntimeServiceDependencies(t *testing.T) {
 			transport: anonymous.TransportConfig{Type: anonymous.TransportI2PDatagram},
 		},
 		{
-			name:      "i2p datagram",
+			name:      "i2p datagram auto",
 			enabled:   true,
 			transport: anonymous.TransportConfig{Type: anonymous.TransportI2PDatagram},
-			want:      []string{"Wants=i2pd.service", "After=i2pd.service"},
+		},
+		{
+			name:    "i2p datagram external",
+			enabled: true,
+			transport: anonymous.TransportConfig{
+				Type:          anonymous.TransportI2PDatagram,
+				I2PDaemonMode: anonymous.I2PDaemonExternal,
+			},
+			want: []string{"Wants=i2pd.service", "After=i2pd.service"},
 		},
 		{
 			name:      "tor relay only",
@@ -120,6 +129,103 @@ func TestAnonymousRuntimeServiceDependencies(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestConfiguredAnonymousRuntimeServiceDependenciesUsesSavedProfileTransport(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "default.json")
+	restoreAnonymousRuntimeTestState(t)
+
+	enabled := true
+	_, err := profilemanager.UpdateOrCreateConfig(profilemanager.ConfigInput{
+		ConfigPath:    configFile,
+		ManagementURL: "http://managementexample.b32.i2p",
+		AnonymousMode: &enabled,
+		AnonymousTransport: &anonymous.TransportConfig{
+			Type: anonymous.TransportI2PDatagram,
+		},
+	})
+	require.NoError(t, err)
+
+	configPath = configFile
+	anonymousMode = true
+	noAnonymousMode = false
+	anonymousTransport = anonymous.TransportTorRelayOnly
+
+	got := configuredAnonymousRuntimeServiceDependencies()
+	assert.Empty(t, got)
+}
+
+func TestConfiguredAnonymousRuntimeServiceDependenciesExplicitFlagsOverrideProfile(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "default.json")
+	restoreAnonymousRuntimeTestState(t)
+
+	enabled := true
+	_, err := profilemanager.UpdateOrCreateConfig(profilemanager.ConfigInput{
+		ConfigPath:    configFile,
+		ManagementURL: "http://managementexample.b32.i2p",
+		AnonymousMode: &enabled,
+		AnonymousTransport: &anonymous.TransportConfig{
+			Type: anonymous.TransportI2PDatagram,
+		},
+	})
+	require.NoError(t, err)
+
+	configPath = configFile
+	require.NoError(t, rootCmd.PersistentFlags().Set(anonymousTransportFlag, anonymous.TransportTorRelayOnly))
+
+	got := configuredAnonymousRuntimeServiceDependencies()
+	assert.Equal(t, []string{"Wants=tor.service", "After=tor.service"}, got)
+}
+
+func restoreAnonymousRuntimeTestState(t *testing.T) {
+	t.Helper()
+
+	origConfigPath := configPath
+	origAnonymousMode := anonymousMode
+	origAnonymousTransport := anonymousTransport
+	origTorSOCKS5 := torSOCKS5
+	origI2PSAM := i2pSAM
+	origI2PTunnelLength := i2pTunnelLength
+	origI2PTunnelQuantity := i2pTunnelQuantity
+	origI2PDaemonMode := i2pDaemonMode
+	origI2PDaemonPath := i2pDaemonPath
+	origI2PDataDir := i2pDataDir
+	origNoAnonymousMode := noAnonymousMode
+	changed := make(map[string]bool)
+	rootCmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		changed[f.Name] = f.Changed
+		f.Changed = false
+	})
+
+	anonymousMode = true
+	anonymousTransport = anonymous.TransportTorRelayOnly
+	torSOCKS5 = anonymous.DefaultTorSOCKS5
+	i2pSAM = anonymous.DefaultI2PSAM
+	i2pTunnelLength = anonymous.DefaultI2PTunnelLength
+	i2pTunnelQuantity = anonymous.DefaultI2PTunnelQuantity
+	i2pDaemonMode = anonymous.DefaultI2PDaemonMode
+	i2pDaemonPath = anonymous.DefaultI2PDaemonPath
+	i2pDataDir = ""
+	noAnonymousMode = false
+
+	t.Cleanup(func() {
+		configPath = origConfigPath
+		anonymousMode = origAnonymousMode
+		anonymousTransport = origAnonymousTransport
+		torSOCKS5 = origTorSOCKS5
+		i2pSAM = origI2PSAM
+		i2pTunnelLength = origI2PTunnelLength
+		i2pTunnelQuantity = origI2PTunnelQuantity
+		i2pDaemonMode = origI2PDaemonMode
+		i2pDaemonPath = origI2PDaemonPath
+		i2pDataDir = origI2PDataDir
+		noAnonymousMode = origNoAnonymousMode
+		rootCmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+			f.Changed = changed[f.Name]
+		})
+	})
 }
 
 func TestLoadServiceParams_InvalidJSON(t *testing.T) {
