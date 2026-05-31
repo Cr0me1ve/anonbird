@@ -33,12 +33,12 @@ const (
 	// managementLegacyPortString is the port that was used before by the Management gRPC server.
 	// It is used for backward compatibility now.
 	managementLegacyPortString = "33073"
-	// DefaultManagementURL points to the NetBird's cloud management endpoint
-	DefaultManagementURL = "https://api.netbird.io:443"
+	// DefaultManagementURL points to a local self-hosted AnonBird management endpoint.
+	DefaultManagementURL = "http://localhost:33073"
 	// oldDefaultManagementURL points to the NetBird's old cloud management endpoint
 	oldDefaultManagementURL = "https://api.wiretrustee.com:443"
-	// DefaultAdminURL points to NetBird's cloud management console
-	DefaultAdminURL = "https://app.netbird.io:443"
+	// DefaultAdminURL points to a local self-hosted AnonBird management console.
+	DefaultAdminURL = "http://localhost:33071"
 )
 
 // mgmProber is the subset of management client needed for URL migration probes.
@@ -815,9 +815,10 @@ func GetConfig(configPath string) (*Config, error) {
 	return readConfig(configPath, false)
 }
 
-// UpdateOldManagementURL checks whether client can switch to the new Management URL with port 443 and the management domain.
-// If it can switch, then it updates the config and returns a new one. Otherwise, it returns the provided config.
-// The check is performed only for the NetBird's managed version.
+// UpdateOldManagementURL checks whether a legacy managed-cloud URL can be
+// migrated to the AnonBird default management URL. If it can switch, then it
+// updates the config and returns a new one. Otherwise, it returns the provided
+// config.
 func UpdateOldManagementURL(ctx context.Context, config *Config, configPath string) (*Config, error) {
 	if config.AnonymousMode {
 		log.Debugf("skip cloud management URL migration probe in anonymous mode")
@@ -855,7 +856,14 @@ func UpdateOldManagementURL(ctx context.Context, config *Config, configPath stri
 		return config, nil
 	}
 
-	newURL, err := parseURL("Management URL", fmt.Sprintf("%s://%s", config.ManagementURL.Scheme, net.JoinHostPort(defaultManagementURL.Hostname(), "443")))
+	newURL := defaultManagementURL
+	newMgmTLSEnabled := newURL.Scheme == "https"
+	if newURL.Host == "" {
+		return nil, fmt.Errorf("default Management URL host is empty")
+	}
+	if _, _, err := net.SplitHostPort(newURL.Host); err != nil && newURL.Port() == "" {
+		newURL, err = parseURL("Management URL", fmt.Sprintf("%s://%s", newURL.Scheme, net.JoinHostPort(newURL.Hostname(), "443")))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -868,7 +876,7 @@ func UpdateOldManagementURL(ctx context.Context, config *Config, configPath stri
 		return config, err
 	}
 
-	client, err := newMgmProber(ctx, newURL.Host, key, mgmTlsEnabled)
+	client, err := newMgmProber(ctx, newURL.Host, key, newMgmTLSEnabled)
 	if err != nil {
 		log.Infof("couldn't switch to the new Management %s", newURL.String())
 		return config, err

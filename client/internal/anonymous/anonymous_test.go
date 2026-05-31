@@ -20,7 +20,7 @@ func TestHostIsAnonymous(t *testing.T) {
 		{"exampleabcdefghijklmnop.onion", true},
 		{"exampleabcdefghijklmnop.onion:80", true},
 		{"example.b32.i2p", true},
-		{"api.netbird.io", false},
+		{"api.anonbird.cloud", false},
 		{"93.177.116.58", false},
 		{"[::1]:443", false},
 		{"localhost", false},

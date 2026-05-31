@@ -15,8 +15,8 @@ func TestExtractValidDomain(t *testing.T) {
 	}{
 		{
 			name:     "HTTPS URL with port",
-			url:      "https://api.netbird.io:443",
-			expected: "api.netbird.io",
+			url:      "https://api.anonbird.cloud:443",
+			expected: "api.anonbird.cloud",
 		},
 		{
 			name:     "HTTP URL without port",

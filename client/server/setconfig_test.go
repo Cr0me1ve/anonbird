@@ -41,7 +41,7 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 
 	ic := profilemanager.ConfigInput{
 		ConfigPath:    filepath.Join(tempDir, profName+".json"),
-		ManagementURL: "https://api.netbird.io:443",
+		ManagementURL: "https://api.anonbird.cloud:443",
 	}
 	_, err = profilemanager.UpdateOrCreateConfig(ic)
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 	req := &proto.SetConfigRequest{
 		ProfileName:           profName,
 		Username:              currUser.Username,
-		ManagementUrl:         "https://new-api.netbird.io:443",
+		ManagementUrl:         "https://new-api.anonbird.cloud:443",
 		AdminURL:              "https://new-admin.netbird.io",
 		RosenpassEnabled:      &rosenpassEnabled,
 		RosenpassPermissive:   &rosenpassPermissive,
@@ -140,7 +140,7 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 	cfg, err := profilemanager.GetConfig(cfgPath)
 	require.NoError(t, err)
 
-	require.Equal(t, "https://new-api.netbird.io:443", cfg.ManagementURL.String())
+	require.Equal(t, "https://new-api.anonbird.cloud:443", cfg.ManagementURL.String())
 	require.Equal(t, "https://new-admin.netbird.io:443", cfg.AdminURL.String())
 	require.Equal(t, rosenpassEnabled, cfg.RosenpassEnabled)
 	require.Equal(t, rosenpassPermissive, cfg.RosenpassPermissive)

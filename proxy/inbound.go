@@ -142,7 +142,7 @@ func (m *inboundManager) bringUp(ctx context.Context, accountID types.AccountID,
 	// markOverlayOrigin stamps every connection accepted by an inbound
 	// listener with a context value middlewares can read to skip
 	// geo/CrowdSec checks (the source address is always inside the
-	// NetBird CGNAT range and won't match either dataset).
+	// AnonBird CGNAT range and won't match either dataset).
 	markOverlayOrigin := func(ctx context.Context, _ net.Conn) context.Context {
 		return types.WithOverlayOrigin(ctx)
 	}

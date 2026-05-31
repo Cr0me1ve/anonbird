@@ -43,7 +43,7 @@ func DetermineDeploymentType(managementURL string) DeploymentType {
 		return DeploymentTypeSelfHosted
 	}
 
-	if strings.ToLower(u.Hostname()) == "api.netbird.io" {
+	if strings.ToLower(u.Hostname()) == "api.anonbird.cloud" {
 		return DeploymentTypeCloud
 	}
 

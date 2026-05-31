@@ -230,7 +230,7 @@ func (mw *Middleware) checkIPRestrictions(w http.ResponseWriter, r *http.Request
 	var verdict restrict.Verdict
 	if types.IsOverlayOrigin(r.Context()) {
 		// Geo/CrowdSec checks don't apply over the WireGuard overlay:
-		// the source address is always inside the NetBird CGNAT range,
+		// the source address is always inside the AnonBird CGNAT range,
 		// which is never in a GeoIP database or a CrowdSec decision
 		// list. Enforcing them here would either no-op (best case) or
 		// fail-closed when the geo database is missing.

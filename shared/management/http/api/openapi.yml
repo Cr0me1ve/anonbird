@@ -1,6 +1,6 @@
 openapi: 3.1.0
 servers:
-  - url: https://api.netbird.io
+  - url: https://api.anonbird.cloud
     description: Default server
 info:
   title: NetBird REST API
@@ -8824,7 +8824,7 @@ paths:
                 baseURL:
                   type: string
                   description: The base URL for the redirect after checkout.
-                  example: "https://app.netbird.io/plans/success"
+                  example: "https://app.anonbird.cloud/plans/success"
                 priceID:
                   type: string
                   description: The Price ID for checkout.
@@ -8860,7 +8860,7 @@ paths:
             type: string
           required: true
           description: The base URL for the redirect after accessing the portal.
-          example: "https://app.netbird.io/plans"
+          example: "https://app.anonbird.cloud/plans"
       responses:
         "200":
           description: Customer portal URL

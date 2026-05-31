@@ -47,7 +47,7 @@
 //  5. Updater waits for installer to complete
 //  6. Updater restarts daemon:
 //     - Windows: netbird.exe service start
-//     - macOS/Linux: netbird service start
+//     - macOS/Linux: anonbird service start
 //  7. Updater restarts UI:
 //     - Windows: Launches netbird-ui.exe as active console user using CreateProcessAsUser
 //     - macOS: Uses launchctl asuser to launch NetBird.app for console user
@@ -78,7 +78,7 @@
 //   - Example: C:\ProgramData\Netbird\tmp-install
 //
 // macOS:
-//   - Path: /var/lib/netbird/tmp-install
+//   - Path: /var/lib/anonbird/tmp-install
 //   - Requires root permissions
 //
 // Files created during installation:
@@ -107,5 +107,5 @@
 // Enable via environment variable:
 //
 //	export NB_AUTO_UPDATE_DRY_RUN=true
-//	netbird service install-update 0.29.0
+//	anonbird service install-update 0.29.0
 package installer

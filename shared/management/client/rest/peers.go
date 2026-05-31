@@ -29,7 +29,7 @@ func PeerIPFilter(ip string) PeersListOption {
 }
 
 // List list all peers
-// See more: https://docs.netbird.io/api/resources/peers#list-all-peers
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeersAPI) List(ctx context.Context, opts ...PeersListOption) ([]api.Peer, error) {
 	query := make(map[string]string)
 	for _, o := range opts {
@@ -48,7 +48,7 @@ func (a *PeersAPI) List(ctx context.Context, opts ...PeersListOption) ([]api.Pee
 }
 
 // Get retrieve a peer
-// See more: https://docs.netbird.io/api/resources/peers#retrieve-a-peer
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeersAPI) Get(ctx context.Context, peerID string) (*api.Peer, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/peers/"+peerID, nil, nil)
 	if err != nil {
@@ -62,7 +62,7 @@ func (a *PeersAPI) Get(ctx context.Context, peerID string) (*api.Peer, error) {
 }
 
 // Update update information for a peer
-// See more: https://docs.netbird.io/api/resources/peers#update-a-peer
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeersAPI) Update(ctx context.Context, peerID string, request api.PutApiPeersPeerIdJSONRequestBody) (*api.Peer, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -80,7 +80,7 @@ func (a *PeersAPI) Update(ctx context.Context, peerID string, request api.PutApi
 }
 
 // Delete delete a peer
-// See more: https://docs.netbird.io/api/resources/peers#delete-a-peer
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeersAPI) Delete(ctx context.Context, peerID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/peers/"+peerID, nil, nil)
 	if err != nil {
@@ -94,7 +94,7 @@ func (a *PeersAPI) Delete(ctx context.Context, peerID string) error {
 }
 
 // ListAccessiblePeers list all peers that the specified peer can connect to within the network
-// See more: https://docs.netbird.io/api/resources/peers#list-accessible-peers
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeersAPI) ListAccessiblePeers(ctx context.Context, peerID string) ([]api.Peer, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/peers/"+peerID+"/accessible-peers", nil, nil)
 	if err != nil {
@@ -108,7 +108,7 @@ func (a *PeersAPI) ListAccessiblePeers(ctx context.Context, peerID string) ([]ap
 }
 
 // CreateTemporaryAccess create temporary access for a peer
-// See more: https://docs.netbird.io/api/resources/peers#create-temporary-access
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeersAPI) CreateTemporaryAccess(ctx context.Context, peerID string, request api.PostApiPeersPeerIdTemporaryAccessJSONRequestBody) (*api.PeerTemporaryAccessResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -140,7 +140,7 @@ func (a *PeersAPI) IngressPorts(peerID string) *PeerIngressPortsAPI {
 }
 
 // List list all ingress port allocations for a peer
-// See more: https://docs.netbird.io/api/resources/peers#list-all-ingress-port-allocations
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeerIngressPortsAPI) List(ctx context.Context) ([]api.IngressPortAllocation, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/peers/"+a.peerID+"/ingress/ports", nil, nil)
 	if err != nil {
@@ -154,7 +154,7 @@ func (a *PeerIngressPortsAPI) List(ctx context.Context) ([]api.IngressPortAlloca
 }
 
 // Get get ingress port allocation info
-// See more: https://docs.netbird.io/api/resources/peers#retrieve-an-ingress-port-allocation
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeerIngressPortsAPI) Get(ctx context.Context, allocationID string) (*api.IngressPortAllocation, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/peers/"+a.peerID+"/ingress/ports/"+allocationID, nil, nil)
 	if err != nil {
@@ -168,7 +168,7 @@ func (a *PeerIngressPortsAPI) Get(ctx context.Context, allocationID string) (*ap
 }
 
 // Create create new ingress port allocation
-// See more: https://docs.netbird.io/api/resources/peers#create-an-ingress-port-allocation
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeerIngressPortsAPI) Create(ctx context.Context, request api.PostApiPeersPeerIdIngressPortsJSONRequestBody) (*api.IngressPortAllocation, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -186,7 +186,7 @@ func (a *PeerIngressPortsAPI) Create(ctx context.Context, request api.PostApiPee
 }
 
 // Update update ingress port allocation
-// See more: https://docs.netbird.io/api/resources/peers#update-an-ingress-port-allocation
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeerIngressPortsAPI) Update(ctx context.Context, allocationID string, request api.PutApiPeersPeerIdIngressPortsAllocationIdJSONRequestBody) (*api.IngressPortAllocation, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -204,7 +204,7 @@ func (a *PeerIngressPortsAPI) Update(ctx context.Context, allocationID string, r
 }
 
 // Delete delete ingress port allocation
-// See more: https://docs.netbird.io/api/resources/peers#delete-an-ingress-port-allocation
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeerIngressPortsAPI) Delete(ctx context.Context, allocationID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/peers/"+a.peerID+"/ingress/ports/"+allocationID, nil, nil)
 	if err != nil {
@@ -232,7 +232,7 @@ func (a *PeersAPI) Jobs(peerID string) *PeerJobsAPI {
 }
 
 // List list all jobs for a peer
-// See more: https://docs.netbird.io/api/resources/peers#list-all-peer-jobs
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeerJobsAPI) List(ctx context.Context) ([]api.JobResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/peers/"+a.peerID+"/jobs", nil, nil)
 	if err != nil {
@@ -246,7 +246,7 @@ func (a *PeerJobsAPI) List(ctx context.Context) ([]api.JobResponse, error) {
 }
 
 // Get get job info
-// See more: https://docs.netbird.io/api/resources/peers#retrieve-a-peer-job
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeerJobsAPI) Get(ctx context.Context, jobID string) (*api.JobResponse, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/peers/"+a.peerID+"/jobs/"+jobID, nil, nil)
 	if err != nil {
@@ -260,7 +260,7 @@ func (a *PeerJobsAPI) Get(ctx context.Context, jobID string) (*api.JobResponse, 
 }
 
 // Create create new job for a peer
-// See more: https://docs.netbird.io/api/resources/peers#create-a-peer-job
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *PeerJobsAPI) Create(ctx context.Context, request api.PostApiPeersPeerIdJobsJSONRequestBody) (*api.JobResponse, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {

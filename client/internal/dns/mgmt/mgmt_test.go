@@ -87,8 +87,8 @@ func TestResolver_ExtractDomainFromURL(t *testing.T) {
 	}{
 		{
 			name:        "HTTPS URL with port",
-			urlStr:      "https://api.netbird.io:443",
-			expectedDom: "api.netbird.io",
+			urlStr:      "https://api.anonbird.cloud:443",
+			expectedDom: "api.anonbird.cloud",
 			expectError: false,
 		},
 		{

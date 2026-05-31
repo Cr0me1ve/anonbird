@@ -442,7 +442,7 @@ func checkFileStoreEngine(kind types.Engine, dataDir string) error {
 		storeFile := filepath.Join(dataDir, storeFileName)
 		if util.FileExists(storeFile) {
 			return fmt.Errorf("%s is not supported. Please refer to the documentation for migrating to SQLite: "+
-				"https://docs.netbird.io/selfhosted/sqlite-store#migrating-from-json-store-to-sq-lite-store", types.FileStoreEngine)
+				"https://github.com/Cr0me1ve/netbird/tree/main/docs", types.FileStoreEngine)
 		}
 	}
 	return nil

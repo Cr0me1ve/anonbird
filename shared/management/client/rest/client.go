@@ -39,75 +39,75 @@ type Client struct {
 	userAgent     string
 
 	// Accounts NetBird account APIs
-	// see more: https://docs.netbird.io/api/resources/accounts
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Accounts *AccountsAPI
 
 	// Users NetBird users APIs
-	// see more: https://docs.netbird.io/api/resources/users
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Users *UsersAPI
 
 	// Tokens NetBird tokens APIs
-	// see more: https://docs.netbird.io/api/resources/tokens
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Tokens *TokensAPI
 
 	// Peers NetBird peers APIs
-	// see more: https://docs.netbird.io/api/resources/peers
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Peers *PeersAPI
 
 	// SetupKeys NetBird setup keys APIs
-	// see more: https://docs.netbird.io/api/resources/setup-keys
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	SetupKeys *SetupKeysAPI
 
 	// Groups NetBird groups APIs
-	// see more: https://docs.netbird.io/api/resources/groups
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Groups *GroupsAPI
 
 	// Policies NetBird policies APIs
-	// see more: https://docs.netbird.io/api/resources/policies
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Policies *PoliciesAPI
 
 	// PostureChecks NetBird posture checks APIs
-	// see more: https://docs.netbird.io/api/resources/posture-checks
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	PostureChecks *PostureChecksAPI
 
 	// Networks NetBird networks APIs
-	// see more: https://docs.netbird.io/api/resources/networks
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Networks *NetworksAPI
 
 	// Routes NetBird routes APIs
-	// see more: https://docs.netbird.io/api/resources/routes
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Routes *RoutesAPI
 
 	// DNS NetBird DNS APIs
-	// see more: https://docs.netbird.io/api/resources/dns
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	DNS *DNSAPI
 
 	// DNSZones NetBird DNS Zones APIs
-	// see more: https://docs.netbird.io/api/resources/dns-zones
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	DNSZones *DNSZonesAPI
 
 	// GeoLocation NetBird Geo Location APIs
-	// see more: https://docs.netbird.io/api/resources/geo-locations
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	GeoLocation *GeoLocationAPI
 
 	// Events NetBird Events APIs
-	// see more: https://docs.netbird.io/api/resources/events
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Events *EventsAPI
 
 	// Billing NetBird Billing APIs for subscriptions, plans, and invoices
-	// see more: https://docs.netbird.io/api/resources/billing
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Billing *BillingAPI
 
 	// MSP NetBird MSP tenant management APIs
-	// see more: https://docs.netbird.io/api/resources/msp
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	MSP *MSPAPI
 
 	// EDR NetBird EDR integration APIs (Intune, SentinelOne, Falcon, Huntress)
-	// see more: https://docs.netbird.io/api/resources/edr
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	EDR *EDRAPI
 
 	// SCIM NetBird SCIM IDP integration APIs
-	// see more: https://docs.netbird.io/api/resources/scim
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	SCIM *SCIMAPI
 
 	// GoogleIDP NetBird Google Workspace IDP integration APIs
@@ -120,19 +120,19 @@ type Client struct {
 	OktaScimIDP *OktaScimIDPAPI
 
 	// EventStreaming NetBird Event Streaming integration APIs
-	// see more: https://docs.netbird.io/api/resources/event-streaming
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	EventStreaming *EventStreamingAPI
 
 	// IdentityProviders NetBird Identity Providers APIs
-	// see more: https://docs.netbird.io/api/resources/identity-providers
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	IdentityProviders *IdentityProvidersAPI
 
 	// Ingress NetBird Ingress Peers APIs
-	// see more: https://docs.netbird.io/api/resources/ingress-ports
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Ingress *IngressAPI
 
 	// Instance NetBird Instance API
-	// see more: https://docs.netbird.io/api/resources/instance
+	// see more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 	Instance *InstanceAPI
 
 	// ReverseProxyServices NetBird reverse proxy services APIs

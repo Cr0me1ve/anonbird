@@ -14,7 +14,7 @@ type DNSZonesAPI struct {
 }
 
 // ListZones list all DNS zones
-// See more: https://docs.netbird.io/api/resources/dns-zones#list-all-dns-zones
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) ListZones(ctx context.Context) ([]api.Zone, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/dns/zones", nil, nil)
 	if err != nil {
@@ -28,7 +28,7 @@ func (a *DNSZonesAPI) ListZones(ctx context.Context) ([]api.Zone, error) {
 }
 
 // GetZone get DNS zone info
-// See more: https://docs.netbird.io/api/resources/dns-zones#retrieve-a-dns-zone
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) GetZone(ctx context.Context, zoneID string) (*api.Zone, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/dns/zones/"+zoneID, nil, nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func (a *DNSZonesAPI) GetZone(ctx context.Context, zoneID string) (*api.Zone, er
 }
 
 // CreateZone create new DNS zone
-// See more: https://docs.netbird.io/api/resources/dns-zones#create-a-dns-zone
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) CreateZone(ctx context.Context, request api.PostApiDnsZonesJSONRequestBody) (*api.Zone, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -60,7 +60,7 @@ func (a *DNSZonesAPI) CreateZone(ctx context.Context, request api.PostApiDnsZone
 }
 
 // UpdateZone update DNS zone info
-// See more: https://docs.netbird.io/api/resources/dns-zones#update-a-dns-zone
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) UpdateZone(ctx context.Context, zoneID string, request api.PutApiDnsZonesZoneIdJSONRequestBody) (*api.Zone, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -78,7 +78,7 @@ func (a *DNSZonesAPI) UpdateZone(ctx context.Context, zoneID string, request api
 }
 
 // DeleteZone delete DNS zone
-// See more: https://docs.netbird.io/api/resources/dns-zones#delete-a-dns-zone
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) DeleteZone(ctx context.Context, zoneID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/dns/zones/"+zoneID, nil, nil)
 	if err != nil {
@@ -92,7 +92,7 @@ func (a *DNSZonesAPI) DeleteZone(ctx context.Context, zoneID string) error {
 }
 
 // ListRecords list all DNS records in a zone
-// See more: https://docs.netbird.io/api/resources/dns-zones#list-all-dns-records
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) ListRecords(ctx context.Context, zoneID string) ([]api.DNSRecord, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/dns/zones/"+zoneID+"/records", nil, nil)
 	if err != nil {
@@ -106,7 +106,7 @@ func (a *DNSZonesAPI) ListRecords(ctx context.Context, zoneID string) ([]api.DNS
 }
 
 // GetRecord get DNS record info
-// See more: https://docs.netbird.io/api/resources/dns-zones#retrieve-a-dns-record
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) GetRecord(ctx context.Context, zoneID, recordID string) (*api.DNSRecord, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/dns/zones/"+zoneID+"/records/"+recordID, nil, nil)
 	if err != nil {
@@ -120,7 +120,7 @@ func (a *DNSZonesAPI) GetRecord(ctx context.Context, zoneID, recordID string) (*
 }
 
 // CreateRecord create new DNS record in a zone
-// See more: https://docs.netbird.io/api/resources/dns-zones#create-a-dns-record
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) CreateRecord(ctx context.Context, zoneID string, request api.PostApiDnsZonesZoneIdRecordsJSONRequestBody) (*api.DNSRecord, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -138,7 +138,7 @@ func (a *DNSZonesAPI) CreateRecord(ctx context.Context, zoneID string, request a
 }
 
 // UpdateRecord update DNS record info
-// See more: https://docs.netbird.io/api/resources/dns-zones#update-a-dns-record
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) UpdateRecord(ctx context.Context, zoneID, recordID string, request api.PutApiDnsZonesZoneIdRecordsRecordIdJSONRequestBody) (*api.DNSRecord, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -156,7 +156,7 @@ func (a *DNSZonesAPI) UpdateRecord(ctx context.Context, zoneID, recordID string,
 }
 
 // DeleteRecord delete DNS record
-// See more: https://docs.netbird.io/api/resources/dns-zones#delete-a-dns-record
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *DNSZonesAPI) DeleteRecord(ctx context.Context, zoneID, recordID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/dns/zones/"+zoneID+"/records/"+recordID, nil, nil)
 	if err != nil {

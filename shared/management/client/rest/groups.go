@@ -18,7 +18,7 @@ type GroupsAPI struct {
 }
 
 // List list all groups
-// See more: https://docs.netbird.io/api/resources/groups#list-all-groups
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *GroupsAPI) List(ctx context.Context) ([]api.Group, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/groups", nil, nil)
 	if err != nil {
@@ -32,7 +32,7 @@ func (a *GroupsAPI) List(ctx context.Context) ([]api.Group, error) {
 }
 
 // GetByName get group by name
-// See more: https://docs.netbird.io/api/resources/groups#list-all-groups
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *GroupsAPI) GetByName(ctx context.Context, groupName string) (*api.Group, error) {
 	params := map[string]string{"name": groupName}
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/groups", nil, params)
@@ -53,7 +53,7 @@ func (a *GroupsAPI) GetByName(ctx context.Context, groupName string) (*api.Group
 }
 
 // Get get group info
-// See more: https://docs.netbird.io/api/resources/groups#retrieve-a-group
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *GroupsAPI) Get(ctx context.Context, groupID string) (*api.Group, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/groups/"+groupID, nil, nil)
 	if err != nil {
@@ -67,7 +67,7 @@ func (a *GroupsAPI) Get(ctx context.Context, groupID string) (*api.Group, error)
 }
 
 // Create create new group
-// See more: https://docs.netbird.io/api/resources/groups#create-a-group
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *GroupsAPI) Create(ctx context.Context, request api.PostApiGroupsJSONRequestBody) (*api.Group, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -85,7 +85,7 @@ func (a *GroupsAPI) Create(ctx context.Context, request api.PostApiGroupsJSONReq
 }
 
 // Update update group info
-// See more: https://docs.netbird.io/api/resources/groups#update-a-group
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *GroupsAPI) Update(ctx context.Context, groupID string, request api.PutApiGroupsGroupIdJSONRequestBody) (*api.Group, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -103,7 +103,7 @@ func (a *GroupsAPI) Update(ctx context.Context, groupID string, request api.PutA
 }
 
 // Delete delete group
-// See more: https://docs.netbird.io/api/resources/groups#delete-a-group
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *GroupsAPI) Delete(ctx context.Context, groupID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/groups/"+groupID, nil, nil)
 	if err != nil {

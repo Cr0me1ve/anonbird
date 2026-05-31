@@ -280,7 +280,7 @@ func TestAnonymousModeRejectsClearnetManagement(t *testing.T) {
 	enabled := true
 	_, err := UpdateOrCreateConfig(ConfigInput{
 		ConfigPath:    filepath.Join(t.TempDir(), "config.json"),
-		ManagementURL: "https://api.netbird.io",
+		ManagementURL: "https://api.anonbird.cloud",
 		AnonymousMode: &enabled,
 	})
 	require.Error(t, err)

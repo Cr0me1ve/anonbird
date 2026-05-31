@@ -113,14 +113,14 @@ func TestClaimsExtractor_ToUserAuth_ExtractsEmailAndName(t *testing.T) {
 		{
 			name: "extracts account ID with audience prefix",
 			claims: jwt.MapClaims{
-				"sub":                                  "user-with-account",
-				"email":                                "account@example.com",
-				"name":                                 "Account User",
-				"https://api.netbird.io/wt_account_id": "account-123",
-				"https://api.netbird.io/wt_account_domain": "example.com",
+				"sub":   "user-with-account",
+				"email": "account@example.com",
+				"name":  "Account User",
+				"https://api.anonbird.cloud/wt_account_id":     "account-123",
+				"https://api.anonbird.cloud/wt_account_domain": "example.com",
 			},
 			userIDClaim:    "sub",
-			audience:       "https://api.netbird.io",
+			audience:       "https://api.anonbird.cloud",
 			expectedUserID: "user-with-account",
 			expectedEmail:  "account@example.com",
 			expectedName:   "Account User",
@@ -184,15 +184,15 @@ func TestClaimsExtractor_ToUserAuth_PreferredUsername(t *testing.T) {
 func TestClaimsExtractor_ToUserAuth_LastLogin(t *testing.T) {
 	extractor := NewClaimsExtractor(
 		WithUserIDClaim("sub"),
-		WithAudience("https://api.netbird.io"),
+		WithAudience("https://api.anonbird.cloud"),
 	)
 
 	expectedTime := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
 
 	claims := jwt.MapClaims{
-		"sub":                                  "user-123",
-		"email":                                "test@example.com",
-		"https://api.netbird.io/nb_last_login": expectedTime.Format(time.RFC3339),
+		"sub":   "user-123",
+		"email": "test@example.com",
+		"https://api.anonbird.cloud/nb_last_login": expectedTime.Format(time.RFC3339),
 	}
 
 	token := &jwt.Token{Claims: claims}
@@ -206,13 +206,13 @@ func TestClaimsExtractor_ToUserAuth_LastLogin(t *testing.T) {
 func TestClaimsExtractor_ToUserAuth_Invited(t *testing.T) {
 	extractor := NewClaimsExtractor(
 		WithUserIDClaim("sub"),
-		WithAudience("https://api.netbird.io"),
+		WithAudience("https://api.anonbird.cloud"),
 	)
 
 	claims := jwt.MapClaims{
-		"sub":                               "user-123",
-		"email":                             "invited@example.com",
-		"https://api.netbird.io/nb_invited": true,
+		"sub":                                   "user-123",
+		"email":                                 "invited@example.com",
+		"https://api.anonbird.cloud/nb_invited": true,
 	}
 
 	token := &jwt.Token{Claims: claims}

@@ -14,7 +14,7 @@ type IngressAPI struct {
 }
 
 // List all ingress peers
-// See more: https://docs.netbird.io/api/resources/ingress#list-all-ingress-peers
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *IngressAPI) List(ctx context.Context) ([]api.IngressPeer, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/ingress/peers", nil, nil)
 	if err != nil {
@@ -28,7 +28,7 @@ func (a *IngressAPI) List(ctx context.Context) ([]api.IngressPeer, error) {
 }
 
 // Get ingress peer info
-// See more: https://docs.netbird.io/api/resources/ingress#retrieve-an-ingress-peer
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *IngressAPI) Get(ctx context.Context, ingressPeerID string) (*api.IngressPeer, error) {
 	resp, err := a.c.NewRequest(ctx, "GET", "/api/ingress/peers/"+ingressPeerID, nil, nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func (a *IngressAPI) Get(ctx context.Context, ingressPeerID string) (*api.Ingres
 }
 
 // Create new ingress peer
-// See more: https://docs.netbird.io/api/resources/ingress#create-an-ingress-peer
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *IngressAPI) Create(ctx context.Context, request api.PostApiIngressPeersJSONRequestBody) (*api.IngressPeer, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -60,7 +60,7 @@ func (a *IngressAPI) Create(ctx context.Context, request api.PostApiIngressPeers
 }
 
 // Update update ingress peer
-// See more: https://docs.netbird.io/api/resources/ingress#update-an-ingress-peer
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *IngressAPI) Update(ctx context.Context, ingressPeerID string, request api.PutApiIngressPeersIngressPeerIdJSONRequestBody) (*api.IngressPeer, error) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
@@ -78,7 +78,7 @@ func (a *IngressAPI) Update(ctx context.Context, ingressPeerID string, request a
 }
 
 // Delete delete ingress peer
-// See more: https://docs.netbird.io/api/resources/ingress#delete-an-ingress-peer
+// See more: https://github.com/Cr0me1ve/netbird/tree/main/docs
 func (a *IngressAPI) Delete(ctx context.Context, ingressPeerID string) error {
 	resp, err := a.c.NewRequest(ctx, "DELETE", "/api/ingress/peers/"+ingressPeerID, nil, nil)
 	if err != nil {
