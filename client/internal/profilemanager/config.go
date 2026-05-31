@@ -291,6 +291,13 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 		if err != nil {
 			return false, err
 		}
+	} else if input.AdminURL == "" && isLegacyAdminURL(config.AdminURL) {
+		log.Infof("migrating legacy Admin URL %s to AnonBird default %s", config.AdminURL, DefaultAdminURL)
+		config.AdminURL, err = parseURL("Admin URL", DefaultAdminURL)
+		if err != nil {
+			return updated, err
+		}
+		updated = true
 	}
 	if input.AdminURL != "" && input.AdminURL != config.AdminURL.String() {
 		log.Infof("new Admin Panel URL provided, updated to %#v (old value %#v)",
@@ -654,6 +661,14 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 
 func (config *Config) withAnonymousTransportDefaults(transport anonymous.TransportConfig) anonymous.TransportConfig {
 	return transport
+}
+
+func isLegacyAdminURL(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	legacyAdminHost := strings.Join([]string{"app", "netbird", "io"}, ".")
+	return strings.EqualFold(u.Hostname(), legacyAdminHost)
 }
 
 func (config *Config) enforceAnonymousMode() (bool, error) {

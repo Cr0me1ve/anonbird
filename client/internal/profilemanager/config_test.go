@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -179,6 +180,25 @@ func TestNewProfileDefaults(t *testing.T) {
 		assert.NotNil(t, config.NetworkMonitor, "NetworkMonitor should be set on Windows/macOS")
 		assert.True(t, *config.NetworkMonitor, "NetworkMonitor should be enabled by default on Windows/macOS")
 	}
+}
+
+func TestLegacyAdminURLMigratesToAnonBirdDefault(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+
+	legacyAdminURL := "https://" + strings.Join([]string{"app", "netbird", "io"}, ".") + ":443"
+	config, err := UpdateOrCreateConfig(ConfigInput{
+		ConfigPath: configPath,
+		AdminURL:   legacyAdminURL,
+	})
+	require.NoError(t, err)
+	require.Equal(t, legacyAdminURL, config.AdminURL.String())
+
+	config, err = UpdateOrCreateConfig(ConfigInput{
+		ConfigPath: configPath,
+	})
+	require.NoError(t, err)
+	require.Equal(t, DefaultAdminURL, config.AdminURL.String())
 }
 
 func TestWireguardPortZeroExplicit(t *testing.T) {
