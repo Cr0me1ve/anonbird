@@ -5,7 +5,7 @@
 Дата: 2026-05-31
 
 - Статус: MVP anonymous mesh реализован и прошёл requirement-by-requirement audit 2026-05-31; post-MVP production/open-source release gate остаётся открытым до полного release-candidate прогона.
-- Текущий фокус: Phase 1-4, Phase 5 Tor relay stream multipath/per-channel health и Phase 6 direct-I2P MVP закрыты на code/unit + стендовом уровне; leak-map audit закрывает найденные clearnet side channels, reconnect/failure soak прошёл, dashboard/runtime/release packaging/proxy web/docs/infrastructure surface hardened. Сейчас идёт production-readiness слой: published artifacts/images, full release test suite, Marton master-backed flow через overlay, NetBird->AnonBird migration server+clients, rollback/uninstall/reinstall и итоговый open-source release report.
+- Текущий фокус: Phase 1-4, Phase 5 Tor relay stream multipath/per-channel health и Phase 6 direct-I2P MVP закрыты на code/unit + стендовом уровне; leak-map audit закрывает найденные clearnet side channels, reconnect/failure soak прошёл, dashboard/runtime/release packaging/proxy web/docs/infrastructure surface hardened. Сейчас идёт production-readiness слой: published artifacts/images, full release test suite, Marton Tor repeat/release-artifact repeat, NetBird->AnonBird migration server+clients, rollback/uninstall/reinstall и итоговый open-source release report.
 - Правило выполнения: каждая реализованная часть отмечается здесь или в соответствующем чеклисте ниже; если в ходе сверки с ТЗ появляются ограничения или риски, они фиксируются в заметках.
 - Сверка с новым ТЗ: четыре сервера пользователя для финального testbed зафиксированы в разделе 22.0; release/open-source readiness нельзя закрывать без полного remote прогона, Marton через виртуальную сеть, server/client migration с обычного NetBird и финального verdict, можно ли заменить NetBird на AnonBird без ручных исправлений.
 - Заметка: проектное имя клиента и пользовательских команд — AnonBird; CLI должен использовать `anonbird`.
@@ -60,6 +60,7 @@
 - Реализовано в `Code/dashboard`: release/runtime external fetch hardening — dashboard больше не делает default GitHub latest-release check и не использует `https://pkgs.netbird.io/wasm/...` как fallback; добавлен локальный `public/wasm/anonbird-client.wasm`, собранный из текущего AnonBird WASM client, а release check включается только явно через `ANONBIRD_RELEASE_CHECK_ENABLED=true` + `ANONBIRD_RELEASE_CHECK_URL`. Reverse-proxy offline warnings больше не ведут на `status.netbird.io`/`support@netbird.io`.
 - Реализовано в `Code/dashboard`: install/package surface hardening — Linux/macOS/Windows setup tabs больше не ведут на `pkgs.netbird.io`, `netbirdio/tap` или `netbird-ui`; команды строят AnonBird из `ANONBIRD_SOURCE_URL` и устанавливают `anonbird`, Docker tab собирает локальный `ANONBIRD_DOCKER_IMAGE` из исходников вместо `netbirdio/netbird:latest`.
 - Реализовано в `Code/dashboard`: release image publishing path hardened — package metadata renamed to `anonbird-dashboard`, GHCR workflow has explicit `packages: write`, does not push images on PRs, publishes semver/ref tags and `latest` on release tags for `ghcr.io/cr0me1ve/anonbird-dashboard`, and Docker docs use `:latest` to match `getting-started.sh` defaults. Проверено: `actionlint .github/workflows/build_and_push.yml`, YAML parse, `npm run build`, `git diff --check`.
+- Реализовано в `Code/dashboard`: setup/install modal теперь показывает явное blocking unsafe warning для clearnet management config и прямо предупреждает про раскрытие real IP, NAT endpoint и local network metadata; команды при unsafe config остаются заблокированы placeholder path, без silent non-anonymous setup.
 - Реализовано: management HTTP peer API теперь отдаёт `anonymous_transport` только для anonymous peers и продолжает скрывать `connection_ip`; dashboard peer details/tooltip показывают реальный anonymous transport (`tor-relay-only` или `i2p-datagram`) вместо общего `anonymous relay`.
 - Реализовано: добавлен production operations doc `docs/anonbird-i2p-operations.md` с i2pd 2.60+ guidance, daemon modes, managed data layout, systemd dependencies, health/recovery commands и security checks для SAM/I2P.
 - Исправлено: anonymous profile теперь останавливает/не создаёт client update manager, GUI event subscription не запускает `https://pkgs.netbird.io/releases/latest/version`, а daemon `GetFeatures` помечает update settings disabled для anonymous profile; это закрывает clearnet external-update check из leak-map.
@@ -1358,11 +1359,13 @@ Type "I understand this may leak my real IP" to continue:
   - `--allow-unsafe-clearnet`;
   - `--yes-i-understand-this-may-leak-my-ip`;
   - exit code != 0, если подтверждение отсутствует.
-- [ ] В dashboard добавить такой же unsafe warning для любых UI flows, которые создают non-anonymous setup/install command.
+- [x] В dashboard добавить такой же unsafe warning для любых UI flows, которые создают non-anonymous setup/install command.
 - [x] Dashboard generated peer setup commands больше не используют clearnet management URL:
   - `anonbird join` строится только для `.onion`/`.i2p`;
   - `anonbird up`/Docker env не получают реальный clearnet management URL;
   - при unsafe dashboard config показывается blocking warning и placeholder вместо рабочей clearnet команды.
+
+Статус 2026-05-31: dashboard warning расширен в `Code/dashboard/src/modules/setup-netbird-modal/SetupModal.tsx`: при clearnet management URL UI показывает blocking `Callout` с явным предупреждением про real IP/NAT/local metadata leak и требует onion/I2P endpoint до копирования install commands. Проверено: `npx prettier --write src/modules/setup-netbird-modal/SetupModal.tsx`, `npx tsc --noEmit`, `npm run build`, bundle/source grep по warning text и `git diff --check`.
 - [ ] Добавить/расширить тесты:
   - default `up/join` включает anonymous Tor relay-only;
   - clearnet URL без unsafe confirmation rejected;
