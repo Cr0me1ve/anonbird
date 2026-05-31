@@ -1388,9 +1388,9 @@ Type "I understand this may leak my real IP" to continue:
 
 ### 22.4. Logo and visual identity
 
-- [ ] Нарисовать новый минималистичный логотип AnonBird:
-  - чёрная птица;
-  - красные глаза;
+- [x] Нарисовать новый минималистичный логотип AnonBird:
+  - красная птица;
+  - без глаз по уточнению ТЗ;
   - небольшие рога как у дьявола;
   - трезубец;
   - flat/minimal design, хорошо читаемый в маленьком размере.
@@ -1401,6 +1401,8 @@ Type "I understand this may leak my real IP" to continue:
   - desktop tray/app icons;
   - release/social preview, если нужен.
 - [ ] Заменить старые logo/icon assets в `netbird` и `dashboard`, пересобрать UI/proxy/dashboard bundles и проверить light/dark backgrounds.
+
+Статус 2026-05-31: создан первый AnonBird logo pass без заглушек: source SVG `docs/media/anonbird-mark.svg` и `docs/media/anonbird-logo-full.svg`, regenerated README PNGs `docs/media/logo.png`/`logo-full.png`, dashboard `src/assets/netbird.svg`/`netbird-full.svg`, dashboard `apple-icon.png`/`favicon.ico`, desktop base icons `client/ui/assets/anonbird.png`, `netbird.png`, `netbird-disconnected.png`. Визуально проверено: знак красный, без глаз, с рогами и трезубцем; читается в small icon preview. Проверено: `file`, `xmllint --noout` для SVG, dashboard `npm run build`, `git diff --check` в `netbird` и `dashboard`. Открыто: заменить все tray state icons (`connected`/`connecting`/`error`/macOS/ICO/ICNS`) и добавить release/social preview.
 
 ### 22.5. Migration command
 
