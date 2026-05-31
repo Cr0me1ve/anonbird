@@ -51,7 +51,7 @@ type progressUI struct {
 }
 
 func (s *serviceClient) showDebugUI() {
-	w := s.app.NewWindow("NetBird Debug")
+	w := s.app.NewWindow("AnonBird Debug")
 	w.SetOnClosed(s.cancel)
 	w.Resize(fyne.NewSize(600, 500))
 	w.SetFixedSize(true)
@@ -85,7 +85,7 @@ func (s *serviceClient) showDebugUI() {
 	)
 
 	content := container.NewVBox(
-		widget.NewLabel("Create a debug bundle to help troubleshoot issues with NetBird"),
+		widget.NewLabel("Create a debug bundle to help troubleshoot issues with AnonBird"),
 		widget.NewLabel(""),
 		anonymizeCheck, systemInfoCheck, captureCheck,
 		uploadCheck, uploadURLContainer,
@@ -128,7 +128,7 @@ func (s *serviceClient) buildDurationSection() (*fyne.Container, *widget.Check, 
 		return validateMinute(s, minutesLabel)
 	}
 
-	noteLabel := widget.NewLabel("Note: NetBird will be brought up and down during collection")
+	noteLabel := widget.NewLabel("Note: AnonBird will be brought up and down during collection")
 
 	runForDurationCheck.OnChanged = func(checked bool) {
 		if checked {

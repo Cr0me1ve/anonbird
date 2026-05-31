@@ -219,7 +219,7 @@ func (s *serviceClient) showProfilesUI() {
 
 	// Assemble window content
 	content := container.NewBorder(nil, newBtn, nil, nil, list)
-	s.wProfiles = s.app.NewWindow("NetBird Profiles")
+	s.wProfiles = s.app.NewWindow("AnonBird Profiles")
 	s.wProfiles.SetContent(content)
 	s.wProfiles.Resize(fyne.NewSize(400, 300))
 	s.wProfiles.SetOnClosed(s.cancel)

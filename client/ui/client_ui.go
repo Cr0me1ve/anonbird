@@ -75,7 +75,7 @@ func main() {
 	}
 
 	// Create the Fyne application.
-	a := app.NewWithID("NetBird")
+	a := app.NewWithID("AnonBird")
 	a.SetIcon(fyne.NewStaticResource("netbird", iconDisconnected))
 
 	// Show error message window if needed.
@@ -157,7 +157,7 @@ func parseFlags() *cliFlags {
 	flag.BoolVar(&flags.showDebug, "debug", false, "run debug window")
 	flag.BoolVar(&flags.showQuickActions, "quick-actions", false, "run quick actions window")
 	flag.StringVar(&flags.errorMsg, "error-msg", "", "displays an error message window")
-	flag.BoolVar(&flags.saveLogsInFile, "use-log-file", false, fmt.Sprintf("save logs in a file: %s/netbird-ui-PID.log", os.TempDir()))
+	flag.BoolVar(&flags.saveLogsInFile, "use-log-file", false, fmt.Sprintf("save logs in a file: %s/anonbird-ui-PID.log", os.TempDir()))
 	flag.BoolVar(&flags.showLoginURL, "login-url", false, "show login URL in a popup window")
 	flag.BoolVar(&flags.showUpdate, "update", false, "show update progress window")
 	flag.StringVar(&flags.showUpdateVersion, "update-version", "", "version to update to")
@@ -167,7 +167,7 @@ func parseFlags() *cliFlags {
 
 // initLogFile initializes logging into a file.
 func initLogFile() (string, error) {
-	logFile := path.Join(os.TempDir(), fmt.Sprintf("netbird-ui-%d.log", os.Getpid()))
+	logFile := path.Join(os.TempDir(), fmt.Sprintf("anonbird-ui-%d.log", os.Getpid()))
 	return logFile, util.InitLog("trace", logFile)
 }
 
@@ -181,7 +181,7 @@ func watchSettingsChanges(a fyne.App, client *serviceClient) {
 // showErrorMessage displays an error message in a simple window.
 func showErrorMessage(msg string) {
 	a := app.New()
-	w := a.NewWindow("NetBird Error")
+	w := a.NewWindow("AnonBird Error")
 	label := widget.NewLabel(msg)
 	label.Wrapping = fyne.TextWrapWord
 	w.SetContent(label)
@@ -452,7 +452,7 @@ func (s *serviceClient) showSettingsUI() {
 	}
 
 	// add settings window UI elements.
-	s.wSettings = s.app.NewWindow("NetBird Settings")
+	s.wSettings = s.app.NewWindow("AnonBird Settings")
 	s.wSettings.SetOnClosed(s.cancel)
 
 	s.iMngURL = widget.NewEntry()
@@ -466,7 +466,7 @@ func (s *serviceClient) showSettingsUI() {
 
 	s.sRosenpassPermissive = widget.NewCheck("Enable Rosenpass permissive mode", nil)
 
-	s.sNetworkMonitor = widget.NewCheck("Restarts NetBird when the network changes", nil)
+	s.sNetworkMonitor = widget.NewCheck("Restarts AnonBird when the network changes", nil)
 	s.sDisableDNS = widget.NewCheck("Keeps system DNS settings unchanged", nil)
 	s.sDisableClientRoutes = widget.NewCheck("This peer won't route traffic to other peers", nil)
 	s.sDisableServerRoutes = widget.NewCheck("This peer won't act as router for others", nil)
@@ -924,7 +924,7 @@ func (s *serviceClient) updateStatus() error {
 			} else {
 				systray.SetTemplateIcon(iconConnectedMacOS, s.icConnected)
 			}
-			systray.SetTooltip("NetBird (Connected)")
+			systray.SetTooltip("AnonBird (Connected)")
 			s.mStatus.SetTitle("Connected")
 			s.mStatus.SetIcon(s.icConnectedDot)
 			s.mUp.Disable()
@@ -987,7 +987,7 @@ func (s *serviceClient) setDisconnectedStatus() {
 	} else {
 		systray.SetTemplateIcon(iconDisconnectedMacOS, s.icDisconnected)
 	}
-	systray.SetTooltip("NetBird (Disconnected)")
+	systray.SetTooltip("AnonBird (Disconnected)")
 	s.mStatus.SetTitle("Disconnected")
 	s.mStatus.SetIcon(s.icDisconnectedDot)
 	s.mDown.Disable()
@@ -1001,7 +1001,7 @@ func (s *serviceClient) setDisconnectedStatus() {
 func (s *serviceClient) setConnectingStatus() {
 	s.connected = false
 	systray.SetTemplateIcon(iconConnectingMacOS, s.icConnecting)
-	systray.SetTooltip("NetBird (Connecting)")
+	systray.SetTooltip("AnonBird (Connecting)")
 	s.mStatus.SetTitle("Connecting")
 	s.mUp.Disable()
 	s.mDown.Enable()
@@ -1011,7 +1011,7 @@ func (s *serviceClient) setConnectingStatus() {
 
 func (s *serviceClient) onTrayReady() {
 	systray.SetTemplateIcon(iconDisconnectedMacOS, s.icDisconnected)
-	systray.SetTooltip("NetBird")
+	systray.SetTooltip("AnonBird")
 
 	// setup systray menu items
 	s.mStatus = systray.AddMenuItem("Disconnected", "Disconnected")
@@ -1640,14 +1640,14 @@ func (s *serviceClient) showLoginURL() context.CancelFunc {
 	resIcon := fyne.NewStaticResource("netbird.png", iconAbout)
 
 	if s.wLoginURL == nil {
-		s.wLoginURL = s.app.NewWindow("NetBird Session Expired")
+		s.wLoginURL = s.app.NewWindow("AnonBird Session Expired")
 		s.wLoginURL.Resize(fyne.NewSize(400, 200))
 		s.wLoginURL.SetIcon(resIcon)
 	}
 	// ensure goroutine is cancelled when the window is closed
 	s.wLoginURL.SetOnClosed(func() { cancel() })
 	// add a description label
-	label := widget.NewLabel("Your NetBird session has expired.\nPlease re-authenticate to continue using NetBird.")
+	label := widget.NewLabel("Your AnonBird session has expired.\nPlease re-authenticate to continue using AnonBird.")
 
 	btn := widget.NewButtonWithIcon("Re-authenticate", theme.ViewRefreshIcon(), func() {
 

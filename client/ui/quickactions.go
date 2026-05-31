@@ -247,7 +247,7 @@ func (s *serviceClient) applyQuickActionsUiState(
 
 		components.toggleConnectionButton.Refresh()
 
-		// the second position in the content's object array is the NetBird logo.
+		// the second position in the content's object array is the AnonBird logo.
 		if logo != nil {
 			components.content.Objects[1] = logo
 			components.content.Refresh()
@@ -257,9 +257,9 @@ func (s *serviceClient) applyQuickActionsUiState(
 	return false
 }
 
-// showQuickActionsUI displays a simple window with the NetBird logo and a connection toggle button.
+// showQuickActionsUI displays a simple window with the AnonBird logo and a connection toggle button.
 func (s *serviceClient) showQuickActionsUI() {
-	s.wQuickActions = s.app.NewWindow("NetBird")
+	s.wQuickActions = s.app.NewWindow("AnonBird")
 	vmCtx, vmCancel := context.WithCancel(s.ctx)
 	s.wQuickActions.SetOnClosed(vmCancel)
 
@@ -301,7 +301,7 @@ func (s *serviceClient) showQuickActionsUI() {
 	// Button starts disabled until the first ui state arrives.
 	toggleConnectionButton.Disable()
 
-	hintLabelText := fmt.Sprintf("You can always access NetBird from your %s.", getSystemTrayName())
+	hintLabelText := fmt.Sprintf("You can always access AnonBird from your %s.", getSystemTrayName())
 	hintLabel := widget.NewLabel(hintLabelText)
 
 	content := container.NewVBox(

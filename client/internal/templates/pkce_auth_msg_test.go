@@ -29,7 +29,7 @@ func TestPKCEAuthMsgTemplate(t *testing.T) {
 			},
 			notExpectedInContent: []string{
 				"Login Successful",
-				"Your device is now registered and logged in to NetBird",
+				"Your device is now registered and logged in to AnonBird",
 			},
 		},
 		{
@@ -41,7 +41,7 @@ func TestPKCEAuthMsgTemplate(t *testing.T) {
 			expectedTitle: "Login Successful",
 			expectedInContent: []string{
 				"Login Successful",
-				"Your device is now registered and logged in to NetBird. You can now close this window.",
+				"Your device is now registered and logged in to AnonBird. You can now close this window.",
 			},
 			notExpectedInContent: []string{
 				"Login Failed",
@@ -60,7 +60,7 @@ func TestPKCEAuthMsgTemplate(t *testing.T) {
 			},
 			notExpectedInContent: []string{
 				"Login Successful",
-				"Your device is now registered and logged in to NetBird",
+				"Your device is now registered and logged in to AnonBird",
 			},
 		},
 	}
@@ -111,7 +111,7 @@ func TestPKCEAuthMsgTemplate(t *testing.T) {
 				"<html",
 				"<head>",
 				"<body>",
-				"NetBird",
+				"AnonBird",
 			}
 
 			for _, elem := range basicElements {
@@ -226,7 +226,7 @@ func TestPKCEAuthMsgTemplateContent(t *testing.T) {
 			"<head>",
 			"<body>",
 			"Login Successful",
-			"NetBird",
+			"AnonBird",
 		}
 
 		for _, elem := range requiredElements {

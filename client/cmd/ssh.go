@@ -423,10 +423,10 @@ func createSSHFlagSet() (*flag.FlagSet, *sshFlags) {
 	fs.BoolVar(&flags.SkipCachedToken, "no-cache", false, "Skip cached JWT token and force fresh authentication")
 	fs.BoolVar(&flags.NoBrowser, "no-browser", defaultNoBrowser, noBrowserDesc)
 
-	fs.StringVar(&flags.ConfigPath, "c", defaultConfigPath, "Netbird config file location")
-	fs.StringVar(&flags.ConfigPath, "config", defaultConfigPath, "Netbird config file location")
-	fs.StringVar(&flags.LogLevel, "l", defaultLogLevel, "sets Netbird log level")
-	fs.StringVar(&flags.LogLevel, "log-level", defaultLogLevel, "sets Netbird log level")
+	fs.StringVar(&flags.ConfigPath, "c", defaultConfigPath, "AnonBird config file location")
+	fs.StringVar(&flags.ConfigPath, "config", defaultConfigPath, "AnonBird config file location")
+	fs.StringVar(&flags.LogLevel, "l", defaultLogLevel, "sets AnonBird log level")
+	fs.StringVar(&flags.LogLevel, "log-level", defaultLogLevel, "sets AnonBird log level")
 
 	return fs, flags
 }

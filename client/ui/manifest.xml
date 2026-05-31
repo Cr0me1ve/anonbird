@@ -6,7 +6,7 @@
             name="netbird-ui.exe"
             type="win32"
     />
-    <description>Netbird UI application</description>
+    <description>AnonBird UI application</description>
     <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
         <security>
             <requestedPrivileges>
