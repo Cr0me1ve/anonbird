@@ -1366,11 +1366,13 @@ Type "I understand this may leak my real IP" to continue:
   - при unsafe dashboard config показывается blocking warning и placeholder вместо рабочей clearnet команды.
 
 Статус 2026-05-31: dashboard warning расширен в `Code/dashboard/src/modules/setup-netbird-modal/SetupModal.tsx`: при clearnet management URL UI показывает blocking `Callout` с явным предупреждением про real IP/NAT/local metadata leak и требует onion/I2P endpoint до копирования install commands. Проверено: `npx prettier --write src/modules/setup-netbird-modal/SetupModal.tsx`, `npx tsc --noEmit`, `npm run build`, bundle/source grep по warning text и `git diff --check`.
-- [ ] Добавить/расширить тесты:
+- [x] Добавить/расширить тесты:
   - default `up/join` включает anonymous Tor relay-only;
   - clearnet URL без unsafe confirmation rejected;
   - unsafe confirmation required в non-interactive mode;
   - warning text не содержит secrets/setup keys.
+
+Статус 2026-05-31: anonymous-by-default/unsafe UX tests расширены в `client/cmd`: root flags default to `anonymous-mode=true`, `anonymous-transport=tor-relay-only`, default Tor SOCKS5; `anonbird://join` без transport defaults to Tor relay-only; clearnet join rejection не раскрывает setup key; unsafe clearnet warning не раскрывает setup key или management URL. Проверено: `go test ./client/cmd -run 'Test(AnonymousRootFlagsDefaultToTorRelayOnly|DefaultAnonymousModeAppliedToConfigInput|DefaultAnonymousModeAppliedToLoginRequest|UnsafeClearnet|ParseJoinToken)' -count=1` и migration/init regression `go test ./client/cmd -run 'Test.*Migration|TestInitCommands' -count=1`.
 
 ### 22.3. Rename repository and local folders
 

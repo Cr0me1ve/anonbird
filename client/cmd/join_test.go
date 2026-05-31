@@ -42,6 +42,22 @@ func TestParseJoinTokenRejectsClearnetManagement(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "anonymous mode violation") {
 		t.Fatalf("expected anonymous management violation, got %v", err)
 	}
+	if strings.Contains(err.Error(), "NB-SETUP-xxxx") {
+		t.Fatalf("join parse error leaked setup key: %v", err)
+	}
+}
+
+func TestParseJoinTokenDefaultsToTorRelayOnly(t *testing.T) {
+	token, err := parseJoinToken("anonbird://join?server=http%3A%2F%2Fmanagementexample.onion&setup_key=NB-SETUP-xxxx")
+	if err != nil {
+		t.Fatalf("parse join token: %v", err)
+	}
+	if token.Transport.Type != anonymous.TransportTorRelayOnly {
+		t.Fatalf("unexpected default transport: %s", token.Transport.Type)
+	}
+	if token.Transport.TorSOCKS5 != anonymous.DefaultTorSOCKS5 {
+		t.Fatalf("unexpected default Tor SOCKS5 address: %s", token.Transport.TorSOCKS5)
+	}
 }
 
 func TestParseJoinTokenRejectsMissingSetupKey(t *testing.T) {

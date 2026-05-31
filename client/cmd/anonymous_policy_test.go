@@ -32,6 +32,20 @@ func TestDefaultAnonymousModeAppliedToConfigInput(t *testing.T) {
 	require.Equal(t, anonymous.DefaultTorSOCKS5, ic.AnonymousTransport.TorSOCKS5)
 }
 
+func TestAnonymousRootFlagsDefaultToTorRelayOnly(t *testing.T) {
+	anonymousFlag := rootCmd.PersistentFlags().Lookup(anonymousModeFlag)
+	require.NotNil(t, anonymousFlag)
+	require.Equal(t, "true", anonymousFlag.DefValue)
+
+	transportFlag := rootCmd.PersistentFlags().Lookup(anonymousTransportFlag)
+	require.NotNil(t, transportFlag)
+	require.Equal(t, anonymous.TransportTorRelayOnly, transportFlag.DefValue)
+
+	torFlag := rootCmd.PersistentFlags().Lookup(torSOCKS5Flag)
+	require.NotNil(t, torFlag)
+	require.Equal(t, anonymous.DefaultTorSOCKS5, torFlag.DefValue)
+}
+
 func TestDefaultAnonymousModeAppliedToLoginRequest(t *testing.T) {
 	restore := saveAnonymousPolicyGlobals()
 	t.Cleanup(restore)
@@ -91,6 +105,30 @@ func TestUnsafeClearnetAllowsExplicitNonInteractiveConfirmation(t *testing.T) {
 	require.Contains(t, stderr.String(), "WARNING: You are trying to connect without AnonBird anonymous mode")
 }
 
+func TestUnsafeClearnetWarningDoesNotContainSecrets(t *testing.T) {
+	restore := saveAnonymousPolicyGlobals()
+	t.Cleanup(restore)
+
+	anonymousMode = true
+	noAnonymousMode = true
+	allowUnsafeClearnet = false
+	unsafeClearnetAck = false
+	managementURL = "https://management.example.com"
+	setupKey = "NB-SECRET-SETUP-KEY"
+
+	var stderr bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetErr(&stderr)
+	cmd.SetIn(strings.NewReader(""))
+
+	err := validateAnonymousModePolicy(cmd)
+	require.Error(t, err)
+	require.Contains(t, stderr.String(), "WARNING: You are trying to connect without AnonBird anonymous mode")
+	require.NotContains(t, stderr.String(), setupKey)
+	require.NotContains(t, stderr.String(), managementURL)
+	require.NotContains(t, err.Error(), setupKey)
+}
+
 func saveAnonymousPolicyGlobals() func() {
 	origAnonymousMode := anonymousMode
 	origNoAnonymousMode := noAnonymousMode
@@ -98,6 +136,8 @@ func saveAnonymousPolicyGlobals() func() {
 	origUnsafeClearnetAck := unsafeClearnetAck
 	origAnonymousTransport := anonymousTransport
 	origTorSOCKS5 := torSOCKS5
+	origManagementURL := managementURL
+	origSetupKey := setupKey
 
 	return func() {
 		anonymousMode = origAnonymousMode
@@ -106,5 +146,7 @@ func saveAnonymousPolicyGlobals() func() {
 		unsafeClearnetAck = origUnsafeClearnetAck
 		anonymousTransport = origAnonymousTransport
 		torSOCKS5 = origTorSOCKS5
+		managementURL = origManagementURL
+		setupKey = origSetupKey
 	}
 }
