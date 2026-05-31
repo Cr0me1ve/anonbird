@@ -1247,6 +1247,17 @@ MVP считается успешным, если:
 
 Этот раздел не блокирует уже закрытый MVP scope, но нужен перед удобным тестовым/production rollout.
 
+### 22.0. Release testbed
+
+Для release-readiness и migration testing использовать те же disposable серверы, на которых выполнялись Tor/I2P smoke tests:
+
+- `93.177.116.58`
+- `213.108.3.228`
+- `185.246.220.249`
+- `45.138.103.224`
+
+Примечание: на этих серверах нет важных данных; перед destructive migration/rollback тестами всё равно делать snapshot/backup, чтобы проверять rollback path честно.
+
 ### 22.1. Linux command/package parity
 
 - [ ] Подготовить полноценную Linux install surface по аналогии с обычным `netbird`, но под AnonBird:
@@ -1367,6 +1378,54 @@ anonbird migrate rollback
   - print all planned file/service changes before applying;
   - do not delete old data during first migration pass;
   - log migration report without secrets/setup keys/private keys.
+- [ ] Прогнать end-to-end migration test с обычного NetBird на AnonBird:
+  - baseline server: поднять обычный self-host NetBird management/signal/relay/dashboard на одном из testbed серверов;
+  - baseline clients: подключить минимум два обычных NetBird клиента на остальных testbed серверах;
+  - проверить до миграции peers/groups/policies/DNS/setup keys/status;
+  - выполнить `anonbird migrate server --dry-run`, затем `--apply`;
+  - выполнить `anonbird migrate client --dry-run`, затем `--apply` или `--apply --rejoin "anonbird://join?..."`;
+  - проверить после миграции management/dashboard login, setup-key enrollment, peer connectivity, DNS/ACL, anonymous-check;
+  - выполнить rollback test хотя бы один раз и подтвердить восстановление старого NetBird baseline.
+
+### 22.6. Release/open-source readiness validation
+
+- [ ] Провести полный release-readiness audit перед публичным open-source релизом:
+  - README/quickstart/install docs соответствуют AnonBird, а не NetBird cloud/package hosts;
+  - LICENSE/NOTICE/CONTRIBUTING/SECURITY/CODE_OF_CONDUCT готовы к публикации;
+  - Go module/import-path compatibility decision задокументирован;
+  - GitHub repository rename/remotes/CI status badges/release URLs обновлены;
+  - dashboard repository/image names/release docs обновлены;
+  - secrets, setup keys, private I2P destinations, onion private keys и тестовые credentials отсутствуют в git history/artifacts;
+  - issue/PR templates, workflows, release signing, package signing и container publishing работают на fork infrastructure.
+- [ ] Прогнать расширенный test suite:
+  - targeted Go tests по anonymous/auth/management/relay/client/debug/release surfaces;
+  - dashboard `npm run build`;
+  - proxy web build;
+  - package scripts syntax/lint;
+  - compose config validation;
+  - focused rg leak sweep по old upstream hosts/secrets/private keys;
+  - remote smoke на testbed после установки release artifacts, а не dev binaries.
+- [ ] Поднять реальный тестовый проект через AnonBird virtual network:
+  - развернуть Marton-server на одном testbed peer;
+  - подключить другой peer как клиент к Marton-server только по overlay IP/DNS имени AnonBird;
+  - проверить TCP/HTTP/WebSocket или другой фактический protocol Marton-server;
+  - зафиксировать latency/throughput/errors через Tor relay-only и, отдельно, I2P datagram;
+  - подтвердить, что service не доступен через real public IP и что логи AnonBird не раскрывают real peer IPs.
+- [ ] Выполнить release-candidate install/upgrade flow:
+  - clean install server/dashboard/client из release packages/images;
+  - upgrade с предыдущего AnonBird dev build;
+  - migration с обычного NetBird baseline;
+  - uninstall/reinstall;
+  - rollback;
+  - повторный join после rollback/upgrade.
+- [ ] Перед публичным релизом создать release report:
+  - commit/tag;
+  - artifact checksums;
+  - test matrix;
+  - known limitations;
+  - migration notes;
+  - security caveats;
+  - production readiness verdict.
 
 ---
 
