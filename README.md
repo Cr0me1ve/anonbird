@@ -29,6 +29,8 @@
 
 **AnonBird UX.** The CLI command is `anonbird`, the dashboard uses anonymous-aware install flows, and release packages install into AnonBird paths such as `/etc/anonbird`, `/var/lib/anonbird`, `/var/log/anonbird` and `/var/run/anonbird`.
 
+**Brand assets.** The production logo source is a raster PNG at `docs/media/anonbird-logo-source.png`; README, dashboard, favicon, desktop tray/app icons and the social preview are generated from that PNG source.
+
 ### Key features
 
 | Anonymous transport | Management | Security | Operations | Platforms |

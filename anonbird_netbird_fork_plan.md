@@ -1394,15 +1394,15 @@ Type "I understand this may leak my real IP" to continue:
   - небольшие рога как у дьявола;
   - трезубец;
   - flat/minimal design, хорошо читаемый в маленьком размере.
-- [ ] Подготовить asset set:
-  - source SVG;
+- [x] Подготовить asset set:
+  - source PNG;
   - favicon/app icon sizes;
   - dashboard logo;
   - desktop tray/app icons;
   - release/social preview, если нужен.
-- [ ] Заменить старые logo/icon assets в `netbird` и `dashboard`, пересобрать UI/proxy/dashboard bundles и проверить light/dark backgrounds.
+- [x] Заменить старые logo/icon assets в `netbird` и `dashboard`, пересобрать UI/proxy/dashboard bundles и проверить light/dark backgrounds.
 
-Статус 2026-05-31: создан первый AnonBird logo pass без заглушек: source SVG `docs/media/anonbird-mark.svg` и `docs/media/anonbird-logo-full.svg`, regenerated README PNGs `docs/media/logo.png`/`logo-full.png`, dashboard `src/assets/netbird.svg`/`netbird-full.svg`, dashboard `apple-icon.png`/`favicon.ico`, desktop base icons `client/ui/assets/anonbird.png`, `netbird.png`, `netbird-disconnected.png`. Визуально проверено: знак красный, без глаз, с рогами и трезубцем; читается в small icon preview. Проверено: `file`, `xmllint --noout` для SVG, dashboard `npm run build`, `git diff --check` в `netbird` и `dashboard`. Открыто: заменить все tray state icons (`connected`/`connecting`/`error`/macOS/ICO/ICNS`) и добавить release/social preview.
+Статус 2026-05-31: SVG-вариант отброшен после визуальной сверки как слишком шумный; logo pipeline переведён на raster PNG. Source asset: `docs/media/anonbird-logo-source.png`, generated README PNGs `docs/media/logo.png`/`logo-full.png`, release/social preview `docs/media/anonbird-social-preview.png`, dashboard raster assets `src/assets/anonbird-logo.png`/`anonbird-logo-full.png`, dashboard `apple-icon.png`/`favicon.ico`, desktop base/tray/app icons `client/ui/assets/*.png`, `*.ico`, `client/ui/Netbird.icns`; README фиксирует PNG source как canonical brand asset. Визуально проверено: знак красный, без глаз, с рогами и трезубцем; читается в small icon/tray preview. Проверено: `file`, alpha-channel check, dashboard `npm run build`, targeted `go test ./client/ui -run '^$'`, `git diff --check` в `netbird` и `dashboard`.
 
 ### 22.5. Migration command
 
