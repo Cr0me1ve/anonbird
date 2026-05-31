@@ -173,3 +173,16 @@ func TestSenderHealthCheckAttemptThreshold(t *testing.T) {
 	}
 
 }
+
+func TestAnonymousSenderOptions(t *testing.T) {
+	opts := AnonymousSenderOptions()
+	if opts.HealthCheckInterval != anonymousHealthCheckInterval {
+		t.Fatalf("unexpected health-check interval: %s", opts.HealthCheckInterval)
+	}
+	if opts.HealthCheckTimeout != anonymousHealthCheckTimeout {
+		t.Fatalf("unexpected health-check timeout: %s", opts.HealthCheckTimeout)
+	}
+	if opts.AttemptThreshold != anonymousAttemptThreshold {
+		t.Fatalf("unexpected attempt threshold: %d", opts.AttemptThreshold)
+	}
+}

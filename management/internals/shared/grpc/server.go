@@ -189,6 +189,13 @@ func getRealIP(ctx context.Context) net.IP {
 	return nil
 }
 
+func redactRealIPIfAnonymous(meta nbpeer.PeerSystemMeta, realIP net.IP) (net.IP, string) {
+	if meta.Flags.AnonymousMode {
+		return nil, "anonymous"
+	}
+	return realIP, realIP.String()
+}
+
 func (s *Server) Job(srv proto.ManagementService_JobServer) error {
 	reqStart := time.Now()
 	ctx := srv.Context()
@@ -242,9 +249,8 @@ func (s *Server) Sync(req *proto.EncryptedMessage, srv proto.ManagementService_S
 		s.syncSem.Add(-1)
 		return err
 	}
-	realIP := getRealIP(ctx)
-	sRealIP := realIP.String()
 	peerMeta := extractPeerMeta(ctx, syncReq.GetMeta())
+	realIP, sRealIP := redactRealIPIfAnonymous(peerMeta, getRealIP(ctx))
 	userID, err := s.accountManager.GetUserIDByPeerKey(ctx, peerKey.String())
 	if err != nil {
 		s.syncSem.Add(-1)
@@ -306,7 +312,7 @@ func (s *Server) Sync(req *proto.EncryptedMessage, srv proto.ManagementService_S
 		log.WithContext(ctx).Tracef("peer system meta has to be provided on sync. Peer %s, remote addr %s", peerKey.String(), realIP)
 	}
 
-	metahash := metaHash(peerMeta, realIP.String())
+	metahash := metaHash(peerMeta, sRealIP)
 	s.loginFilter.addLogin(peerKey.String(), metahash)
 
 	peer, netMap, postureChecks, dnsFwdPort, err := s.accountManager.SyncAndMarkPeer(ctx, accountID, peerKey.String(), peerMeta, realIP, syncStart)
@@ -682,9 +688,12 @@ func extractPeerMeta(ctx context.Context, meta *proto.PeerSystemMeta) nbpeer.Pee
 			BlockInbound:          meta.GetFlags().GetBlockInbound(),
 			LazyConnectionEnabled: meta.GetFlags().GetLazyConnectionEnabled(),
 			DisableIPv6:           meta.GetFlags().GetDisableIPv6(),
+			AnonymousMode:         meta.GetFlags().GetAnonymousMode(),
 		},
-		Files:        files,
-		Capabilities: capabilitiesToInt32(meta.GetCapabilities()),
+		Files:              files,
+		Capabilities:       capabilitiesToInt32(meta.GetCapabilities()),
+		AnonymousTransport: meta.GetAnonymousTransport().GetType(),
+		I2PDestination:     meta.GetAnonymousTransport().GetI2PDestination(),
 	}
 }
 
@@ -722,8 +731,6 @@ func (s *Server) parseRequest(ctx context.Context, req *proto.EncryptedMessage, 
 // In case of the successful registration login is also successful
 func (s *Server) Login(ctx context.Context, req *proto.EncryptedMessage) (*proto.EncryptedMessage, error) {
 	reqStart := time.Now()
-	realIP := getRealIP(ctx)
-	sRealIP := realIP.String()
 
 	loginReq := &proto.LoginRequest{}
 	peerKey, err := s.parseRequest(ctx, req, loginReq)
@@ -732,6 +739,7 @@ func (s *Server) Login(ctx context.Context, req *proto.EncryptedMessage) (*proto
 	}
 
 	peerMeta := extractPeerMeta(ctx, loginReq.GetMeta())
+	realIP, sRealIP := redactRealIPIfAnonymous(peerMeta, getRealIP(ctx))
 	metahashed := metaHash(peerMeta, sRealIP)
 	if !s.loginFilter.allowLogin(peerKey.String(), metahashed) {
 		if s.logBlockedPeers {
@@ -1189,14 +1197,14 @@ func (s *Server) GetPKCEAuthorizationFlow(ctx context.Context, req *proto.Encryp
 // SyncMeta endpoint is used to synchronize peer's system metadata and notifies the connected,
 // peer's under the same account of any updates.
 func (s *Server) SyncMeta(ctx context.Context, req *proto.EncryptedMessage) (*proto.Empty, error) {
-	realIP := getRealIP(ctx)
-	log.WithContext(ctx).Debugf("Sync meta request from peer [%s] [%s]", req.WgPubKey, realIP.String())
-
 	syncMetaReq := &proto.SyncMetaRequest{}
 	peerKey, err := s.parseRequest(ctx, req, syncMetaReq)
 	if err != nil {
 		return nil, err
 	}
+	peerMeta := extractPeerMeta(ctx, syncMetaReq.GetMeta())
+	realIP, sRealIP := redactRealIPIfAnonymous(peerMeta, getRealIP(ctx))
+	log.WithContext(ctx).Debugf("Sync meta request from peer [%s] [%s]", req.WgPubKey, sRealIP)
 
 	if syncMetaReq.GetMeta() == nil {
 		msg := status.Errorf(codes.FailedPrecondition,
@@ -1205,7 +1213,7 @@ func (s *Server) SyncMeta(ctx context.Context, req *proto.EncryptedMessage) (*pr
 		return nil, msg
 	}
 
-	err = s.accountManager.SyncPeerMeta(ctx, peerKey.String(), extractPeerMeta(ctx, syncMetaReq.GetMeta()))
+	err = s.accountManager.SyncPeerMeta(ctx, peerKey.String(), peerMeta)
 	if err != nil {
 		return nil, mapError(ctx, err)
 	}

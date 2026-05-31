@@ -97,3 +97,13 @@ func TestReceiverHealthCheckAttemptThreshold(t *testing.T) {
 		})
 	}
 }
+
+func TestAnonymousReceiverOptions(t *testing.T) {
+	opts := AnonymousReceiverOptions()
+	if opts.HeartbeatTimeout != anonymousHealthCheckInterval+anonymousHealthCheckTimeout {
+		t.Fatalf("unexpected heartbeat timeout: %s", opts.HeartbeatTimeout)
+	}
+	if opts.AttemptThreshold != anonymousAttemptThreshold {
+		t.Fatalf("unexpected attempt threshold: %d", opts.AttemptThreshold)
+	}
+}

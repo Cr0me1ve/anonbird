@@ -45,6 +45,8 @@ type Config struct {
 	LogLevel                 string
 	LogFile                  string
 	HealthcheckListenAddress string
+	RateLimitBytesPerSecond  int
+	RateLimitBurstBytes      int
 	// STUN server configuration
 	EnableSTUN   bool
 	STUNPorts    []int
@@ -57,6 +59,12 @@ func (c Config) Validate() error {
 	}
 	if c.AuthSecret == "" {
 		return fmt.Errorf("auth secret is required")
+	}
+	if c.RateLimitBytesPerSecond < 0 {
+		return fmt.Errorf("--rate-limit-bytes-per-second must be greater than or equal to 0")
+	}
+	if c.RateLimitBurstBytes < 0 {
+		return fmt.Errorf("--rate-limit-burst-bytes must be greater than or equal to 0")
 	}
 
 	// Validate STUN configuration
@@ -116,6 +124,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cobraConfig.LogLevel, "log-level", "info", "log level")
 	rootCmd.PersistentFlags().StringVar(&cobraConfig.LogFile, "log-file", "console", "log file")
 	rootCmd.PersistentFlags().StringVarP(&cobraConfig.HealthcheckListenAddress, "health-listen-address", "H", ":9000", "listen address of healthcheck server")
+	rootCmd.PersistentFlags().IntVar(&cobraConfig.RateLimitBytesPerSecond, "rate-limit-bytes-per-second", 0, "per-peer relay transport byte rate limit; 0 disables rate limiting")
+	rootCmd.PersistentFlags().IntVar(&cobraConfig.RateLimitBurstBytes, "rate-limit-burst-bytes", 0, "per-peer relay transport burst bytes; defaults to rate-limit-bytes-per-second")
 	rootCmd.PersistentFlags().BoolVar(&cobraConfig.EnableSTUN, "enable-stun", false, "enable embedded STUN server")
 	rootCmd.PersistentFlags().IntSliceVar(&cobraConfig.STUNPorts, "stun-ports", []int{3478}, "ports for the embedded STUN server (can be specified multiple times or comma-separated)")
 	rootCmd.PersistentFlags().StringVar(&cobraConfig.STUNLogLevel, "stun-log-level", "info", "log level for STUN server (panic, fatal, error, warn, info, debug, trace)")
@@ -180,6 +190,11 @@ func execute(cmd *cobra.Command, args []string) error {
 		ExposedAddress: cobraConfig.ExposedAddress,
 		AuthValidator:  authenticator,
 		TLSSupport:     tlsSupport,
+		RateLimit: server.RateLimitConfig{
+			Enabled:        cobraConfig.RateLimitBytesPerSecond > 0,
+			BytesPerSecond: cobraConfig.RateLimitBytesPerSecond,
+			BurstBytes:     cobraConfig.RateLimitBurstBytes,
+		},
 	}
 
 	srv, err := createRelayServer(cfg)

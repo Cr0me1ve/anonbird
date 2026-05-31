@@ -10,15 +10,21 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/netbirdio/netbird/formatter/hook"
+	setupkeycmd "github.com/netbirdio/netbird/management/cmd/setupkey"
 	tokencmd "github.com/netbirdio/netbird/management/cmd/token"
 	"github.com/netbirdio/netbird/management/server/store"
 	"github.com/netbirdio/netbird/management/server/types"
 	"github.com/netbirdio/netbird/util"
+	"github.com/netbirdio/netbird/util/crypt"
 )
 
 // newTokenCommands creates the token command tree with combined-specific store opener.
 func newTokenCommands() *cobra.Command {
 	return tokencmd.NewCommands(withTokenStore)
+}
+
+func newSetupKeyCommands() *cobra.Command {
+	return setupkeycmd.NewCommands(withTokenStore)
 }
 
 // withTokenStore loads the combined YAML config, initializes the store, and calls fn.
@@ -52,6 +58,13 @@ func withTokenStore(cmd *cobra.Command, fn func(ctx context.Context, s store.Sto
 	s, err := store.NewStore(ctx, engine, datadir, nil, true)
 	if err != nil {
 		return fmt.Errorf("create store: %w", err)
+	}
+	if key := cfg.Management.Store.EncryptionKey; key != "" {
+		fieldEncrypt, err := crypt.NewFieldEncrypt(key)
+		if err != nil {
+			return fmt.Errorf("create field encryptor: %w", err)
+		}
+		s.SetFieldEncrypt(fieldEncrypt)
 	}
 	defer func() {
 		if err := s.Close(ctx); err != nil {

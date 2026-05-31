@@ -20,6 +20,7 @@ import (
 	"github.com/netbirdio/netbird/management/server/permissions/modules"
 	"github.com/netbirdio/netbird/management/server/permissions/operations"
 	"github.com/netbirdio/netbird/management/server/types"
+	sharedanon "github.com/netbirdio/netbird/shared/anonymous"
 	"github.com/netbirdio/netbird/shared/management/status"
 )
 
@@ -35,6 +36,13 @@ func validateOIDCIssuer(ctx context.Context, issuer string) error {
 
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,
+	}
+	if sharedanon.EndpointIsAnonymous(wellKnown) {
+		var err error
+		httpClient, err = sharedanon.HTTPClientForEndpoint(wellKnown, 30*time.Second)
+		if err != nil {
+			return fmt.Errorf("%w: %v", types.ErrIdentityProviderIssuerUnreachable, err)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)

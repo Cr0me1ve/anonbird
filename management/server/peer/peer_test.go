@@ -2,6 +2,7 @@ package peer
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 	"testing"
 
@@ -32,6 +33,35 @@ func BenchmarkFQDN(b *testing.B) {
 			p.FQDN(dnsDomain)
 		}
 	})
+}
+
+func TestEventMetaOmitsConnectionIPForAnonymousPeer(t *testing.T) {
+	p := &Peer{
+		Name: "anon",
+		IP:   netip.MustParseAddr("100.64.0.10"),
+		Location: Location{
+			ConnectionIP: net.ParseIP("93.177.116.58"),
+			CountryCode:  "RU",
+			CityName:     "Moscow",
+			GeoNameID:    524901,
+		},
+		Meta: PeerSystemMeta{
+			Flags:              Flags{AnonymousMode: true},
+			AnonymousTransport: "i2p-datagram",
+		},
+	}
+
+	meta := p.EventMeta("mesh.internal")
+	_, ok := meta["location_connection_ip"]
+	require.False(t, ok)
+	_, ok = meta["location_country_code"]
+	require.False(t, ok)
+	_, ok = meta["location_city_name"]
+	require.False(t, ok)
+	_, ok = meta["location_geo_name_id"]
+	require.False(t, ok)
+	require.Equal(t, true, meta["anonymous_mode"])
+	require.Equal(t, "i2p-datagram", meta["anonymous_transport"])
 }
 
 func TestIsEqual(t *testing.T) {
@@ -85,6 +115,17 @@ func TestIsEqual(t *testing.T) {
 	if !meta1.isEqual(meta2) {
 		t.Error("meta1 should be equal to meta2")
 	}
+
+	meta2.AnonymousTransport = "i2p-datagram"
+	meta2.I2PDestination = "public-destination"
+	require.False(t, meta1.isEqual(meta2))
+}
+
+func TestPeerSystemMetaAnonymousTransportNotEmpty(t *testing.T) {
+	require.False(t, PeerSystemMeta{
+		AnonymousTransport: "i2p-datagram",
+		I2PDestination:     "public-destination",
+	}.isEmpty())
 }
 
 func TestFlags_IsEqual(t *testing.T) {

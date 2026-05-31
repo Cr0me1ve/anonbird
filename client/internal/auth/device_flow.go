@@ -2,8 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,8 +12,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-
-	"github.com/netbirdio/netbird/util/embeddedroots"
 )
 
 // HostedGrantType grant type for device flow on Hosted
@@ -46,6 +42,10 @@ type DeviceAuthProviderConfig struct {
 	UseIDToken bool
 	// LoginHint is used to pre-fill the email/username field during authentication
 	LoginHint string
+	// HTTPClient overrides the default HTTP client for token and device code requests
+	HTTPClient *http.Client
+	// EndpointValidator validates URLs returned by the identity provider before they are shown to users
+	EndpointValidator func(serviceName, endpoint string) error
 }
 
 // validateDeviceAuthConfig validates device authorization provider configuration
@@ -101,24 +101,9 @@ type TokenRequestResponse struct {
 
 // NewDeviceAuthorizationFlow returns device authorization flow client
 func NewDeviceAuthorizationFlow(config DeviceAuthProviderConfig) (*DeviceAuthorizationFlow, error) {
-	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
-	httpTransport.MaxIdleConns = 5
-
-	certPool, err := x509.SystemCertPool()
-	if err != nil || certPool == nil {
-		log.Debugf("System cert pool not available; falling back to embedded cert, error: %v", err)
-		certPool = embeddedroots.Get()
-	} else {
-		log.Debug("Using system certificate pool.")
-	}
-
-	httpTransport.TLSClientConfig = &tls.Config{
-		RootCAs: certPool,
-	}
-
-	httpClient := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: httpTransport,
+	httpClient := config.HTTPClient
+	if httpClient == nil {
+		httpClient = newProviderHTTPClient(nil, defaultProviderHTTPTimeout, nil)
 	}
 
 	return &DeviceAuthorizationFlow{
@@ -176,6 +161,10 @@ func (d *DeviceAuthorizationFlow) RequestAuthInfo(ctx context.Context) (AuthFlow
 		deviceCode.VerificationURIComplete = deviceCode.VerificationURI
 	}
 
+	if err := d.validateAuthInfoEndpoints(deviceCode); err != nil {
+		return AuthFlowInfo{}, err
+	}
+
 	if d.providerConfig.LoginHint != "" {
 		deviceCode.VerificationURIComplete = appendLoginHint(deviceCode.VerificationURIComplete, d.providerConfig.LoginHint)
 		if deviceCode.VerificationURI != "" {
@@ -184,6 +173,23 @@ func (d *DeviceAuthorizationFlow) RequestAuthInfo(ctx context.Context) (AuthFlow
 	}
 
 	return deviceCode, err
+}
+
+func (d *DeviceAuthorizationFlow) validateAuthInfoEndpoints(info AuthFlowInfo) error {
+	if d.providerConfig.EndpointValidator == nil {
+		return nil
+	}
+	if info.VerificationURIComplete != "" {
+		if err := d.providerConfig.EndpointValidator("device verification", info.VerificationURIComplete); err != nil {
+			return err
+		}
+	}
+	if info.VerificationURI != "" && info.VerificationURI != info.VerificationURIComplete {
+		if err := d.providerConfig.EndpointValidator("device verification", info.VerificationURI); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func appendLoginHint(uri, loginHint string) string {

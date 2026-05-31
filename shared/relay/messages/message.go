@@ -29,18 +29,23 @@ const (
 	MsgTypeUnsubscribePeerState = 9
 	MsgTypePeersOnline          = 10
 	MsgTypePeersWentOffline     = 11
+	MsgTypeTransportChannel     = 12
+	MsgTypeAuthChannel          = 13
 
 	// base size of the message
 	sizeOfVersionByte = 1
 	sizeOfMsgType     = 1
 	sizeOfProtoHeader = sizeOfVersionByte + sizeOfMsgType
+	channelIDSize     = 4
 
 	// auth message
-	sizeOfMagicByte     = 4
-	headerSizeAuth      = sizeOfMagicByte + peerIDSize
-	offsetMagicByte     = sizeOfProtoHeader
-	offsetAuthPeerID    = sizeOfProtoHeader + sizeOfMagicByte
-	headerTotalSizeAuth = sizeOfProtoHeader + headerSizeAuth
+	sizeOfMagicByte            = 4
+	headerSizeAuth             = sizeOfMagicByte + peerIDSize
+	offsetMagicByte            = sizeOfProtoHeader
+	offsetAuthPeerID           = sizeOfProtoHeader + sizeOfMagicByte
+	headerTotalSizeAuth        = sizeOfProtoHeader + headerSizeAuth
+	offsetAuthChannelID        = headerTotalSizeAuth
+	headerTotalSizeAuthChannel = headerTotalSizeAuth + channelIDSize
 
 	// hello message
 	headerSizeHello     = sizeOfMagicByte + peerIDSize
@@ -50,6 +55,9 @@ const (
 	headerSizeTransport      = peerIDSize
 	offsetTransportID        = sizeOfProtoHeader
 	headerTotalSizeTransport = sizeOfProtoHeader + headerSizeTransport
+
+	offsetTransportChannelID        = headerTotalSizeTransport
+	headerTotalSizeTransportChannel = headerTotalSizeTransport + channelIDSize
 )
 
 var (
@@ -73,6 +81,8 @@ func (m MsgType) String() string {
 		return "auth"
 	case MsgTypeAuthResponse:
 		return "auth response"
+	case MsgTypeAuthChannel:
+		return "auth channel"
 	case MsgTypeTransport:
 		return "transport"
 	case MsgTypeClose:
@@ -87,6 +97,8 @@ func (m MsgType) String() string {
 		return "peers online"
 	case MsgTypePeersWentOffline:
 		return "peers went offline"
+	case MsgTypeTransportChannel:
+		return "transport channel"
 	default:
 		return "unknown"
 	}
@@ -115,7 +127,9 @@ func DetermineClientMessageType(msg []byte) (MsgType, error) {
 	case
 		MsgTypeHello,
 		MsgTypeAuth,
+		MsgTypeAuthChannel,
 		MsgTypeTransport,
+		MsgTypeTransportChannel,
 		MsgTypeClose,
 		MsgTypeHealthCheck,
 		MsgTypeSubscribePeerState,
@@ -138,6 +152,7 @@ func DetermineServerMessageType(msg []byte) (MsgType, error) {
 		MsgTypeHelloResponse,
 		MsgTypeAuthResponse,
 		MsgTypeTransport,
+		MsgTypeTransportChannel,
 		MsgTypeClose,
 		MsgTypeHealthCheck,
 		MsgTypePeersOnline,
@@ -243,6 +258,53 @@ func UnmarshalAuthMsg(msg []byte) (*PeerID, []byte, error) {
 	return &peerID, msg[headerTotalSizeAuth:], nil
 }
 
+// MarshalAuthChannelMsg authenticates a relay connection that belongs to a
+// specific transport channel. Channel 0 uses the legacy Auth message.
+func MarshalAuthChannelMsg(peerID PeerID, channelID uint32, authPayload []byte) ([]byte, error) {
+	if channelID == 0 {
+		return MarshalAuthMsg(peerID, authPayload)
+	}
+	if headerTotalSizeAuthChannel+len(authPayload) > MaxHandshakeSize {
+		return nil, fmt.Errorf("too large auth payload")
+	}
+
+	msg := make([]byte, headerTotalSizeAuthChannel+len(authPayload))
+	msg[0] = byte(CurrentProtocolVersion)
+	msg[1] = byte(MsgTypeAuthChannel)
+	copy(msg[sizeOfProtoHeader:], magicHeader)
+	copy(msg[offsetAuthPeerID:], peerID[:])
+	putUint32(msg[offsetAuthChannelID:headerTotalSizeAuthChannel], channelID)
+	copy(msg[headerTotalSizeAuthChannel:], authPayload)
+	return msg, nil
+}
+
+// UnmarshalAuthChannelMsg extracts peerID, transport channel ID, and auth
+// payload from an AuthChannel message. Legacy Auth messages are returned as
+// channel 0 so callers can share one handshake path.
+func UnmarshalAuthChannelMsg(msg []byte) (*PeerID, uint32, []byte, error) {
+	msgType, err := DetermineClientMessageType(msg)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	if msgType == MsgTypeAuth {
+		peerID, payload, err := UnmarshalAuthMsg(msg)
+		return peerID, 0, payload, err
+	}
+	if msgType != MsgTypeAuthChannel {
+		return nil, 0, nil, fmt.Errorf("invalid auth channel message type %s", msgType)
+	}
+	if len(msg) < headerTotalSizeAuthChannel {
+		return nil, 0, nil, ErrInvalidMessageLength
+	}
+	if !bytes.Equal(msg[offsetMagicByte:offsetMagicByte+sizeOfMagicByte], magicHeader) {
+		return nil, 0, nil, errors.New("invalid magic header")
+	}
+
+	peerID := PeerID(msg[offsetAuthPeerID:headerTotalSizeAuth])
+	channelID := readUint32(msg[offsetAuthChannelID:headerTotalSizeAuthChannel])
+	return &peerID, channelID, msg[headerTotalSizeAuthChannel:], nil
+}
+
 // MarshalAuthResponse creates a response message to the auth.
 // In case of success connection the server response with a AuthResponse message. This message contains the server's
 // instance URL. This URL will be used by choose the common Relay server in case if the peers are in different Relay
@@ -294,6 +356,19 @@ func MarshalTransportMsg(peerID PeerID, payload []byte) ([]byte, error) {
 	return msg, nil
 }
 
+// MarshalTransportChannelMsg creates a channel-aware transport message.
+// Channel 0 is the legacy/default relay channel and should use MarshalTransportMsg
+// when compatibility with older peers is required.
+func MarshalTransportChannelMsg(peerID PeerID, channelID uint32, payload []byte) ([]byte, error) {
+	msg := make([]byte, headerTotalSizeTransportChannel+len(payload))
+	msg[0] = byte(CurrentProtocolVersion)
+	msg[1] = byte(MsgTypeTransportChannel)
+	copy(msg[sizeOfProtoHeader:], peerID[:])
+	putUint32(msg[offsetTransportChannelID:], channelID)
+	copy(msg[headerTotalSizeTransportChannel:], payload)
+	return msg, nil
+}
+
 // UnmarshalTransportMsg extracts the peerID and the payload from the transport message.
 func UnmarshalTransportMsg(buf []byte) (*PeerID, []byte, error) {
 	if len(buf) < headerTotalSizeTransport {
@@ -304,6 +379,30 @@ func UnmarshalTransportMsg(buf []byte) (*PeerID, []byte, error) {
 	var peerID PeerID
 	copy(peerID[:], buf[offsetTransportID:offsetEnd])
 	return &peerID, buf[headerTotalSizeTransport:], nil
+}
+
+// UnmarshalTransportChannelMsg extracts the peerID, channel ID and payload from
+// either the legacy transport frame or the channel-aware transport frame.
+func UnmarshalTransportChannelMsg(buf []byte) (*PeerID, uint32, []byte, error) {
+	if len(buf) < sizeOfProtoHeader {
+		return nil, 0, nil, ErrInvalidMessageLength
+	}
+	switch MsgType(buf[1]) {
+	case MsgTypeTransport:
+		peerID, payload, err := UnmarshalTransportMsg(buf)
+		return peerID, 0, payload, err
+	case MsgTypeTransportChannel:
+		if len(buf) < headerTotalSizeTransportChannel {
+			return nil, 0, nil, ErrInvalidMessageLength
+		}
+		const offsetEnd = offsetTransportID + peerIDSize
+		var peerID PeerID
+		copy(peerID[:], buf[offsetTransportID:offsetEnd])
+		channelID := readUint32(buf[offsetTransportChannelID:])
+		return &peerID, channelID, buf[headerTotalSizeTransportChannel:], nil
+	default:
+		return nil, 0, nil, fmt.Errorf("unexpected transport message type %s", MsgType(buf[1]))
+	}
 }
 
 // UnmarshalTransportID extracts the peerID from the transport message.
@@ -327,6 +426,17 @@ func UpdateTransportMsg(msg []byte, peerID PeerID) error {
 	}
 	copy(msg[offsetTransportID:], peerID[:])
 	return nil
+}
+
+func putUint32(dst []byte, v uint32) {
+	dst[0] = byte(v >> 24)
+	dst[1] = byte(v >> 16)
+	dst[2] = byte(v >> 8)
+	dst[3] = byte(v)
+}
+
+func readUint32(src []byte) uint32 {
+	return uint32(src[0])<<24 | uint32(src[1])<<16 | uint32(src[2])<<8 | uint32(src[3])
 }
 
 // MarshalHealthcheck creates a health check message.

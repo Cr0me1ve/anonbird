@@ -53,6 +53,21 @@ func TestUpload(t *testing.T) {
 	require.Equal(t, fileContent, createdFileContent)
 }
 
+func TestUploadDebugBundleRejectsClearnetUploadForAnonymousManagement(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "tmpfile")
+	err := os.WriteFile(file, []byte("test file content"), 0640)
+	require.NoError(t, err)
+
+	_, err = UploadDebugBundle(
+		context.Background(),
+		types.DefaultBundleURL,
+		"http://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80",
+		file,
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "non-anonymous URL")
+}
+
 // reserveLoopbackPort binds an ephemeral port on loopback to learn a free
 // address, then releases it so the server under test can rebind. The close/
 // rebind window is racy in theory; on loopback with a kernel-assigned port

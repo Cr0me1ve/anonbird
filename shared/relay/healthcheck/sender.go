@@ -12,6 +12,10 @@ const (
 
 	defaultHealthCheckInterval = 25 * time.Second
 	defaultHealthCheckTimeout  = 20 * time.Second
+
+	anonymousAttemptThreshold    = 2
+	anonymousHealthCheckInterval = 60 * time.Second
+	anonymousHealthCheckTimeout  = 180 * time.Second
 )
 
 type SenderOptions struct {
@@ -64,12 +68,27 @@ func NewSenderWithOpts(log *log.Entry, opts SenderOptions) *Sender {
 
 // NewSender creates a new healthcheck sender
 func NewSender(log *log.Entry) *Sender {
-	opts := SenderOptions{
+	return NewSenderWithOpts(log, DefaultSenderOptions())
+}
+
+func DefaultSenderOptions() SenderOptions {
+	return SenderOptions{
 		HealthCheckInterval: defaultHealthCheckInterval,
 		HealthCheckTimeout:  defaultHealthCheckTimeout,
 		AttemptThreshold:    getAttemptThresholdFromEnv(),
 	}
-	return NewSenderWithOpts(log, opts)
+}
+
+func AnonymousSenderOptions() SenderOptions {
+	return SenderOptions{
+		HealthCheckInterval: anonymousHealthCheckInterval,
+		HealthCheckTimeout:  anonymousHealthCheckTimeout,
+		AttemptThreshold:    anonymousAttemptThreshold,
+	}
+}
+
+func NewAnonymousSender(log *log.Entry) *Sender {
+	return NewSenderWithOpts(log, AnonymousSenderOptions())
 }
 
 // OnHCResponse sends an acknowledgment signal to the sender

@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/netbirdio/netbird/upload-server/types"
 )
@@ -15,9 +17,18 @@ import (
 const maxBundleUploadSize = 50 * 1024 * 1024
 
 func UploadDebugBundle(ctx context.Context, url, managementURL, filePath string) (key string, err error) {
+	anonymousManagement := isAnonymousServiceURL(managementURL)
+	if anonymousManagement && !isAnonymousServiceURL(url) {
+		return "", fmt.Errorf("debug bundle upload to non-anonymous URL %s is disabled for anonymous management URL %s", url, managementURL)
+	}
+
 	response, err := getUploadURL(ctx, url, managementURL)
 	if err != nil {
 		return "", err
+	}
+
+	if anonymousManagement && !isAnonymousServiceURL(response.URL) {
+		return "", fmt.Errorf("debug bundle upload received non-anonymous presigned URL %s for anonymous management URL %s", response.URL, managementURL)
 	}
 
 	err = upload(ctx, filePath, response)
@@ -98,4 +109,17 @@ func getUploadURL(ctx context.Context, url string, managementURL string) (*types
 
 func getURLHash(url string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(url)))
+}
+
+func isAnonymousServiceURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	return strings.HasSuffix(host, ".onion") || strings.HasSuffix(host, ".i2p")
 }

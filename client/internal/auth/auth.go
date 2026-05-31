@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/profilemanager"
 	"github.com/netbirdio/netbird/client/ssh"
 	"github.com/netbirdio/netbird/client/system"
@@ -46,7 +47,23 @@ func NewAuth(ctx context.Context, privateKey string, mgmURL *url.URL, config *pr
 	mgmTLSEnabled := mgmURL.Scheme == "https"
 
 	log.Debugf("connecting to Management Service %s", mgmURL.String())
-	mgmClient, err := mgm.NewClient(ctx, mgmURL.Host, myPrivateKey, mgmTLSEnabled)
+	var mgmClient *mgm.GrpcClient
+	if config.AnonymousMode {
+		transport := anonymous.NormalizeTransport(config.AnonymousTransport)
+		if err := anonymous.ValidateServiceURLForTransport("management", mgmURL, transport); err != nil {
+			return nil, err
+		}
+		switch transport.Type {
+		case anonymous.TransportTorRelayOnly:
+			mgmClient, err = mgm.NewClientWithSOCKS5(ctx, mgmURL.Host, myPrivateKey, mgmTLSEnabled, transport.TorSOCKS5)
+		case anonymous.TransportI2PDatagram:
+			mgmClient, err = mgm.NewClientWithI2P(ctx, mgmURL.Host, myPrivateKey, mgmTLSEnabled, transport.I2PSAM, transport.I2PTunnelLength, transport.I2PTunnelQuantity)
+		default:
+			err = anonymous.ValidateTransport(transport)
+		}
+	} else {
+		mgmClient, err = mgm.NewClient(ctx, mgmURL.Host, myPrivateKey, mgmTLSEnabled)
+	}
 	if err != nil {
 		log.Errorf("failed connecting to Management Service %s: %v", mgmURL.String(), err)
 		return nil, err
@@ -229,6 +246,9 @@ func (a *Auth) getPKCEFlow(client *mgm.GrpcClient) (*PKCEAuthorizationFlow, erro
 	if err := validatePKCEConfig(config); err != nil {
 		return nil, err
 	}
+	if err := a.configureAnonymousPKCEConfig(config); err != nil {
+		return nil, err
+	}
 
 	flow, err := NewPKCEAuthorizationFlow(*config)
 	if err != nil {
@@ -270,6 +290,9 @@ func (a *Auth) getDeviceFlow(client *mgm.GrpcClient) (*DeviceAuthorizationFlow, 
 	if err := validateDeviceAuthConfig(config); err != nil {
 		return nil, err
 	}
+	if err := a.configureAnonymousDeviceConfig(config); err != nil {
+		return nil, err
+	}
 
 	flow, err := NewDeviceAuthorizationFlow(*config)
 	if err != nil {
@@ -277,6 +300,51 @@ func (a *Auth) getDeviceFlow(client *mgm.GrpcClient) (*DeviceAuthorizationFlow, 
 	}
 
 	return flow, nil
+}
+
+func (a *Auth) configureAnonymousPKCEConfig(config *PKCEAuthProviderConfig) error {
+	if !a.config.AnonymousMode {
+		return nil
+	}
+
+	transport := anonymous.NormalizeTransport(a.config.AnonymousTransport)
+	if err := anonymous.ValidateEndpointForTransport("PKCE token", config.TokenEndpoint, transport); err != nil {
+		return err
+	}
+	if err := anonymous.ValidateEndpointForTransport("PKCE authorization", config.AuthorizationEndpoint, transport); err != nil {
+		return err
+	}
+
+	httpClient, err := newAnonymousProviderHTTPClient(transport, config.ClientCertPair)
+	if err != nil {
+		return err
+	}
+	config.HTTPClient = httpClient
+	return nil
+}
+
+func (a *Auth) configureAnonymousDeviceConfig(config *DeviceAuthProviderConfig) error {
+	if !a.config.AnonymousMode {
+		return nil
+	}
+
+	transport := anonymous.NormalizeTransport(a.config.AnonymousTransport)
+	if err := anonymous.ValidateEndpointForTransport("device token", config.TokenEndpoint, transport); err != nil {
+		return err
+	}
+	if err := anonymous.ValidateEndpointForTransport("device authorization", config.DeviceAuthEndpoint, transport); err != nil {
+		return err
+	}
+
+	httpClient, err := newAnonymousProviderHTTPClient(transport, nil)
+	if err != nil {
+		return err
+	}
+	config.HTTPClient = httpClient
+	config.EndpointValidator = func(serviceName, endpoint string) error {
+		return anonymous.ValidateEndpointForTransport(serviceName, endpoint, transport)
+	}
+	return nil
 }
 
 // doMgmLogin performs the actual login operation with the management service
@@ -329,6 +397,10 @@ func (a *Auth) setSystemInfoFlags(info *system.Info) {
 		a.config.EnableSSHRemotePortForwarding,
 		a.config.DisableSSHAuth,
 	)
+	if a.config.AnonymousMode {
+		anonymous.SanitizeSystemInfo(info, a.privateKey.PublicKey().String())
+		anonymous.SetSystemInfoTransport(info, a.config.AnonymousTransport)
+	}
 }
 
 // reconnect closes the current connection and creates a new one
@@ -347,7 +419,24 @@ func (a *Auth) reconnect(ctx context.Context, brokenClient *mgm.GrpcClient) erro
 	// Create new connection FIRST, before closing the old one
 	// This ensures a.client is never nil, preventing panics in other threads
 	log.Debugf("reconnecting to Management Service %s", a.mgmURL.String())
-	mgmClient, err := mgm.NewClient(ctx, a.mgmURL.Host, a.privateKey, a.mgmTLSEnabled)
+	var mgmClient *mgm.GrpcClient
+	var err error
+	if a.config.AnonymousMode {
+		transport := anonymous.NormalizeTransport(a.config.AnonymousTransport)
+		if err := anonymous.ValidateServiceURLForTransport("management", a.mgmURL, transport); err != nil {
+			return err
+		}
+		switch transport.Type {
+		case anonymous.TransportTorRelayOnly:
+			mgmClient, err = mgm.NewClientWithSOCKS5(ctx, a.mgmURL.Host, a.privateKey, a.mgmTLSEnabled, transport.TorSOCKS5)
+		case anonymous.TransportI2PDatagram:
+			mgmClient, err = mgm.NewClientWithI2P(ctx, a.mgmURL.Host, a.privateKey, a.mgmTLSEnabled, transport.I2PSAM, transport.I2PTunnelLength, transport.I2PTunnelQuantity)
+		default:
+			err = anonymous.ValidateTransport(transport)
+		}
+	} else {
+		mgmClient, err = mgm.NewClient(ctx, a.mgmURL.Host, a.privateKey, a.mgmTLSEnabled)
+	}
 	if err != nil {
 		log.Errorf("failed reconnecting to Management Service %s: %v", a.mgmURL.String(), err)
 		// Keep the old client if reconnection fails

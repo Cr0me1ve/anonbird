@@ -24,6 +24,7 @@ import (
 	"github.com/netbirdio/netbird/client/iface"
 	"github.com/netbirdio/netbird/client/iface/device"
 	"github.com/netbirdio/netbird/client/iface/netstack"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/dns"
 	"github.com/netbirdio/netbird/client/internal/listener"
 	"github.com/netbirdio/netbird/client/internal/metrics"
@@ -79,6 +80,13 @@ func NewConnectClient(
 
 func (c *ConnectClient) SetUpdateManager(um *updater.Manager) {
 	c.updateManager = um
+}
+
+func shouldStartMetricsPush(config *profilemanager.Config) bool {
+	if config != nil && config.AnonymousMode {
+		return false
+	}
+	return metrics.IsMetricsPushEnabled()
 }
 
 // Run with main logic.
@@ -170,7 +178,7 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 		log.Debugf("initialized client metrics")
 
 		// Start metrics push if enabled (uses daemon context, persists across engine restarts)
-		if metrics.IsMetricsPushEnabled() {
+		if shouldStartMetricsPush(c.config) {
 			c.clientMetrics.StartPush(c.ctx, metrics.PushConfigFromEnv())
 		}
 	}
@@ -231,6 +239,23 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 		c.updateManager.CheckUpdateSuccess(c.ctx)
 	}
 
+	if c.config.AnonymousMode {
+		daemon, err := anonymous.EnsureI2PDaemon(c.ctx, c.config.AnonymousTransport)
+		if err != nil {
+			return wrapErr(err)
+		}
+		defer func() {
+			if err := daemon.Close(); err != nil {
+				log.Warnf("failed to stop managed i2pd: %v", err)
+			}
+		}()
+		if config, _, err := profilemanager.EnsureAnonymousTransportIdentity(c.ctx, "", c.config); err != nil {
+			return wrapErr(err)
+		} else {
+			c.config = config
+		}
+	}
+
 	inst := installer.New()
 	if err := inst.CleanUpInstallerFiles(); err != nil {
 		log.Errorf("failed to clean up temporary installer file: %v", err)
@@ -254,7 +279,24 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 		}()
 
 		log.Debugf("connecting to the Management service %s", c.config.ManagementURL.Host)
-		mgmClient, err := mgm.NewClient(engineCtx, c.config.ManagementURL.Host, myPrivateKey, mgmTlsEnabled)
+		var mgmClient *mgm.GrpcClient
+		var err error
+		if c.config.AnonymousMode {
+			transport := anonymous.NormalizeTransport(c.config.AnonymousTransport)
+			if err := anonymous.ValidateServiceURLForTransport("management", c.config.ManagementURL, transport); err != nil {
+				return wrapErr(err)
+			}
+			switch transport.Type {
+			case anonymous.TransportTorRelayOnly:
+				mgmClient, err = mgm.NewClientWithSOCKS5(engineCtx, c.config.ManagementURL.Host, myPrivateKey, mgmTlsEnabled, transport.TorSOCKS5)
+			case anonymous.TransportI2PDatagram:
+				mgmClient, err = mgm.NewClientWithI2P(engineCtx, c.config.ManagementURL.Host, myPrivateKey, mgmTlsEnabled, transport.I2PSAM, transport.I2PTunnelLength, transport.I2PTunnelQuantity)
+			default:
+				err = anonymous.ValidateTransport(transport)
+			}
+		} else {
+			mgmClient, err = mgm.NewClient(engineCtx, c.config.ManagementURL.Host, myPrivateKey, mgmTlsEnabled)
+		}
 		if err != nil {
 			return wrapErr(gstatus.Errorf(codes.FailedPrecondition, "failed connecting to Management Service : %s", err))
 		}
@@ -293,11 +335,16 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 		}
 		c.clientMetrics.RecordLoginDuration(engineCtx, time.Since(loginStarted), true)
 		c.statusRecorder.MarkManagementConnected()
+		if c.config.AnonymousMode {
+			if err := anonymous.ValidateNetbirdConfigForTransport(loginResp.GetNetbirdConfig(), c.config.AnonymousTransport); err != nil {
+				return wrapErr(err)
+			}
+		}
 
 		localPeerState := peer.LocalPeerState{
 			IP:              loginResp.GetPeerConfig().GetAddress(),
 			PubKey:          myPrivateKey.PublicKey().String(),
-			KernelInterface: device.WireGuardModuleIsLoaded() && !netstack.IsEnabled(),
+			KernelInterface: device.WireGuardModuleIsLoaded() && !netstack.IsEnabled() && !c.config.AnonymousMode,
 			FQDN:            loginResp.GetPeerConfig().GetFqdn(),
 		}
 		c.statusRecorder.UpdateLocalPeerState(localPeerState)
@@ -316,7 +363,7 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 		}()
 
 		// with the global Netbird config in hand connect (just a connection, no stream yet) Signal
-		signalClient, err := connectToSignal(engineCtx, loginResp.GetNetbirdConfig(), myPrivateKey)
+		signalClient, err := connectToSignal(engineCtx, loginResp.GetNetbirdConfig(), myPrivateKey, c.config)
 		if err != nil {
 			log.Error(err)
 			return wrapErr(err)
@@ -347,7 +394,17 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 		}
 		engineConfig.TempDir = mobileDependency.TempDir
 
-		relayManager := relayClient.NewManager(engineCtx, relayURLs, myPrivateKey.PublicKey().String(), engineConfig.MTU)
+		var relayOpts []relayClient.ManagerOption
+		if c.config.AnonymousMode {
+			transport := anonymous.NormalizeTransport(c.config.AnonymousTransport)
+			switch transport.Type {
+			case anonymous.TransportTorRelayOnly:
+				relayOpts = append(relayOpts, relayClient.WithSOCKS5Proxy(transport.TorSOCKS5))
+			case anonymous.TransportI2PDatagram:
+				relayOpts = append(relayOpts, relayClient.WithI2PSAM(transport.I2PSAM, transport.I2PTunnelLength, transport.I2PTunnelQuantity))
+			}
+		}
+		relayManager := relayClient.NewManager(engineCtx, relayURLs, myPrivateKey.PublicKey().String(), engineConfig.MTU, relayOpts...)
 		c.statusRecorder.SetRelayMgr(relayManager)
 		if len(relayURLs) > 0 {
 			if token != nil {
@@ -533,6 +590,10 @@ func (c *ConnectClient) SetSyncResponsePersistence(enabled bool) {
 
 // createEngineConfig converts configuration received from Management Service to EngineConfig
 func createEngineConfig(key wgtypes.Key, config *profilemanager.Config, peerConfig *mgmProto.PeerConfig, logPath string) (*EngineConfig, error) {
+	if config.AnonymousMode && len(config.NATExternalIPs) > 0 {
+		return nil, anonymous.Violation("NAT external IP mappings are configured")
+	}
+
 	nm := false
 	if config.NetworkMonitor != nil {
 		nm = *config.NetworkMonitor
@@ -579,8 +640,10 @@ func createEngineConfig(key wgtypes.Key, config *profilemanager.Config, peerConf
 
 		LazyConnectionEnabled: config.LazyConnectionEnabled,
 
-		MTU:     selectMTU(config.MTU, peerConfig.Mtu),
-		LogPath: logPath,
+		MTU:                selectMTU(config.MTU, peerConfig.Mtu),
+		AnonymousMode:      config.AnonymousMode,
+		AnonymousTransport: anonymous.NormalizeTransport(config.AnonymousTransport),
+		LogPath:            logPath,
 
 		ProfileConfig: config,
 	}
@@ -620,7 +683,7 @@ func selectMTU(localMTU uint16, peerMTU int32) uint16 {
 }
 
 // connectToSignal creates Signal Service client and established a connection
-func connectToSignal(ctx context.Context, wtConfig *mgmProto.NetbirdConfig, ourPrivateKey wgtypes.Key) (*signal.GrpcClient, error) {
+func connectToSignal(ctx context.Context, wtConfig *mgmProto.NetbirdConfig, ourPrivateKey wgtypes.Key, config *profilemanager.Config) (*signal.GrpcClient, error) {
 	var sigTLSEnabled bool
 	if wtConfig.Signal.Protocol == mgmProto.HostConfig_HTTPS {
 		sigTLSEnabled = true
@@ -628,7 +691,24 @@ func connectToSignal(ctx context.Context, wtConfig *mgmProto.NetbirdConfig, ourP
 		sigTLSEnabled = false
 	}
 
-	signalClient, err := signal.NewClient(ctx, wtConfig.Signal.Uri, ourPrivateKey, sigTLSEnabled)
+	var signalClient *signal.GrpcClient
+	var err error
+	if config.AnonymousMode {
+		transport := anonymous.NormalizeTransport(config.AnonymousTransport)
+		if err := anonymous.ValidateHostConfigForTransport("signal", wtConfig.Signal, transport); err != nil {
+			return nil, err
+		}
+		switch transport.Type {
+		case anonymous.TransportTorRelayOnly:
+			signalClient, err = signal.NewClientWithSOCKS5(ctx, wtConfig.Signal.Uri, ourPrivateKey, sigTLSEnabled, transport.TorSOCKS5)
+		case anonymous.TransportI2PDatagram:
+			signalClient, err = signal.NewClientWithI2P(ctx, wtConfig.Signal.Uri, ourPrivateKey, sigTLSEnabled, transport.I2PSAM, transport.I2PTunnelLength, transport.I2PTunnelQuantity)
+		default:
+			err = anonymous.ValidateTransport(transport)
+		}
+	} else {
+		signalClient, err = signal.NewClient(ctx, wtConfig.Signal.Uri, ourPrivateKey, sigTLSEnabled)
+	}
 	if err != nil {
 		log.Errorf("error while connecting to the Signal Exchange Service %s: %s", wtConfig.Signal.Uri, err)
 		return nil, gstatus.Errorf(codes.FailedPrecondition, "failed connecting to Signal Service : %s", err)
@@ -658,6 +738,14 @@ func loginToManagement(ctx context.Context, client mgm.Client, pubSSHKey []byte,
 		config.EnableSSHRemotePortForwarding,
 		config.DisableSSHAuth,
 	)
+	if config.AnonymousMode {
+		if key, err := wgtypes.ParseKey(config.PrivateKey); err == nil {
+			anonymous.SanitizeSystemInfo(sysInfo, key.PublicKey().String())
+		} else {
+			anonymous.SanitizeSystemInfo(sysInfo, config.PrivateKey)
+		}
+		anonymous.SetSystemInfoTransport(sysInfo, config.AnonymousTransport)
+	}
 	return client.Login(sysInfo, pubSSHKey, config.DNSLabels)
 }
 

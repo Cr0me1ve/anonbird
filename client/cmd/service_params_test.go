@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/netbirdio/netbird/client/configs"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 )
 
 func TestServiceParamsPath(t *testing.T) {
@@ -40,7 +41,7 @@ func TestSaveAndLoadServiceParams(t *testing.T) {
 
 	params := &serviceParams{
 		LogLevel:              "debug",
-		DaemonAddr:            "unix:///var/run/netbird.sock",
+		DaemonAddr:            "unix:///var/run/anonbird.sock",
 		ManagementURL:         "https://my.server.com",
 		ConfigPath:            "/etc/netbird/config.json",
 		LogFiles:              []string{"/var/log/netbird/client.log", "console"},
@@ -81,6 +82,44 @@ func TestLoadServiceParams_FileNotExists(t *testing.T) {
 	params, err := loadServiceParams()
 	assert.NoError(t, err)
 	assert.Nil(t, params)
+}
+
+func TestAnonymousRuntimeServiceDependencies(t *testing.T) {
+	tests := []struct {
+		name      string
+		enabled   bool
+		transport anonymous.TransportConfig
+		want      []string
+	}{
+		{
+			name:      "disabled",
+			transport: anonymous.TransportConfig{Type: anonymous.TransportI2PDatagram},
+		},
+		{
+			name:      "i2p datagram",
+			enabled:   true,
+			transport: anonymous.TransportConfig{Type: anonymous.TransportI2PDatagram},
+			want:      []string{"Wants=i2pd.service", "After=i2pd.service"},
+		},
+		{
+			name:      "tor relay only",
+			enabled:   true,
+			transport: anonymous.TransportConfig{Type: anonymous.TransportTorRelayOnly},
+			want:      []string{"Wants=tor.service", "After=tor.service"},
+		},
+		{
+			name:      "unknown",
+			enabled:   true,
+			transport: anonymous.TransportConfig{Type: "unknown"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := anonymousRuntimeServiceDependencies(tt.enabled, tt.transport)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestLoadServiceParams_InvalidJSON(t *testing.T) {
@@ -161,7 +200,7 @@ func TestApplyServiceParams_OnlyUnchangedFlags(t *testing.T) {
 
 	// Reset all flags to defaults.
 	logLevel = "info"
-	daemonAddr = "unix:///var/run/netbird.sock"
+	daemonAddr = "unix:///var/run/anonbird.sock"
 	managementURL = ""
 	configPath = "/etc/netbird/config.json"
 	logFiles = []string{"/var/log/netbird/client.log"}
@@ -249,7 +288,7 @@ func TestApplyServiceParams_ClearManagementURL(t *testing.T) {
 	// Simulate saved params where management URL was explicitly cleared.
 	saved := &serviceParams{
 		LogLevel:   "info",
-		DaemonAddr: "unix:///var/run/netbird.sock",
+		DaemonAddr: "unix:///var/run/anonbird.sock",
 		// ManagementURL intentionally empty: was cleared with --management-url "".
 	}
 

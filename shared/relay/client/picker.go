@@ -29,6 +29,10 @@ type ServerPicker struct {
 	PeerID            string
 	MTU               uint16
 	ConnectionTimeout time.Duration
+	SOCKS5Proxy       string
+	I2PSAM            string
+	I2PTunnelLength   uint8
+	I2PTunnelQuantity uint8
 }
 
 func (sp *ServerPicker) PickServer(parentCtx context.Context) (*Client, error) {
@@ -70,6 +74,12 @@ func (sp *ServerPicker) PickServer(parentCtx context.Context) (*Client, error) {
 func (sp *ServerPicker) startConnection(ctx context.Context, resultChan chan connResult, url string) {
 	log.Infof("try to connecting to relay server: %s", url)
 	relayClient := NewClient(url, sp.TokenStore, sp.PeerID, sp.MTU)
+	if sp.SOCKS5Proxy != "" {
+		relayClient = NewClientWithSOCKS5(url, sp.TokenStore, sp.PeerID, sp.MTU, sp.SOCKS5Proxy)
+	}
+	if sp.I2PSAM != "" {
+		relayClient = NewClientWithI2P(url, sp.TokenStore, sp.PeerID, sp.MTU, sp.I2PSAM, sp.I2PTunnelLength, sp.I2PTunnelQuantity)
+	}
 	err := relayClient.Connect(ctx)
 	resultChan <- connResult{
 		RelayClient: relayClient,

@@ -21,6 +21,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/netbirdio/netbird/client/iface"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/routemanager/dynamic"
 	"github.com/netbirdio/netbird/client/ssh"
 	mgm "github.com/netbirdio/netbird/shared/management/client"
@@ -99,10 +100,15 @@ type ConfigInput struct {
 	LazyConnectionEnabled *bool
 
 	MTU *uint16
+
+	AnonymousMode      *bool
+	AnonymousTransport *anonymous.TransportConfig
 }
 
 // Config Configuration type
 type Config struct {
+	ConfigPath string `json:"-"`
+
 	// Wireguard private key of local peer
 	PrivateKey                    string
 	PreSharedKey                  string
@@ -174,6 +180,9 @@ type Config struct {
 	LazyConnectionEnabled bool
 
 	MTU uint16
+
+	AnonymousMode      bool                      `json:"anonymous_mode"`
+	AnonymousTransport anonymous.TransportConfig `json:"anonymous_transport,omitempty"`
 }
 
 var ConfigDirOverride string
@@ -248,6 +257,10 @@ func createNewConfig(input ConfigInput) (*Config, error) {
 }
 
 func (config *Config) apply(input ConfigInput) (updated bool, err error) {
+	if input.ConfigPath != "" {
+		config.ConfigPath = input.ConfigPath
+	}
+
 	if config.ManagementURL == nil {
 		log.Infof("using default Management URL %s", DefaultManagementURL)
 		config.ManagementURL, err = parseURL("Management URL", DefaultManagementURL)
@@ -294,6 +307,22 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 		log.Infof("generated new Wireguard key")
 		config.PrivateKey = generateKey()
 		updated = true
+	}
+
+	if input.AnonymousMode != nil && *input.AnonymousMode != config.AnonymousMode {
+		log.Infof("switching anonymous mode to %t", *input.AnonymousMode)
+		config.AnonymousMode = *input.AnonymousMode
+		updated = true
+	}
+
+	if input.AnonymousTransport != nil {
+		transport := anonymous.NormalizeTransport(*input.AnonymousTransport)
+		transport = config.withAnonymousTransportDefaults(transport)
+		if !reflect.DeepEqual(config.AnonymousTransport, transport) {
+			log.Infof("updating anonymous transport to %s", transport.Type)
+			config.AnonymousTransport = transport
+			updated = true
+		}
 	}
 
 	if config.SSHKey == "" {
@@ -612,6 +641,67 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 		updated = true
 	}
 
+	if config.AnonymousMode {
+		changed, err := config.enforceAnonymousMode()
+		if err != nil {
+			return updated, err
+		}
+		updated = updated || changed
+	}
+
+	return updated, nil
+}
+
+func (config *Config) withAnonymousTransportDefaults(transport anonymous.TransportConfig) anonymous.TransportConfig {
+	return transport
+}
+
+func (config *Config) enforceAnonymousMode() (bool, error) {
+	var updated bool
+
+	if config.AnonymousTransport.Type == "" {
+		config.AnonymousTransport = anonymous.DefaultTransport()
+		updated = true
+	} else {
+		transport := anonymous.NormalizeTransport(config.AnonymousTransport)
+		transport = config.withAnonymousTransportDefaults(transport)
+		if !reflect.DeepEqual(config.AnonymousTransport, transport) {
+			config.AnonymousTransport = transport
+			updated = true
+		}
+	}
+
+	if err := anonymous.ValidateTransport(config.AnonymousTransport); err != nil {
+		return updated, err
+	}
+	if err := anonymous.ValidateServiceURLForTransport("management", config.ManagementURL, config.AnonymousTransport); err != nil {
+		return updated, err
+	}
+	if len(config.NATExternalIPs) > 0 {
+		return updated, anonymous.Violation("NAT external IP mappings are configured")
+	}
+
+	if !config.DisableClientRoutes {
+		log.Infof("anonymous mode disables client routes")
+		config.DisableClientRoutes = true
+		updated = true
+	}
+	if !config.DisableServerRoutes {
+		log.Infof("anonymous mode disables server routes")
+		config.DisableServerRoutes = true
+		updated = true
+	}
+	if !config.BlockLANAccess {
+		log.Infof("anonymous mode blocks LAN access")
+		config.BlockLANAccess = true
+		updated = true
+	}
+	if config.LazyConnectionEnabled {
+		log.Infof("anonymous mode disables lazy connection")
+		config.LazyConnectionEnabled = false
+		updated = true
+	}
+
 	return updated, nil
 }
 
@@ -729,6 +819,11 @@ func GetConfig(configPath string) (*Config, error) {
 // If it can switch, then it updates the config and returns a new one. Otherwise, it returns the provided config.
 // The check is performed only for the NetBird's managed version.
 func UpdateOldManagementURL(ctx context.Context, config *Config, configPath string) (*Config, error) {
+	if config.AnonymousMode {
+		log.Debugf("skip cloud management URL migration probe in anonymous mode")
+		return config, nil
+	}
+
 	defaultManagementURL, err := parseURL("Management URL", DefaultManagementURL)
 	if err != nil {
 		return nil, err
@@ -832,7 +927,7 @@ func readConfig(configPath string, createIfMissing bool) (*Config, error) {
 			return nil, err
 		}
 		// initialize through apply() without changes
-		if changed, err := config.apply(ConfigInput{}); err != nil {
+		if changed, err := config.apply(ConfigInput{ConfigPath: configPath}); err != nil {
 			return nil, err
 		} else if changed {
 			if err = WriteOutConfig(configPath, config); err != nil {
@@ -857,6 +952,31 @@ func readConfig(configPath string, createIfMissing bool) (*Config, error) {
 // WriteOutConfig write put the prepared config to the given path
 func WriteOutConfig(path string, config *Config) error {
 	return util.WriteJson(context.Background(), path, config)
+}
+
+func EnsureAnonymousTransportIdentity(ctx context.Context, configPath string, config *Config) (*Config, bool, error) {
+	if config == nil || !config.AnonymousMode {
+		return config, false, nil
+	}
+	if configPath == "" {
+		configPath = config.ConfigPath
+	}
+	transport, changed, err := anonymous.EnsureI2PDestination(ctx, config.AnonymousTransport)
+	if err != nil {
+		return config, false, err
+	}
+	if !changed {
+		config.AnonymousTransport = transport
+		return config, false, nil
+	}
+	config.AnonymousTransport = transport
+	if configPath == "" {
+		return config, true, nil
+	}
+	if err := WriteOutConfig(configPath, config); err != nil {
+		return config, false, fmt.Errorf("persist anonymous transport identity: %w", err)
+	}
+	return config, true, nil
 }
 
 // DirectWriteOutConfig writes config directly without atomic temp file operations.

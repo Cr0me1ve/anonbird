@@ -1,6 +1,7 @@
 package device
 
 import (
+	"bytes"
 	"net"
 	"testing"
 
@@ -220,4 +221,64 @@ func TestDeviceWrapperRead(t *testing.T) {
 			return
 		}
 	})
+}
+
+type packetObserverFunc func([]byte, bool)
+
+func (f packetObserverFunc) ObservePacket(data []byte, outbound bool) {
+	f(data, outbound)
+}
+
+func TestDeviceWrapperPacketObserver(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	packet := []byte{0x45, 0, 0, 20}
+	mockBufs := [][]byte{{}}
+	mockSizes := []int{0}
+	tun := mocks.NewMockDevice(ctrl)
+	tun.EXPECT().Read(mockBufs, mockSizes, 0).
+		DoAndReturn(func(bufs [][]byte, sizes []int, offset int) (int, error) {
+			bufs[0] = packet
+			sizes[0] = len(packet)
+			return 1, nil
+		})
+
+	wrapped := newDeviceFilter(tun)
+	var observed [][]byte
+	unregister := wrapped.AddPacketObserver(packetObserverFunc(func(data []byte, outbound bool) {
+		if !outbound {
+			t.Fatalf("expected outbound observer event")
+		}
+		observed = append(observed, append([]byte(nil), data...))
+	}))
+
+	bufs := [][]byte{{}}
+	sizes := []int{0}
+	n, err := wrapped.Read(bufs, sizes, 0)
+	if err != nil {
+		t.Fatalf("unexpected read error: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected n=1, got %d", n)
+	}
+	if len(observed) != 1 || !bytes.Equal(observed[0], packet) {
+		t.Fatalf("observer did not receive packet: %#v", observed)
+	}
+
+	unregister()
+	tun.EXPECT().Read(bufs, sizes, 0).
+		DoAndReturn(func(bufs [][]byte, sizes []int, offset int) (int, error) {
+			bufs[0] = packet
+			sizes[0] = len(packet)
+			return 1, nil
+		})
+
+	_, err = wrapped.Read(bufs, sizes, 0)
+	if err != nil {
+		t.Fatalf("unexpected read error after unregister: %v", err)
+	}
+	if len(observed) != 1 {
+		t.Fatalf("observer should not receive packets after unregister")
+	}
 }

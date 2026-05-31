@@ -390,6 +390,8 @@ func Test_SystemMetaDataFromClient(t *testing.T) {
 	}
 
 	info := system.GetInfo(context.TODO())
+	info.AnonymousTransport = "i2p-datagram"
+	info.I2PDestination = "public-destination"
 	_, err = testClient.Register(ValidKey, "", info, nil, nil)
 	if err != nil {
 		t.Errorf("error while trying to register client: %v", err)
@@ -422,6 +424,10 @@ func Test_SystemMetaDataFromClient(t *testing.T) {
 		SysProductName:   info.SystemProductName,
 		SysManufacturer:  info.SystemManufacturer,
 		Environment:      &mgmtProto.Environment{Cloud: info.Environment.Cloud, Platform: info.Environment.Platform},
+		AnonymousTransport: &mgmtProto.AnonymousTransport{
+			Type:           "i2p-datagram",
+			I2PDestination: "public-destination",
+		},
 	}
 
 	assert.Equal(t, ValidKey, actualValidKey)
@@ -464,7 +470,9 @@ func isEqual(a, b *mgmtProto.PeerSystemMeta) bool {
 		a.GetSysProductName() == b.GetSysProductName() &&
 		a.GetSysManufacturer() == b.GetSysManufacturer() &&
 		a.GetEnvironment().Cloud == b.GetEnvironment().Cloud &&
-		a.GetEnvironment().Platform == b.GetEnvironment().Platform
+		a.GetEnvironment().Platform == b.GetEnvironment().Platform &&
+		a.GetAnonymousTransport().GetType() == b.GetAnonymousTransport().GetType() &&
+		a.GetAnonymousTransport().GetI2PDestination() == b.GetAnonymousTransport().GetI2PDestination()
 }
 
 func Test_GetDeviceAuthorizationFlow(t *testing.T) {

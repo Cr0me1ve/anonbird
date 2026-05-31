@@ -90,3 +90,20 @@ func TestWGWatcher_ReEnable(t *testing.T) {
 		t.Errorf("timeout")
 	}
 }
+
+func TestConnStartOrResetWgWatcherResetsEnabledWatcher(t *testing.T) {
+	mlog := log.WithField("peer", "test")
+	watcher := NewWGWatcher(mlog, &MocWgIface{}, "peer", newStateDump("peer", mlog, &Status{}))
+	watcher.muEnabled.Lock()
+	watcher.enabled = true
+	watcher.muEnabled.Unlock()
+
+	conn := &Conn{wgWatcher: watcher}
+	conn.startOrResetWgWatcher(time.Now())
+
+	select {
+	case <-watcher.resetCh:
+	case <-time.After(time.Second):
+		t.Fatal("expected watcher reset signal")
+	}
+}

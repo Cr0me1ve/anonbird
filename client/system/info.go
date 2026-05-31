@@ -78,6 +78,9 @@ type Info struct {
 	EnableSSHLocalPortForwarding  bool
 	EnableSSHRemotePortForwarding bool
 	DisableSSHAuth                bool
+	AnonymousMode                 bool
+	AnonymousTransport            string
+	I2PDestination                string
 }
 
 func (i *Info) SetFlags(

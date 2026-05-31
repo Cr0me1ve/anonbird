@@ -3128,6 +3128,9 @@ type PasswordChangeRequest struct {
 
 // Peer defines model for Peer.
 type Peer struct {
+	// AnonymousTransport Selected AnonBird anonymous transport for this peer. Omitted for non-anonymous peers.
+	AnonymousTransport *string `json:"anonymous_transport,omitempty"`
+
 	// ApprovalRequired (Cloud only) Indicates whether peer needs approval
 	ApprovalRequired bool `json:"approval_required"`
 
@@ -3222,6 +3225,9 @@ type PeerBatch struct {
 	// AccessiblePeersCount Number of accessible peers
 	AccessiblePeersCount int `json:"accessible_peers_count"`
 
+	// AnonymousTransport Selected AnonBird anonymous transport for this peer. Omitted for non-anonymous peers.
+	AnonymousTransport *string `json:"anonymous_transport,omitempty"`
+
 	// ApprovalRequired (Cloud only) Indicates whether peer needs approval
 	ApprovalRequired bool `json:"approval_required"`
 
@@ -3313,6 +3319,9 @@ type PeerBatch struct {
 
 // PeerLocalFlags defines model for PeerLocalFlags.
 type PeerLocalFlags struct {
+	// AnonymousMode Indicates whether AnonBird anonymous mode is enabled on this peer
+	AnonymousMode *bool `json:"anonymous_mode,omitempty"`
+
 	// BlockInbound Indicates whether inbound traffic is blocked on this peer
 	BlockInbound *bool `json:"block_inbound,omitempty"`
 

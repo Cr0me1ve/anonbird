@@ -137,6 +137,7 @@ type Flags struct {
 	DisableIPv6         bool
 
 	LazyConnectionEnabled bool
+	AnonymousMode         bool
 }
 
 // PeerSystemMeta is a metadata of a Peer machine system
@@ -159,6 +160,8 @@ type PeerSystemMeta struct { //nolint:revive
 	Flags              Flags       `gorm:"serializer:json"`
 	Files              []File      `gorm:"serializer:json"`
 	Capabilities       []int32     `gorm:"serializer:json"`
+	AnonymousTransport string
+	I2PDestination     string `gorm:"column:i2p_destination"`
 }
 
 func (p PeerSystemMeta) isEqual(other PeerSystemMeta) bool {
@@ -203,6 +206,8 @@ func (p PeerSystemMeta) isEqual(other PeerSystemMeta) bool {
 		p.SystemManufacturer == other.SystemManufacturer &&
 		p.Environment.Cloud == other.Environment.Cloud &&
 		p.Environment.Platform == other.Environment.Platform &&
+		p.AnonymousTransport == other.AnonymousTransport &&
+		p.I2PDestination == other.I2PDestination &&
 		p.Flags.isEqual(other.Flags) &&
 		capabilitiesEqual(p.Capabilities, other.Capabilities)
 }
@@ -224,7 +229,9 @@ func (p PeerSystemMeta) isEmpty() bool {
 		p.SystemManufacturer == "" &&
 		p.Environment.Cloud == "" &&
 		p.Environment.Platform == "" &&
-		len(p.Files) == 0
+		len(p.Files) == 0 &&
+		p.AnonymousTransport == "" &&
+		p.I2PDestination == ""
 }
 
 // AddedWithSSOLogin indicates whether this peer has been added with an SSO login by a user.
@@ -393,9 +400,18 @@ func (p *Peer) FQDN(dnsDomain string) string {
 
 // EventMeta returns activity event meta related to the peer
 func (p *Peer) EventMeta(dnsDomain string) map[string]any {
-	meta := map[string]any{"name": p.Name, "fqdn": p.FQDN(dnsDomain), "ip": p.IP, "created_at": p.CreatedAt,
-		"location_city_name": p.Location.CityName, "location_country_code": p.Location.CountryCode,
-		"location_geo_name_id": p.Location.GeoNameID, "location_connection_ip": p.Location.ConnectionIP}
+	meta := map[string]any{"name": p.Name, "fqdn": p.FQDN(dnsDomain), "ip": p.IP, "created_at": p.CreatedAt}
+	if !p.Meta.Flags.AnonymousMode {
+		meta["location_connection_ip"] = p.Location.ConnectionIP
+		meta["location_city_name"] = p.Location.CityName
+		meta["location_country_code"] = p.Location.CountryCode
+		meta["location_geo_name_id"] = p.Location.GeoNameID
+	} else {
+		meta["anonymous_mode"] = true
+		if p.Meta.AnonymousTransport != "" {
+			meta["anonymous_transport"] = p.Meta.AnonymousTransport
+		}
+	}
 	if p.IPv6.IsValid() {
 		meta["ipv6"] = p.IPv6.String()
 	}
@@ -448,5 +464,6 @@ func (f Flags) isEqual(other Flags) bool {
 		f.BlockLANAccess == other.BlockLANAccess &&
 		f.BlockInbound == other.BlockInbound &&
 		f.LazyConnectionEnabled == other.LazyConnectionEnabled &&
-		f.DisableIPv6 == other.DisableIPv6
+		f.DisableIPv6 == other.DisableIPv6 &&
+		f.AnonymousMode == other.AnonymousMode
 }

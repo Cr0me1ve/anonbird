@@ -10,15 +10,16 @@ import (
 // Conn represent a connection to a relayed remote peer.
 type Conn struct {
 	dstID       messages.PeerID
+	channelID   uint32
 	messageChan chan Msg
 	instanceURL *RelayAddr
-	writeFn     func(messages.PeerID, []byte) (int, error)
-	closeFn     func(messages.PeerID) error
+	writeFn     func(messages.PeerID, uint32, []byte) (int, error)
+	closeFn     func(messages.PeerID, uint32) error
 	localAddrFn func() net.Addr
 }
 
 func (c *Conn) Write(p []byte) (n int, err error) {
-	return c.writeFn(c.dstID, p)
+	return c.writeFn(c.dstID, c.channelID, p)
 }
 
 func (c *Conn) Read(b []byte) (n int, err error) {
@@ -33,7 +34,7 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 }
 
 func (c *Conn) Close() error {
-	return c.closeFn(c.dstID)
+	return c.closeFn(c.dstID, c.channelID)
 }
 
 func (c *Conn) LocalAddr() net.Addr {

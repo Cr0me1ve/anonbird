@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	nbconfig "github.com/netbirdio/netbird/management/internals/server/config"
 )
 
 const (
@@ -39,6 +41,64 @@ func Test_loadMgmtConfig(t *testing.T) {
 	}
 	if len(cfg.Relay.Addresses) == 0 {
 		t.Fatalf("relay address is empty")
+	}
+}
+
+func TestManagementConfigUsesAnonymousEndpoint(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *nbconfig.Config
+		want bool
+	}{
+		{
+			name: "onion auth issuer",
+			cfg: &nbconfig.Config{
+				HttpConfig: &nbconfig.HttpServerConfig{
+					AuthIssuer: "http://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion/oauth2",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "i2p oidc endpoint",
+			cfg: &nbconfig.Config{
+				HttpConfig: &nbconfig.HttpServerConfig{
+					OIDCConfigEndpoint: "http://abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.b32.i2p/.well-known/openid-configuration",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "anonymous device flow endpoint",
+			cfg: &nbconfig.Config{
+				HttpConfig: &nbconfig.HttpServerConfig{
+					AuthIssuer: "https://idp.example.com/",
+				},
+				DeviceAuthorizationFlow: &nbconfig.DeviceAuthorizationFlow{
+					ProviderConfig: nbconfig.ProviderConfig{
+						DeviceAuthEndpoint: "http://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion/device",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "clearnet issuer",
+			cfg: &nbconfig.Config{
+				HttpConfig: &nbconfig.HttpServerConfig{
+					AuthIssuer: "https://idp.example.com/",
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := managementConfigUsesAnonymousEndpoint(tt.cfg); got != tt.want {
+				t.Fatalf("managementConfigUsesAnonymousEndpoint() = %t, want %t", got, tt.want)
+			}
+		})
 	}
 }
 

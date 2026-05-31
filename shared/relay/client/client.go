@@ -74,11 +74,17 @@ type connContainer struct {
 	cancel      context.CancelFunc
 }
 
-func newConnContainer(log *log.Entry, c *Client, peerID messages.PeerID, instanceURL *RelayAddr) *connContainer {
+type connKey struct {
+	peerID    messages.PeerID
+	channelID uint32
+}
+
+func newConnContainer(log *log.Entry, c *Client, key connKey, instanceURL *RelayAddr) *connContainer {
 	ctx, cancel := context.WithCancel(context.Background())
 	msgChan := make(chan Msg, connChannelSize)
 	cn := &Conn{
-		dstID:       peerID,
+		dstID:       key.peerID,
+		channelID:   key.channelID,
 		messageChan: msgChan,
 		instanceURL: instanceURL,
 	}
@@ -91,11 +97,11 @@ func newConnContainer(log *log.Entry, c *Client, peerID messages.PeerID, instanc
 	}
 
 	// bind conn to client
-	cn.writeFn = func(dstID messages.PeerID, payload []byte) (int, error) {
-		return c.writeTo(cc, dstID, payload)
+	cn.writeFn = func(dstID messages.PeerID, channelID uint32, payload []byte) (int, error) {
+		return c.writeTo(cc, dstID, channelID, payload)
 	}
-	cn.closeFn = func(dstID messages.PeerID) error {
-		return c.closeConn(cc, dstID)
+	cn.closeFn = func(dstID messages.PeerID, channelID uint32) error {
+		return c.closeConn(cc, dstID, channelID)
 	}
 	cn.localAddrFn = func() net.Addr {
 		return c.relayConn.LocalAddr()
@@ -157,7 +163,8 @@ type Client struct {
 	bufPool *sync.Pool
 
 	relayConn        net.Conn
-	conns            map[messages.PeerID]*connContainer
+	conns            map[connKey]*connContainer
+	peerConnRefs     map[messages.PeerID]int
 	earlyMsgs        *earlyMsgBuffer
 	serviceIsRunning bool
 	mu               sync.Mutex // protect serviceIsRunning and conns
@@ -172,6 +179,12 @@ type Client struct {
 	stateSubscription *PeersStateSubscription
 
 	mtu uint16
+
+	socks5Proxy       string
+	i2pSAM            string
+	i2pTunnelLength   uint8
+	i2pTunnelQuantity uint8
+	relayChannelID    uint32
 }
 
 // NewClient creates a new client for the relay server. The client is not connected to the server until the Connect
@@ -180,27 +193,60 @@ func NewClient(serverURL string, authTokenStore *auth.TokenStore, peerID string,
 	return NewClientWithServerIP(serverURL, netip.Addr{}, authTokenStore, peerID, mtu)
 }
 
+func NewClientWithSOCKS5(serverURL string, authTokenStore *auth.TokenStore, peerID string, mtu uint16, socks5Proxy string) *Client {
+	return newClient(serverURL, netip.Addr{}, authTokenStore, peerID, mtu, socks5Proxy, "", 0, 0)
+}
+
+func NewClientWithI2P(serverURL string, authTokenStore *auth.TokenStore, peerID string, mtu uint16, i2pSAM string, tunnelLength, tunnelQuantity uint8) *Client {
+	return newClient(serverURL, netip.Addr{}, authTokenStore, peerID, mtu, "", i2pSAM, tunnelLength, tunnelQuantity)
+}
+
 // NewClientWithServerIP creates a new client for the relay server with a known server IP. serverIP, when valid, is
 // dialed directly first; the FQDN is only attempted if the IP-based dial fails. TLS verification still uses the
 // FQDN from serverURL via SNI.
 func NewClientWithServerIP(serverURL string, serverIP netip.Addr, authTokenStore *auth.TokenStore, peerID string, mtu uint16) *Client {
+	return newClient(serverURL, serverIP, authTokenStore, peerID, mtu, "", "", 0, 0)
+}
+
+func NewClientWithServerIPAndSOCKS5(serverURL string, serverIP netip.Addr, authTokenStore *auth.TokenStore, peerID string, mtu uint16, socks5Proxy string) *Client {
+	return newClient(serverURL, serverIP, authTokenStore, peerID, mtu, socks5Proxy, "", 0, 0)
+}
+
+func NewClientWithServerIPAndI2P(serverURL string, serverIP netip.Addr, authTokenStore *auth.TokenStore, peerID string, mtu uint16, i2pSAM string, tunnelLength, tunnelQuantity uint8) *Client {
+	return newClient(serverURL, serverIP, authTokenStore, peerID, mtu, "", i2pSAM, tunnelLength, tunnelQuantity)
+}
+
+func newClient(serverURL string, serverIP netip.Addr, authTokenStore *auth.TokenStore, peerID string, mtu uint16, socks5Proxy string, i2pSAM string, i2pTunnelLength, i2pTunnelQuantity uint8) *Client {
+	return newClientWithRelayChannel(serverURL, serverIP, authTokenStore, peerID, mtu, socks5Proxy, i2pSAM, i2pTunnelLength, i2pTunnelQuantity, 0)
+}
+
+func newClientWithRelayChannel(serverURL string, serverIP netip.Addr, authTokenStore *auth.TokenStore, peerID string, mtu uint16, socks5Proxy string, i2pSAM string, i2pTunnelLength, i2pTunnelQuantity uint8, relayChannelID uint32) *Client {
 	hashedID := messages.HashID(peerID)
 	relayLog := log.WithFields(log.Fields{"relay": serverURL})
+	if relayChannelID != 0 {
+		relayLog = relayLog.WithField("relay_channel", relayChannelID)
+	}
 
 	c := &Client{
-		log:            relayLog,
-		connectionURL:  serverURL,
-		serverIP:       serverIP,
-		authTokenStore: authTokenStore,
-		hashedID:       hashedID,
-		mtu:            mtu,
+		log:               relayLog,
+		connectionURL:     serverURL,
+		serverIP:          serverIP,
+		authTokenStore:    authTokenStore,
+		hashedID:          hashedID,
+		mtu:               mtu,
+		socks5Proxy:       socks5Proxy,
+		i2pSAM:            i2pSAM,
+		i2pTunnelLength:   i2pTunnelLength,
+		i2pTunnelQuantity: i2pTunnelQuantity,
+		relayChannelID:    relayChannelID,
 		bufPool: &sync.Pool{
 			New: func() any {
 				buf := make([]byte, bufferSize)
 				return &buf
 			},
 		},
-		conns: make(map[messages.PeerID]*connContainer),
+		conns:        make(map[connKey]*connContainer),
+		peerConnRefs: make(map[messages.PeerID]int),
 	}
 
 	c.earlyMsgs = newEarlyMsgBuffer()
@@ -238,7 +284,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.serviceIsRunning = true
 
 	internallyStoppedFlag := newInternalStopFlag()
-	hc := healthcheck.NewReceiver(c.log)
+	hc := c.newHealthcheckReceiver()
 	go c.listenForStopEvents(ctx, hc, c.relayConn, internallyStoppedFlag)
 
 	c.wgReadLoop.Add(1)
@@ -247,34 +293,53 @@ func (c *Client) Connect(ctx context.Context) error {
 	return nil
 }
 
+func (c *Client) newHealthcheckReceiver() *healthcheck.Receiver {
+	if c.usesAnonymousRelayTransport() {
+		return healthcheck.NewAnonymousReceiver(c.log)
+	}
+	return healthcheck.NewReceiver(c.log)
+}
+
+func (c *Client) usesAnonymousRelayTransport() bool {
+	return c.socks5Proxy != "" || c.i2pSAM != ""
+}
+
 // OpenConn create a new net.Conn for the destination peer ID. In case if the connection is in progress
 // to the relay server, the function will block until the connection is established or timed out. Otherwise,
 // it will return immediately.
 // It block until the server confirm the peer is online.
 // todo: what should happen if call with the same peerID with multiple times?
 func (c *Client) OpenConn(ctx context.Context, dstPeerID string) (net.Conn, error) {
+	return c.OpenConnChannel(ctx, dstPeerID, 0)
+}
+
+// OpenConnChannel creates a logical relayed connection to dstPeerID on the
+// given channel. Channel 0 is the legacy/default relay channel used by OpenConn.
+func (c *Client) OpenConnChannel(ctx context.Context, dstPeerID string, channelID uint32) (net.Conn, error) {
 	peerID := messages.HashID(dstPeerID)
+	key := connKey{peerID: peerID, channelID: channelID}
 
 	c.mu.Lock()
 	if !c.serviceIsRunning {
 		c.mu.Unlock()
 		return nil, fmt.Errorf("relay connection is not established")
 	}
-	_, ok := c.conns[peerID]
+	_, ok := c.conns[key]
 	if ok {
 		c.mu.Unlock()
 		return nil, ErrConnAlreadyExists
 	}
+	alreadySubscribed := c.peerConnRefs[peerID] > 0
 
-	c.log.Infof("prepare the relayed connection, waiting for remote peer: %s", peerID)
+	c.log.Infof("prepare the relayed connection, waiting for remote peer: %s channel: %d", peerID, channelID)
 
 	c.muInstanceURL.Lock()
 	instanceURL := c.instanceURL
 	c.muInstanceURL.Unlock()
 
-	container := newConnContainer(c.log, c, peerID, instanceURL)
-	c.conns[peerID] = container
-	earlyMsg, hasEarly := c.earlyMsgs.pop(peerID)
+	container := newConnContainer(c.log, c, key, instanceURL)
+	c.conns[key] = container
+	earlyMsg, hasEarly := c.earlyMsgs.popKey(key)
 	c.mu.Unlock()
 
 	if hasEarly {
@@ -282,21 +347,35 @@ func (c *Client) OpenConn(ctx context.Context, dstPeerID string) (net.Conn, erro
 		c.log.Tracef("flushed buffered early message for peer: %s", peerID)
 	}
 
-	if err := c.stateSubscription.WaitToBeOnlineAndSubscribe(ctx, peerID); err != nil {
-		c.log.Errorf("peer not available: %s, %s", peerID, err)
-		c.mu.Lock()
-		if savedContainer, ok := c.conns[peerID]; ok && savedContainer == container {
-			delete(c.conns, peerID)
+	if !alreadySubscribed {
+		if err := c.stateSubscription.WaitToBeOnlineAndSubscribe(ctx, peerID); err != nil {
+			c.log.Errorf("peer not available: %s, %s", peerID, err)
+			c.mu.Lock()
+			if savedContainer, ok := c.conns[key]; ok && savedContainer == container {
+				delete(c.conns, key)
+			}
+			c.mu.Unlock()
+			container.close()
+			return nil, err
 		}
-		c.mu.Unlock()
-		container.close()
-		return nil, err
 	}
 
 	c.mu.Lock()
+	if savedContainer, ok := c.conns[key]; ok && savedContainer == container {
+		c.peerConnRefs[peerID]++
+	}
+	c.mu.Unlock()
+
+	c.mu.Lock()
 	if !c.serviceIsRunning {
-		if savedContainer, ok := c.conns[peerID]; ok && savedContainer == container {
-			delete(c.conns, peerID)
+		if savedContainer, ok := c.conns[key]; ok && savedContainer == container {
+			delete(c.conns, key)
+			if c.peerConnRefs[peerID] > 0 {
+				c.peerConnRefs[peerID]--
+				if c.peerConnRefs[peerID] == 0 {
+					delete(c.peerConnRefs, peerID)
+				}
+			}
 		}
 		c.mu.Unlock()
 		container.close()
@@ -304,8 +383,23 @@ func (c *Client) OpenConn(ctx context.Context, dstPeerID string) (net.Conn, erro
 	}
 	c.mu.Unlock()
 
-	c.log.Infof("remote peer is available: %s", peerID)
+	c.log.Infof("remote peer is available: %s channel: %d", peerID, channelID)
 	return container.netConn(), nil
+}
+
+func (c *Client) removeConnLocked(key connKey, container *connContainer) bool {
+	current, ok := c.conns[key]
+	if !ok || current != container {
+		return false
+	}
+	delete(c.conns, key)
+	if c.peerConnRefs[key.peerID] > 0 {
+		c.peerConnRefs[key.peerID]--
+		if c.peerConnRefs[key.peerID] == 0 {
+			delete(c.peerConnRefs, key.peerID)
+		}
+	}
+	return true
 }
 
 // ServerInstanceURL returns the address of the relay server. It could change after the close and reopen the connection.
@@ -364,7 +458,7 @@ func (c *Client) connect(ctx context.Context) (*RelayAddr, error) {
 	dialers := c.getDialers()
 
 	var conn net.Conn
-	if c.serverIP.IsValid() {
+	if c.shouldDialServerIP() {
 		var err error
 		conn, err = c.dialRaceDirect(ctx, dialers)
 		if err != nil {
@@ -393,6 +487,10 @@ func (c *Client) connect(ctx context.Context) (*RelayAddr, error) {
 	}
 
 	return instanceURL, nil
+}
+
+func (c *Client) shouldDialServerIP() bool {
+	return c.serverIP.IsValid() && c.socks5Proxy == "" && c.i2pSAM == ""
 }
 
 // dialRaceDirect dials c.serverIP, preserving the original FQDN as the TLS ServerName for SNI.
@@ -442,7 +540,7 @@ func substituteHost(serverURL string, ip netip.Addr) (string, string, error) {
 }
 
 func (c *Client) handShake(ctx context.Context) (*RelayAddr, error) {
-	msg, err := messages.MarshalAuthMsg(c.hashedID, c.authTokenStore.TokenBinary())
+	msg, err := messages.MarshalAuthChannelMsg(c.hashedID, c.relayChannelID, c.authTokenStore.TokenBinary())
 	if err != nil {
 		c.log.Errorf("failed to marshal auth message: %s", err)
 		return nil, err
@@ -538,7 +636,7 @@ func (c *Client) handleMsg(msgType messages.MsgType, buf []byte, bufPtr *[]byte,
 	case messages.MsgTypeHealthCheck:
 		c.handleHealthCheck(hc, internallyStoppedFlag)
 		c.bufPool.Put(bufPtr)
-	case messages.MsgTypeTransport:
+	case messages.MsgTypeTransport, messages.MsgTypeTransportChannel:
 		return c.handleTransportMsg(buf, bufPtr, internallyStoppedFlag)
 	case messages.MsgTypePeersOnline:
 		c.handlePeersOnlineMsg(buf)
@@ -569,7 +667,7 @@ func (c *Client) handleHealthCheck(hc *healthcheck.Receiver, internallyStoppedFl
 }
 
 func (c *Client) handleTransportMsg(buf []byte, bufPtr *[]byte, internallyStoppedFlag *internalStopFlag) bool {
-	peerID, payload, err := messages.UnmarshalTransportMsg(buf)
+	peerID, channelID, payload, err := messages.UnmarshalTransportChannelMsg(buf)
 	if err != nil {
 		if c.serviceIsRunning && !internallyStoppedFlag.isSet() {
 			c.log.Errorf("failed to parse transport message: %v", err)
@@ -578,6 +676,7 @@ func (c *Client) handleTransportMsg(buf []byte, bufPtr *[]byte, internallyStoppe
 		c.bufPool.Put(bufPtr)
 		return true
 	}
+	key := connKey{peerID: *peerID, channelID: channelID}
 
 	c.mu.Lock()
 	if !c.serviceIsRunning {
@@ -585,7 +684,7 @@ func (c *Client) handleTransportMsg(buf []byte, bufPtr *[]byte, internallyStoppe
 		c.bufPool.Put(bufPtr)
 		return false
 	}
-	container, ok := c.conns[*peerID]
+	container, ok := c.conns[key]
 	earlyBuf := c.earlyMsgs
 	c.mu.Unlock()
 	if !ok {
@@ -594,11 +693,11 @@ func (c *Client) handleTransportMsg(buf []byte, bufPtr *[]byte, internallyStoppe
 			bufPtr:  bufPtr,
 			Payload: payload,
 		}
-		if earlyBuf == nil || !earlyBuf.put(*peerID, msg) {
-			c.log.Warnf("failed to buffer early message for peer: %s", peerID.String())
+		if earlyBuf == nil || !earlyBuf.putKey(key, msg) {
+			c.log.Warnf("failed to buffer early message for peer: %s channel: %d", peerID.String(), channelID)
 			c.bufPool.Put(bufPtr)
 		} else {
-			c.log.Debugf("buffered early transport message for peer: %s", peerID.String())
+			c.log.Debugf("buffered early transport message for peer: %s channel: %d", peerID.String(), channelID)
 		}
 		return true
 	}
@@ -611,9 +710,10 @@ func (c *Client) handleTransportMsg(buf []byte, bufPtr *[]byte, internallyStoppe
 	return true
 }
 
-func (c *Client) writeTo(containerRef *connContainer, dstID messages.PeerID, payload []byte) (int, error) {
+func (c *Client) writeTo(containerRef *connContainer, dstID messages.PeerID, channelID uint32, payload []byte) (int, error) {
+	key := connKey{peerID: dstID, channelID: channelID}
 	c.mu.Lock()
-	current, ok := c.conns[dstID]
+	current, ok := c.conns[key]
 	c.mu.Unlock()
 	if !ok {
 		return 0, net.ErrClosed
@@ -624,7 +724,15 @@ func (c *Client) writeTo(containerRef *connContainer, dstID messages.PeerID, pay
 	}
 
 	// todo: use buffer pool instead of create new transport msg.
-	msg, err := messages.MarshalTransportMsg(dstID, payload)
+	var (
+		msg []byte
+		err error
+	)
+	if channelID == 0 {
+		msg, err = messages.MarshalTransportMsg(dstID, payload)
+	} else {
+		msg, err = messages.MarshalTransportChannelMsg(dstID, channelID, payload)
+	}
 	if err != nil {
 		c.log.Errorf("failed to marshal transport message: %s", err)
 		return 0, err
@@ -666,7 +774,8 @@ func (c *Client) closeAllConns() {
 	for _, container := range c.conns {
 		container.close()
 	}
-	c.conns = make(map[messages.PeerID]*connContainer)
+	c.conns = make(map[connKey]*connContainer)
+	c.peerConnRefs = make(map[messages.PeerID]int)
 
 	c.earlyMsgs.close()
 	c.earlyMsgs = newEarlyMsgBuffer()
@@ -677,15 +786,21 @@ func (c *Client) closeConnsByPeerID(peerIDs []messages.PeerID) {
 	defer c.mu.Unlock()
 
 	for _, peerID := range peerIDs {
-		container, ok := c.conns[peerID]
-		if !ok {
+		var found bool
+		for key, container := range c.conns {
+			if key.peerID != peerID {
+				continue
+			}
+			found = true
+			container.log.Infof("remote peer has been disconnected, free up connection: %s channel: %d", peerID, key.channelID)
+			container.close()
+			delete(c.conns, key)
+		}
+		delete(c.peerConnRefs, peerID)
+		if !found {
 			c.log.Warnf("can not close connection, peer not found: %s", peerID)
 			continue
 		}
-
-		container.log.Infof("remote peer has been disconnected, free up connection: %s", peerID)
-		container.close()
-		delete(c.conns, peerID)
 	}
 
 	if err := c.stateSubscription.UnsubscribeStateChange(peerIDs); err != nil {
@@ -693,11 +808,12 @@ func (c *Client) closeConnsByPeerID(peerIDs []messages.PeerID) {
 	}
 }
 
-func (c *Client) closeConn(containerRef *connContainer, id messages.PeerID) error {
+func (c *Client) closeConn(containerRef *connContainer, id messages.PeerID, channelID uint32) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	current, ok := c.conns[id]
+	key := connKey{peerID: id, channelID: channelID}
+	current, ok := c.conns[key]
 	if !ok {
 		return net.ErrClosed
 	}
@@ -706,12 +822,18 @@ func (c *Client) closeConn(containerRef *connContainer, id messages.PeerID) erro
 		return fmt.Errorf("conn reference mismatch")
 	}
 
-	if err := c.stateSubscription.UnsubscribeStateChange([]messages.PeerID{id}); err != nil {
-		current.log.Errorf("failed to unsubscribe from peer state change: %s", err)
+	remainingRefs := c.peerConnRefs[id] - 1
+	if remainingRefs <= 0 {
+		if err := c.stateSubscription.UnsubscribeStateChange([]messages.PeerID{id}); err != nil {
+			current.log.Errorf("failed to unsubscribe from peer state change: %s", err)
+		}
+		delete(c.peerConnRefs, id)
+	} else {
+		c.peerConnRefs[id] = remainingRefs
 	}
 
-	c.log.Infof("free up connection to peer: %s", id)
-	delete(c.conns, id)
+	c.log.Infof("free up connection to peer: %s channel: %d", id, channelID)
+	delete(c.conns, key)
 	current.close()
 
 	return nil

@@ -20,6 +20,7 @@ import (
 
 	"github.com/netbirdio/netbird/management/internals/controllers/network_map"
 	nbcontext "github.com/netbirdio/netbird/management/server/context"
+	"github.com/netbirdio/netbird/management/server/mock_server"
 	nbpeer "github.com/netbirdio/netbird/management/server/peer"
 	"github.com/netbirdio/netbird/management/server/permissions"
 	"github.com/netbirdio/netbird/management/server/permissions/modules"
@@ -30,8 +31,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/netbirdio/netbird/management/server/mock_server"
 )
 
 const (
@@ -600,5 +599,88 @@ func TestPeersHandlerUpdatePeerIP(t *testing.T) {
 				assert.Equal(t, tc.expectedIP, updatedPeer.Ip)
 			}
 		})
+	}
+}
+
+func TestAnonymousPeerResponseIncludesTransportAndHidesConnectionIP(t *testing.T) {
+	peer := newPeerResponseTestPeer(true, "i2p-datagram")
+	peer.Location.ConnectionIP = net.ParseIP("203.0.113.10")
+	peer.Location.CountryCode = "RU"
+	peer.Location.CityName = "Moscow"
+	peer.Location.GeoNameID = 524901
+	peer.Meta.SystemSerialNumber = "SERIAL-123"
+
+	single := toSinglePeerResponse(peer, nil, "anonbird.local", true, "")
+	require.NotNil(t, single.AnonymousTransport)
+	require.Equal(t, "i2p-datagram", *single.AnonymousTransport)
+	require.Empty(t, single.ConnectionIp)
+	require.Empty(t, single.CountryCode)
+	require.Empty(t, single.CityName)
+	require.Zero(t, single.GeonameId)
+	require.Empty(t, single.SerialNumber)
+
+	batch := toPeerListItemResponse(peer, nil, "anonbird.local", 0)
+	require.NotNil(t, batch.AnonymousTransport)
+	require.Equal(t, "i2p-datagram", *batch.AnonymousTransport)
+	require.Empty(t, batch.ConnectionIp)
+	require.Empty(t, batch.CountryCode)
+	require.Empty(t, batch.CityName)
+	require.Zero(t, batch.GeonameId)
+	require.Empty(t, batch.SerialNumber)
+
+	accessible := peerToAccessiblePeer(peer, "anonbird.local")
+	require.Empty(t, accessible.CountryCode)
+	require.Empty(t, accessible.CityName)
+	require.Zero(t, accessible.GeonameId)
+}
+
+func TestAnonymousPeerResponseDefaultsTransportForOlderPeers(t *testing.T) {
+	peer := newPeerResponseTestPeer(true, "")
+
+	single := toSinglePeerResponse(peer, nil, "anonbird.local", true, "")
+	require.NotNil(t, single.AnonymousTransport)
+	require.Equal(t, "tor-relay-only", *single.AnonymousTransport)
+}
+
+func TestNonAnonymousPeerResponseOmitsAnonymousTransport(t *testing.T) {
+	peer := newPeerResponseTestPeer(false, "i2p-datagram")
+	peer.Location.ConnectionIP = net.ParseIP("203.0.113.10")
+	peer.Location.CountryCode = "DE"
+	peer.Location.CityName = "Berlin"
+	peer.Location.GeoNameID = 2950159
+	peer.Meta.SystemSerialNumber = "SERIAL-123"
+
+	single := toSinglePeerResponse(peer, nil, "anonbird.local", true, "")
+	require.Nil(t, single.AnonymousTransport)
+	require.Equal(t, "203.0.113.10", single.ConnectionIp)
+	require.Equal(t, "DE", single.CountryCode)
+	require.Equal(t, "Berlin", single.CityName)
+	require.Equal(t, 2950159, single.GeonameId)
+	require.Equal(t, "SERIAL-123", single.SerialNumber)
+}
+
+func newPeerResponseTestPeer(anonymous bool, transport string) *nbpeer.Peer {
+	now := time.Now().UTC()
+	return &nbpeer.Peer{
+		ID:       "peer-id",
+		Name:     "anonbird-peer",
+		DNSLabel: "anonbird-peer",
+		IP:       netip.MustParseAddr("100.64.0.10"),
+		Meta: nbpeer.PeerSystemMeta{
+			Hostname:           "anonbird-peer",
+			OS:                 "linux",
+			OSVersion:          "6.8",
+			KernelVersion:      "6.8",
+			WtVersion:          "development",
+			AnonymousTransport: transport,
+			Flags: nbpeer.Flags{
+				AnonymousMode: anonymous,
+			},
+		},
+		Status: &nbpeer.PeerStatus{
+			LastSeen:  now,
+			Connected: true,
+		},
+		CreatedAt: now,
 	}
 }

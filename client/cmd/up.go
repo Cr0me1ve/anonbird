@@ -19,6 +19,7 @@ import (
 
 	"github.com/netbirdio/netbird/client/iface"
 	"github.com/netbirdio/netbird/client/internal"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/peer"
 	"github.com/netbirdio/netbird/client/internal/profilemanager"
 	"github.com/netbirdio/netbird/client/proto"
@@ -47,18 +48,19 @@ const (
 )
 
 var (
-	foregroundMode     bool
-	dnsLabels          []string
-	dnsLabelsValidated domain.List
-	noBrowser          bool
-	showQR             bool
-	profileName        string
-	configPath         string
+	foregroundMode       bool
+	forceDaemonReconnect bool
+	dnsLabels            []string
+	dnsLabelsValidated   domain.List
+	noBrowser            bool
+	showQR               bool
+	profileName          string
+	configPath           string
 
 	upCmd = &cobra.Command{
 		Use:   "up",
-		Short: "Connect to the NetBird network",
-		Long:  "Connect to the NetBird network using the provided setup key or SSO auth. This command will bring up the WireGuard interface, connect to the management server, and establish peer-to-peer connections with other peers in the network if required.",
+		Short: "Connect to the AnonBird network",
+		Long:  "Connect to the AnonBird network using the provided setup key or SSO auth. This command will bring up the WireGuard interface, connect to the management server, and establish peer-to-peer connections with other peers in the network if required.",
 		RunE:  upFunc,
 	}
 )
@@ -86,7 +88,7 @@ func init() {
 	upCmd.PersistentFlags().BoolVar(&noBrowser, noBrowserFlag, false, noBrowserDesc)
 	upCmd.PersistentFlags().BoolVar(&showQR, showQRFlag, false, showQRDesc)
 	upCmd.PersistentFlags().StringVar(&profileName, profileNameFlag, "", profileNameDesc)
-	upCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "(DEPRECATED) NetBird config file location. ")
+	upCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "(DEPRECATED) AnonBird config file location. ")
 
 }
 
@@ -188,7 +190,23 @@ func runInForegroundMode(ctx context.Context, cmd *cobra.Command, activeProf *pr
 		return fmt.Errorf("get config file: %v", err)
 	}
 
-	_, _ = profilemanager.UpdateOldManagementURL(ctx, config, configFilePath)
+	config, _ = profilemanager.UpdateOldManagementURL(ctx, config, configFilePath)
+	if config.AnonymousMode {
+		daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+		if err != nil {
+			return fmt.Errorf("prepare anonymous runtime: %v", err)
+		}
+		defer func() {
+			if err := daemon.Close(); err != nil {
+				log.Warnf("failed to stop managed i2pd: %v", err)
+			}
+		}()
+
+		config, _, err = profilemanager.EnsureAnonymousTransportIdentity(ctx, configFilePath, config)
+		if err != nil {
+			return fmt.Errorf("prepare anonymous transport identity: %v", err)
+		}
+	}
 
 	err = foregroundLogin(ctx, cmd, config, providedSetupKey, activeProf.Name)
 	if err != nil {
@@ -211,7 +229,7 @@ func runInForegroundMode(ctx context.Context, cmd *cobra.Command, activeProf *pr
 func runInDaemonMode(ctx context.Context, cmd *cobra.Command, pm *profilemanager.ProfileManager, activeProf *profilemanager.Profile, profileSwitched bool) error {
 	// Check if deprecated config flag is set and show warning
 	if cmd.Flag("config").Changed && configPath != "" {
-		cmd.PrintErrf("Warning: Config flag is deprecated on up command, it should be set as a service argument with $NB_CONFIG environment or with \"-config\" flag; netbird service reconfigure --service-env=\"NB_CONFIG=<file_path>\" or netbird service run --config=<file_path>\n")
+		cmd.PrintErrf("Warning: Config flag is deprecated on up command, it should be set as a service argument with $NB_CONFIG environment or with \"-config\" flag; anonbird service reconfigure --service-env=\"NB_CONFIG=<file_path>\" or anonbird service run --config=<file_path>\n")
 	}
 
 	customDNSAddressConverted, err := parseCustomDNSAddress(cmd.Flag(dnsResolverAddress).Changed)
@@ -224,7 +242,7 @@ func runInDaemonMode(ctx context.Context, cmd *cobra.Command, pm *profilemanager
 		//nolint
 		return fmt.Errorf("failed to connect to daemon error: %v\n"+
 			"If the daemon is not running please run: "+
-			"\nnetbird service install \nnetbird service start\n", err)
+			"\nanonbird service install \nanonbird service start\n", err)
 	}
 	defer func() {
 		err := conn.Close()
@@ -244,7 +262,7 @@ func runInDaemonMode(ctx context.Context, cmd *cobra.Command, pm *profilemanager
 	}
 
 	if status.Status == string(internal.StatusConnected) {
-		if !profileSwitched {
+		if !profileSwitched && !forceDaemonReconnect {
 			cmd.Println("Already connected")
 			return nil
 		}
@@ -443,6 +461,8 @@ func setupSetConfigReq(customDNSAddressConverted []byte, cmd *cobra.Command, pro
 		req.LazyConnectionEnabled = &lazyConnEnabled
 	}
 
+	applyAnonymousSetConfig(&req)
+
 	return &req
 }
 
@@ -563,6 +583,7 @@ func setupConfig(customDNSAddressConverted []byte, cmd *cobra.Command, configFil
 	if cmd.Flag(enableLazyConnectionFlag).Changed {
 		ic.LazyConnectionEnabled = &lazyConnEnabled
 	}
+	applyAnonymousConfigInput(&ic)
 	return &ic, nil
 }
 
@@ -681,7 +702,81 @@ func setupLoginRequest(providedSetupKey string, customDNSAddressConverted []byte
 	if cmd.Flag(enableLazyConnectionFlag).Changed {
 		loginRequest.LazyConnectionEnabled = &lazyConnEnabled
 	}
+	applyAnonymousLoginRequest(&loginRequest)
 	return &loginRequest, nil
+}
+
+func anonymousTransportFromFlags() anonymous.TransportConfig {
+	return anonymous.NormalizeTransport(anonymous.TransportConfig{
+		Type:              anonymousTransport,
+		RequireAnonymous:  true,
+		TorSOCKS5:         torSOCKS5,
+		I2PSAM:            i2pSAM,
+		I2PTunnelLength:   i2pTunnelLength,
+		I2PTunnelQuantity: i2pTunnelQuantity,
+		I2PDaemonMode:     i2pDaemonMode,
+		I2PDaemonPath:     i2pDaemonPath,
+		I2PDataDir:        i2pDataDir,
+	})
+}
+
+func anonymousTransportFlagsChanged() bool {
+	return rootCmd.PersistentFlags().Changed(anonymousTransportFlag) ||
+		rootCmd.PersistentFlags().Changed(torSOCKS5Flag) ||
+		rootCmd.PersistentFlags().Changed(i2pSAMFlag) ||
+		rootCmd.PersistentFlags().Changed(i2pTunnelLengthFlag) ||
+		rootCmd.PersistentFlags().Changed(i2pTunnelQuantityFlag) ||
+		rootCmd.PersistentFlags().Changed(i2pDaemonModeFlag) ||
+		rootCmd.PersistentFlags().Changed(i2pDaemonPathFlag) ||
+		rootCmd.PersistentFlags().Changed(i2pDataDirFlag)
+}
+
+func applyAnonymousConfigInput(ic *profilemanager.ConfigInput) {
+	if rootCmd.PersistentFlags().Changed(anonymousModeFlag) {
+		ic.AnonymousMode = &anonymousMode
+	}
+	if anonymousMode || anonymousTransportFlagsChanged() {
+		transport := anonymousTransportFromFlags()
+		ic.AnonymousTransport = &transport
+	}
+}
+
+func applyAnonymousSetConfig(req *proto.SetConfigRequest) {
+	if rootCmd.PersistentFlags().Changed(anonymousModeFlag) {
+		req.AnonymousMode = &anonymousMode
+	}
+	if anonymousMode || anonymousTransportFlagsChanged() {
+		transport := anonymousTransportFromFlags()
+		req.AnonymousTransport = &transport.Type
+		req.TorSocks5 = &transport.TorSOCKS5
+		req.I2PSam = &transport.I2PSAM
+		length := int32(transport.I2PTunnelLength)
+		quantity := int32(transport.I2PTunnelQuantity)
+		req.I2PTunnelLength = &length
+		req.I2PTunnelQuantity = &quantity
+		req.I2PDaemonMode = &transport.I2PDaemonMode
+		req.I2PdPath = &transport.I2PDaemonPath
+		req.I2PDataDir = &transport.I2PDataDir
+	}
+}
+
+func applyAnonymousLoginRequest(req *proto.LoginRequest) {
+	if rootCmd.PersistentFlags().Changed(anonymousModeFlag) {
+		req.AnonymousMode = &anonymousMode
+	}
+	if anonymousMode || anonymousTransportFlagsChanged() {
+		transport := anonymousTransportFromFlags()
+		req.AnonymousTransport = &transport.Type
+		req.TorSocks5 = &transport.TorSOCKS5
+		req.I2PSam = &transport.I2PSAM
+		length := int32(transport.I2PTunnelLength)
+		quantity := int32(transport.I2PTunnelQuantity)
+		req.I2PTunnelLength = &length
+		req.I2PTunnelQuantity = &quantity
+		req.I2PDaemonMode = &transport.I2PDaemonMode
+		req.I2PdPath = &transport.I2PDaemonPath
+		req.I2PDataDir = &transport.I2PDataDir
+	}
 }
 
 func validateNATExternalIPs(list []string) error {

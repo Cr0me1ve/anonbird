@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"net"
+	"net/netip"
 	"os"
 	"testing"
 	"time"
@@ -26,6 +27,43 @@ func TestMain(m *testing.M) {
 	_ = util.InitLog("debug", util.LogConsole)
 	code := m.Run()
 	os.Exit(code)
+}
+
+func TestClientGetDialersWithSOCKS5UsesWebSocketOnly(t *testing.T) {
+	client := NewClientWithSOCKS5("rels://relayexampleabcdefghijklmnop.onion:443", hmacTokenStore, "alice", iface.DefaultMTU, "127.0.0.1:9050")
+
+	dialers := client.getDialers()
+	if len(dialers) != 1 {
+		t.Fatalf("expected one anonymous relay dialer, got %d", len(dialers))
+	}
+	if got := dialers[0].Protocol(); got != "WS" {
+		t.Fatalf("expected WebSocket-only anonymous relay dialer, got %s", got)
+	}
+	if !client.usesAnonymousRelayTransport() {
+		t.Fatal("expected SOCKS5 relay client to use anonymous health-check timings")
+	}
+}
+
+func TestClientGetDialersWithI2PUsesWebSocketOnly(t *testing.T) {
+	client := NewClientWithI2P("rels://relayexample.b32.i2p:443", hmacTokenStore, "alice", iface.DefaultMTU, "127.0.0.1:7656", 1, 3)
+
+	dialers := client.getDialers()
+	if len(dialers) != 1 {
+		t.Fatalf("expected one anonymous relay dialer, got %d", len(dialers))
+	}
+	if got := dialers[0].Protocol(); got != "WS" {
+		t.Fatalf("expected WebSocket-only anonymous relay dialer, got %s", got)
+	}
+	if !client.usesAnonymousRelayTransport() {
+		t.Fatal("expected I2P relay client to use anonymous health-check timings")
+	}
+}
+
+func TestClientDirectRelayDoesNotUseAnonymousHealthChecks(t *testing.T) {
+	client := NewClient("rel://127.0.0.1:33080", hmacTokenStore, "alice", iface.DefaultMTU)
+	if client.usesAnonymousRelayTransport() {
+		t.Fatal("expected direct relay client to use default health-check timings")
+	}
 }
 
 // newClientTestServerConfig creates a new server config for client testing with the given address
@@ -119,6 +157,176 @@ func TestClient(t *testing.T) {
 
 	if payload != string(buf[:n]) {
 		t.Fatalf("expected %s, got %s", payload, string(buf[:n]))
+	}
+}
+
+func TestClientMultipleChannels(t *testing.T) {
+	ctx := context.Background()
+	serverListenAddr := "127.0.0.1:50011"
+	serverCfg := newClientTestServerConfig(serverListenAddr)
+
+	srv, err := server.NewServer(serverCfg)
+	if err != nil {
+		t.Fatalf("failed to create server: %s", err)
+	}
+	errChan := make(chan error, 1)
+	go func() {
+		listenCfg := server.ListenerConfig{Address: serverListenAddr}
+		if err := srv.Listen(listenCfg); err != nil {
+			errChan <- err
+		}
+	}()
+	defer func() {
+		if err := srv.Shutdown(ctx); err != nil {
+			t.Errorf("failed to close server: %s", err)
+		}
+	}()
+	if err := waitForServerToStart(errChan); err != nil {
+		t.Fatalf("failed to start server: %s", err)
+	}
+
+	clientAlice := NewClient(serverCfg.ExposedAddress, hmacTokenStore, "alice", iface.DefaultMTU)
+	if err := clientAlice.Connect(ctx); err != nil {
+		t.Fatalf("failed to connect alice: %s", err)
+	}
+	defer clientAlice.Close()
+
+	clientBob := NewClient(serverCfg.ExposedAddress, hmacTokenStore, "bob", iface.DefaultMTU)
+	if err := clientBob.Connect(ctx); err != nil {
+		t.Fatalf("failed to connect bob: %s", err)
+	}
+	defer clientBob.Close()
+
+	aliceCh1, err := clientAlice.OpenConnChannel(ctx, "bob", 1)
+	if err != nil {
+		t.Fatalf("alice channel 1: %s", err)
+	}
+	aliceCh2, err := clientAlice.OpenConnChannel(ctx, "bob", 2)
+	if err != nil {
+		t.Fatalf("alice channel 2: %s", err)
+	}
+	bobCh1, err := clientBob.OpenConnChannel(ctx, "alice", 1)
+	if err != nil {
+		t.Fatalf("bob channel 1: %s", err)
+	}
+	bobCh2, err := clientBob.OpenConnChannel(ctx, "alice", 2)
+	if err != nil {
+		t.Fatalf("bob channel 2: %s", err)
+	}
+
+	if _, err := clientAlice.OpenConnChannel(ctx, "bob", 1); err != ErrConnAlreadyExists {
+		t.Fatalf("expected duplicate channel error, got %v", err)
+	}
+
+	if _, err := aliceCh1.Write([]byte("flow-one")); err != nil {
+		t.Fatalf("write channel 1: %s", err)
+	}
+	if _, err := aliceCh2.Write([]byte("flow-two")); err != nil {
+		t.Fatalf("write channel 2: %s", err)
+	}
+
+	buf := make([]byte, 64)
+	n, err := bobCh1.Read(buf)
+	if err != nil {
+		t.Fatalf("read channel 1: %s", err)
+	}
+	if got := string(buf[:n]); got != "flow-one" {
+		t.Fatalf("expected channel 1 payload, got %q", got)
+	}
+	n, err = bobCh2.Read(buf)
+	if err != nil {
+		t.Fatalf("read channel 2: %s", err)
+	}
+	if got := string(buf[:n]); got != "flow-two" {
+		t.Fatalf("expected channel 2 payload, got %q", got)
+	}
+}
+
+func TestClientDedicatedRelayChannelDoesNotReplacePrimaryPeer(t *testing.T) {
+	ctx := context.Background()
+	serverListenAddr := "127.0.0.1:50012"
+	serverCfg := newClientTestServerConfig(serverListenAddr)
+
+	srv, err := server.NewServer(serverCfg)
+	if err != nil {
+		t.Fatalf("failed to create server: %s", err)
+	}
+	errChan := make(chan error, 1)
+	go func() {
+		listenCfg := server.ListenerConfig{Address: serverListenAddr}
+		if err := srv.Listen(listenCfg); err != nil {
+			errChan <- err
+		}
+	}()
+	defer func() {
+		if err := srv.Shutdown(ctx); err != nil {
+			t.Errorf("failed to close server: %s", err)
+		}
+	}()
+	if err := waitForServerToStart(errChan); err != nil {
+		t.Fatalf("failed to start server: %s", err)
+	}
+
+	alicePrimary := NewClient(serverCfg.ExposedAddress, hmacTokenStore, "alice", iface.DefaultMTU)
+	if err := alicePrimary.Connect(ctx); err != nil {
+		t.Fatalf("failed to connect alice primary: %s", err)
+	}
+	defer alicePrimary.Close()
+	bobPrimary := NewClient(serverCfg.ExposedAddress, hmacTokenStore, "bob", iface.DefaultMTU)
+	if err := bobPrimary.Connect(ctx); err != nil {
+		t.Fatalf("failed to connect bob primary: %s", err)
+	}
+	defer bobPrimary.Close()
+
+	aliceStream := newClientWithRelayChannel(serverCfg.ExposedAddress, netip.Addr{}, hmacTokenStore, "alice", iface.DefaultMTU, "", "", 0, 0, 1)
+	if err := aliceStream.Connect(ctx); err != nil {
+		t.Fatalf("failed to connect alice channel stream: %s", err)
+	}
+	defer aliceStream.Close()
+	bobStream := newClientWithRelayChannel(serverCfg.ExposedAddress, netip.Addr{}, hmacTokenStore, "bob", iface.DefaultMTU, "", "", 0, 0, 1)
+	if err := bobStream.Connect(ctx); err != nil {
+		t.Fatalf("failed to connect bob channel stream: %s", err)
+	}
+	defer bobStream.Close()
+
+	alicePrimaryConn, err := alicePrimary.OpenConn(ctx, "bob")
+	if err != nil {
+		t.Fatalf("alice primary conn: %s", err)
+	}
+	bobPrimaryConn, err := bobPrimary.OpenConn(ctx, "alice")
+	if err != nil {
+		t.Fatalf("bob primary conn: %s", err)
+	}
+	aliceCh1, err := aliceStream.OpenConnChannel(ctx, "bob", 1)
+	if err != nil {
+		t.Fatalf("alice channel 1 conn: %s", err)
+	}
+	bobCh1, err := bobStream.OpenConnChannel(ctx, "alice", 1)
+	if err != nil {
+		t.Fatalf("bob channel 1 conn: %s", err)
+	}
+
+	if _, err := alicePrimaryConn.Write([]byte("primary")); err != nil {
+		t.Fatalf("write primary: %s", err)
+	}
+	if _, err := aliceCh1.Write([]byte("channel-1")); err != nil {
+		t.Fatalf("write channel 1: %s", err)
+	}
+
+	buf := make([]byte, 64)
+	n, err := bobPrimaryConn.Read(buf)
+	if err != nil {
+		t.Fatalf("read primary: %s", err)
+	}
+	if got := string(buf[:n]); got != "primary" {
+		t.Fatalf("expected primary payload, got %q", got)
+	}
+	n, err = bobCh1.Read(buf)
+	if err != nil {
+		t.Fatalf("read channel 1: %s", err)
+	}
+	if got := string(buf[:n]); got != "channel-1" {
+		t.Fatalf("expected channel payload, got %q", got)
 	}
 }
 

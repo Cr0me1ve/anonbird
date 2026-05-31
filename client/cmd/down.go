@@ -14,8 +14,8 @@ import (
 
 var downCmd = &cobra.Command{
 	Use:   "down",
-	Short: "Disconnect from the NetBird network",
-	Long:  "Disconnect the NetBird client from the network and management service. This will terminate all active connections with the remote peers.",
+	Short: "Disconnect from the AnonBird network",
+	Long:  "Disconnect the AnonBird client from the network and management service. This will terminate all active connections with the remote peers.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		SetFlagsFromEnvVars(rootCmd)
 

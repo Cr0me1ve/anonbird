@@ -23,6 +23,7 @@ var (
 	disableMetrics              bool
 	disableSingleAccMode        bool
 	disableGeoliteUpdate        bool
+	disableVersionCheck         bool
 	idpSignKeyRefreshEnabled    bool
 	userDeleteFromIDPEnabled    bool
 	mgmtPort                    int
@@ -66,6 +67,7 @@ func init() {
 	mgmtCmd.Flags().StringVar(&certFile, "cert-file", "", "Location of your SSL certificate. Can be used when you have an existing certificate and don't want a new certificate be generated automatically. If letsencrypt-domain is specified this property has no effect")
 	mgmtCmd.Flags().StringVar(&certKey, "cert-key", "", "Location of your SSL certificate private key. Can be used when you have an existing certificate and don't want a new certificate be generated automatically. If letsencrypt-domain is specified this property has no effect")
 	mgmtCmd.Flags().BoolVar(&disableMetrics, "disable-anonymous-metrics", false, "disables push of anonymous usage metrics to NetBird")
+	mgmtCmd.Flags().BoolVar(&disableVersionCheck, "disable-version-check", false, "disables automatic management version update checks")
 	mgmtCmd.Flags().StringVar(&dnsDomain, "dns-domain", defaultSingleAccModeDomain, fmt.Sprintf("Domain used for peer resolution. This is appended to the peer's name, e.g. pi-server. %s. Max length is 192 characters to allow appending to a peer name with up to 63 characters.", defaultSingleAccModeDomain))
 	mgmtCmd.Flags().BoolVar(&idpSignKeyRefreshEnabled, idpSignKeyRefreshEnabledFlagName, false, "Enable cache headers evaluation to determine signing key rotation period. This will refresh the signing key upon expiry.")
 	mgmtCmd.Flags().BoolVar(&userDeleteFromIDPEnabled, "user-delete-from-idp", false, "Allows to delete user from IDP when user is deleted from account")
@@ -86,4 +88,8 @@ func init() {
 	tc := newTokenCommands()
 	tc.PersistentFlags().StringVar(&nbconfig.MgmtConfigPath, "config", defaultMgmtConfig, "Netbird config file location")
 	rootCmd.AddCommand(tc)
+
+	sc := newSetupKeyCommands()
+	sc.PersistentFlags().StringVar(&nbconfig.MgmtConfigPath, "config", defaultMgmtConfig, "Netbird config file location")
+	rootCmd.AddCommand(sc)
 }

@@ -1097,14 +1097,22 @@ func TestToSyncResponse(t *testing.T) {
 			Key:        "peer2-key",
 			DNSLabel:   "peer2",
 			SSHEnabled: true,
-			SSHKey:     "peer2-ssh-key"}},
+			SSHKey:     "peer2-ssh-key",
+			Meta: nbpeer.PeerSystemMeta{
+				AnonymousTransport: "i2p-datagram",
+				I2PDestination:     "peer2-public-destination",
+			}}},
 		OfflinePeers: []*nbpeer.Peer{{
 			IP:         netip.MustParseAddr("192.168.1.3"),
 			IPv6:       netip.MustParseAddr("fd00::3"),
 			Key:        "peer3-key",
 			DNSLabel:   "peer3",
 			SSHEnabled: true,
-			SSHKey:     "peer3-ssh-key"}},
+			SSHKey:     "peer3-ssh-key",
+			Meta: nbpeer.PeerSystemMeta{
+				AnonymousTransport: "i2p-datagram",
+				I2PDestination:     "peer3-public-destination",
+			}}},
 		Routes: []*nbroute.Route{
 			{
 				ID:          "route1",
@@ -1200,6 +1208,8 @@ func TestToSyncResponse(t *testing.T) {
 	assert.Equal(t, "peer2.example.com", response.RemotePeers[0].GetFqdn())
 	assert.Equal(t, false, response.RemotePeers[0].GetSshConfig().GetSshEnabled())
 	assert.Equal(t, []byte("peer2-ssh-key"), response.RemotePeers[0].GetSshConfig().GetSshPubKey())
+	assert.Equal(t, "i2p-datagram", response.RemotePeers[0].GetAnonymousTransport().GetType())
+	assert.Equal(t, "peer2-public-destination", response.RemotePeers[0].GetAnonymousTransport().GetI2PDestination())
 	// assert network map
 	assert.Equal(t, uint64(1000), response.NetworkMap.Serial)
 	assert.Equal(t, "192.168.1.1/24", response.NetworkMap.PeerConfig.Address)
@@ -1211,12 +1221,16 @@ func TestToSyncResponse(t *testing.T) {
 	assert.Equal(t, "peer2-key", response.NetworkMap.RemotePeers[0].WgPubKey)
 	assert.Equal(t, "peer2.example.com", response.NetworkMap.RemotePeers[0].GetFqdn())
 	assert.Equal(t, []byte("peer2-ssh-key"), response.NetworkMap.RemotePeers[0].GetSshConfig().GetSshPubKey())
+	assert.Equal(t, "i2p-datagram", response.NetworkMap.RemotePeers[0].GetAnonymousTransport().GetType())
+	assert.Equal(t, "peer2-public-destination", response.NetworkMap.RemotePeers[0].GetAnonymousTransport().GetI2PDestination())
 	// assert network map OfflinePeers
 	assert.Equal(t, 1, len(response.NetworkMap.OfflinePeers))
 	assert.Equal(t, "192.168.1.3/32", response.NetworkMap.OfflinePeers[0].AllowedIps[0])
 	assert.Equal(t, "peer3-key", response.NetworkMap.OfflinePeers[0].WgPubKey)
 	assert.Equal(t, "peer3.example.com", response.NetworkMap.OfflinePeers[0].GetFqdn())
 	assert.Equal(t, []byte("peer3-ssh-key"), response.NetworkMap.OfflinePeers[0].GetSshConfig().GetSshPubKey())
+	assert.Equal(t, "i2p-datagram", response.NetworkMap.OfflinePeers[0].GetAnonymousTransport().GetType())
+	assert.Equal(t, "peer3-public-destination", response.NetworkMap.OfflinePeers[0].GetAnonymousTransport().GetI2PDestination())
 	// assert network map Routes
 	assert.Equal(t, 1, len(response.NetworkMap.Routes))
 	assert.Equal(t, "10.0.0.0/24", response.NetworkMap.Routes[0].Network)

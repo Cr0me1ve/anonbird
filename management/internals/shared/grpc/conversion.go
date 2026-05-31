@@ -253,14 +253,25 @@ func appendRemotePeerConfig(dst []*proto.RemotePeerConfig, peers []*nbpeer.Peer,
 			allowedIPs = append(allowedIPs, rPeer.IPv6.String()+"/128")
 		}
 		dst = append(dst, &proto.RemotePeerConfig{
-			WgPubKey:     rPeer.Key,
-			AllowedIps:   allowedIPs,
-			SshConfig:    &proto.SSHConfig{SshPubKey: []byte(rPeer.SSHKey)},
-			Fqdn:         rPeer.FQDN(dnsName),
-			AgentVersion: rPeer.Meta.WtVersion,
+			WgPubKey:           rPeer.Key,
+			AllowedIps:         allowedIPs,
+			SshConfig:          &proto.SSHConfig{SshPubKey: []byte(rPeer.SSHKey)},
+			Fqdn:               rPeer.FQDN(dnsName),
+			AgentVersion:       rPeer.Meta.WtVersion,
+			AnonymousTransport: peerAnonymousTransport(rPeer.Meta),
 		})
 	}
 	return dst
+}
+
+func peerAnonymousTransport(meta nbpeer.PeerSystemMeta) *proto.AnonymousTransport {
+	if meta.AnonymousTransport == "" && meta.I2PDestination == "" {
+		return nil
+	}
+	return &proto.AnonymousTransport{
+		Type:           meta.AnonymousTransport,
+		I2PDestination: meta.I2PDestination,
+	}
 }
 
 // toProtocolDNSConfig converts nbdns.Config to proto.DNSConfig using the cache
@@ -362,7 +373,6 @@ func toProtocolFirewallRules(rules []*types.FirewallRule, includeIPv6, useSource
 	}
 	return result
 }
-
 
 // populateSourcePrefixes sets SourcePrefixes on fwRule and returns any
 // additional rules needed (e.g. a v6 wildcard clone when the peer IP is unspecified).

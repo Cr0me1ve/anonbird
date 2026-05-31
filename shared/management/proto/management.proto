@@ -219,6 +219,7 @@ message Flags {
   bool disableSSHAuth = 15;
 
   bool disableIPv6 = 16;
+  bool anonymousMode = 17;
 }
 
 // PeerCapability represents a feature the client binary supports.
@@ -229,6 +230,11 @@ enum PeerCapability {
   PeerCapabilitySourcePrefixes = 1;
   // Client handles IPv6 overlay addresses and firewall rules.
   PeerCapabilityIPv6Overlay = 2;
+}
+
+message AnonymousTransport {
+  string type = 1;
+  string i2pDestination = 2;
 }
 
 // PeerSystemMeta is machine meta data like OS and version.
@@ -252,6 +258,7 @@ message PeerSystemMeta {
   Flags flags = 17;
 
   repeated PeerCapability capabilities = 18;
+  AnonymousTransport anonymousTransport = 19;
 }
 
 message LoginResponse {
@@ -480,6 +487,8 @@ message RemotePeerConfig {
   string fqdn = 4;
 
   string agentVersion = 5;
+
+  AnonymousTransport anonymousTransport = 6;
 }
 
 // SSHConfig represents SSH configurations of a peer.

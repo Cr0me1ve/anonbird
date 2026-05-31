@@ -5,13 +5,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	signal "github.com/netbirdio/netbird/shared/signal/client"
 	sProto "github.com/netbirdio/netbird/shared/signal/proto"
 )
 
 type Signaler struct {
-	signal       signal.Client
-	wgPrivateKey wgtypes.Key
+	signal        signal.Client
+	wgPrivateKey  wgtypes.Key
+	anonymousMode bool
 }
 
 func NewSignaler(signal signal.Client, wgPrivateKey wgtypes.Key) *Signaler {
@@ -19,6 +21,10 @@ func NewSignaler(signal signal.Client, wgPrivateKey wgtypes.Key) *Signaler {
 		signal:       signal,
 		wgPrivateKey: wgPrivateKey,
 	}
+}
+
+func (s *Signaler) SetAnonymousMode(enabled bool) {
+	s.anonymousMode = enabled
 }
 
 func (s *Signaler) SignalOffer(offer OfferAnswer, remoteKey string) error {
@@ -30,6 +36,9 @@ func (s *Signaler) SignalAnswer(offer OfferAnswer, remoteKey string) error {
 }
 
 func (s *Signaler) SignalICECandidate(candidate ice.Candidate, remoteKey string) error {
+	if s.anonymousMode {
+		return anonymous.Violation("ICE candidate signaling is disabled")
+	}
 	return s.signal.Send(&sProto.Message{
 		Key:       s.wgPrivateKey.PublicKey().String(),
 		RemoteKey: remoteKey,
@@ -66,6 +75,7 @@ func (s *Signaler) signalOfferAnswer(offerAnswer OfferAnswer, remoteKey string, 
 		RelaySrvAddress: offerAnswer.RelaySrvAddress,
 		RelaySrvIP:      offerAnswer.RelaySrvIP,
 		SessionID:       sessionIDBytes,
+		AnonymousMode:   s.anonymousMode,
 	})
 	if err != nil {
 		return err

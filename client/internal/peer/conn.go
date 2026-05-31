@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/netbirdio/netbird/client/iface/configurer"
 	"github.com/netbirdio/netbird/client/iface/wgproxy"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/metrics"
 	"github.com/netbirdio/netbird/client/internal/peer/conntype"
 	"github.com/netbirdio/netbird/client/internal/peer/dispatcher"
@@ -39,6 +41,8 @@ type MetricsRecorder interface {
 		timestamps metrics.ConnectionStageTimestamps,
 	)
 }
+
+const i2pDatagramRetryDelay = 15 * time.Second
 
 type ServiceDependencies struct {
 	StatusRecorder     *Status
@@ -87,6 +91,10 @@ type ConnConfig struct {
 
 	// ICEConfig ICE protocol configuration
 	ICEConfig icemaker.Config
+
+	AnonymousMode            bool
+	AnonymousTransport       anonymous.TransportConfig
+	RemoteAnonymousTransport RemoteAnonymousTransport
 }
 
 type Conn struct {
@@ -108,6 +116,7 @@ type Conn struct {
 
 	statusRelay         *worker.AtomicWorkerStatus
 	statusICE           *worker.AtomicWorkerStatus
+	statusI2PDatagram   *worker.AtomicWorkerStatus
 	currentConnPriority conntype.ConnPriority
 	opened              bool // this flag is used to prevent close in case of not opened connection
 
@@ -121,12 +130,16 @@ type Conn struct {
 	// used to store the remote Rosenpass key for Relayed connection in case of connection update from ice
 	rosenpassRemoteKey []byte
 
-	wgProxyICE   wgproxy.Proxy
-	wgProxyRelay wgproxy.Proxy
-	handshaker   *Handshaker
+	wgProxyICE         wgproxy.Proxy
+	wgProxyRelay       wgproxy.Proxy
+	wgProxyI2PDatagram wgproxy.Proxy
+	handshaker         *Handshaker
 
 	guard *guard.Guard
 	wg    sync.WaitGroup
+
+	i2pDatagramRetryMu        sync.Mutex
+	i2pDatagramRetryScheduled bool
 
 	// debug purpose
 	dumpState *stateDump
@@ -159,6 +172,7 @@ func NewConn(config ConnConfig, services ServiceDependencies) (*Conn, error) {
 		portForwardManager: services.PortForwardManager,
 		statusRelay:        worker.NewAtomicStatus(),
 		statusICE:          worker.NewAtomicStatus(),
+		statusI2PDatagram:  worker.NewAtomicStatus(),
 		dumpState:          dumpState,
 		endpointUpdater:    NewEndpointUpdater(connLog, config.WgConfig, isController(config)),
 		wgWatcher:          NewWGWatcher(connLog, config.WgConfig.WgInterface, config.Key, dumpState),
@@ -186,7 +200,7 @@ func (conn *Conn) Open(engineCtx context.Context) error {
 
 	conn.workerRelay = NewWorkerRelay(conn.ctx, conn.Log, isController(conn.config), conn.config, conn, conn.relayManager)
 
-	forceRelay := IsForceRelayed()
+	forceRelay := IsForceRelayed() || conn.config.AnonymousMode
 	if !forceRelay {
 		relayIsSupportedLocally := conn.workerRelay.RelayIsSupportedLocally()
 		workerICE, err := NewWorkerICE(conn.ctx, conn.Log, conn.config, conn, conn.signaler, conn.iFaceDiscover, conn.statusRecorder, relayIsSupportedLocally)
@@ -227,6 +241,13 @@ func (conn *Conn) Open(engineCtx context.Context) error {
 		defer conn.wg.Done()
 		conn.guard.Start(conn.ctx, conn.onGuardEvent)
 	}()
+	if conn.canUseI2PDatagramDirect() {
+		conn.wg.Add(1)
+		go func() {
+			defer conn.wg.Done()
+			conn.openI2PDatagram()
+		}()
+	}
 	conn.opened = true
 	return nil
 }
@@ -254,9 +275,19 @@ func (conn *Conn) Close(signalToRemote bool) {
 	if conn.wgWatcherCancel != nil {
 		conn.wgWatcherCancel()
 	}
-	conn.workerRelay.CloseConn()
+	if conn.workerRelay != nil {
+		conn.workerRelay.CloseConn()
+	}
 	if conn.workerICE != nil {
 		conn.workerICE.Close()
+	}
+
+	if conn.wgProxyI2PDatagram != nil {
+		err := conn.wgProxyI2PDatagram.CloseConn()
+		if err != nil {
+			conn.Log.Errorf("failed to close wg proxy for i2p datagram: %v", err)
+		}
+		conn.wgProxyI2PDatagram = nil
 	}
 
 	if conn.wgProxyRelay != nil {
@@ -409,7 +440,7 @@ func (conn *Conn) onICEConnectionIsReady(priority conntype.ConnPriority, iceConn
 
 	conn.Log.Infof("configure WireGuard endpoint to: %s", ep.String())
 	updateTime := time.Now()
-	conn.enableWgWatcherIfNeeded(updateTime)
+	conn.startOrResetWgWatcher(updateTime)
 
 	presharedKey := conn.presharedKey(iceConnInfo.RosenpassPubKey)
 	if err = conn.endpointUpdater.ConfigureWGEndpoint(ep, presharedKey); err != nil {
@@ -493,6 +524,128 @@ func (conn *Conn) onICEStateDisconnected(sessionChanged bool) {
 	}
 }
 
+func (conn *Conn) openI2PDatagram() {
+	remoteDestination := conn.config.RemoteAnonymousTransport.I2PDestination
+	remoteConn, err := defaultI2PDatagramRegistry.OpenPeerConn(
+		conn.ctx,
+		conn.config.AnonymousTransport,
+		conn.config.Key,
+		remoteDestination,
+	)
+	if err != nil {
+		if conn.ctx.Err() == nil {
+			conn.Log.Warnf("failed to open direct i2p datagram connection: %v", err)
+			conn.scheduleI2PDatagramRetry("open failed")
+		}
+		return
+	}
+	conn.onI2PDatagramConnectionIsReady(remoteConn)
+}
+
+func (conn *Conn) scheduleI2PDatagramRetry(reason string) {
+	if conn.ctx.Err() != nil || !conn.canUseI2PDatagramDirect() || conn.statusI2PDatagram.Get() == worker.StatusConnected {
+		return
+	}
+
+	conn.i2pDatagramRetryMu.Lock()
+	if conn.i2pDatagramRetryScheduled {
+		conn.i2pDatagramRetryMu.Unlock()
+		return
+	}
+	conn.i2pDatagramRetryScheduled = true
+	conn.i2pDatagramRetryMu.Unlock()
+
+	conn.Log.Debugf("scheduling direct i2p datagram retry in %s: %s", i2pDatagramRetryDelay, reason)
+
+	go func() {
+		timer := time.NewTimer(i2pDatagramRetryDelay)
+		defer timer.Stop()
+
+		select {
+		case <-conn.ctx.Done():
+			return
+		case <-timer.C:
+		}
+
+		if conn.ctx.Err() != nil || !conn.canUseI2PDatagramDirect() || conn.statusI2PDatagram.Get() == worker.StatusConnected {
+			conn.clearI2PDatagramRetryScheduled()
+			return
+		}
+
+		conn.Log.Infof("retrying direct i2p datagram connection: %s", reason)
+		conn.openI2PDatagram()
+
+		conn.clearI2PDatagramRetryScheduled()
+		if conn.ctx.Err() == nil && conn.statusI2PDatagram.Get() != worker.StatusConnected {
+			conn.scheduleI2PDatagramRetry("previous retry did not connect")
+		}
+	}()
+}
+
+func (conn *Conn) clearI2PDatagramRetryScheduled() {
+	conn.i2pDatagramRetryMu.Lock()
+	conn.i2pDatagramRetryScheduled = false
+	conn.i2pDatagramRetryMu.Unlock()
+}
+
+func (conn *Conn) onI2PDatagramConnectionIsReady(remoteConn net.Conn) {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	if conn.ctx.Err() != nil {
+		if err := remoteConn.Close(); err != nil {
+			conn.Log.Warnf("failed to close unnecessary i2p datagram connection: %v", err)
+		}
+		return
+	}
+
+	conn.Log.Debugf("direct i2p datagram connection has been established, setup WireGuard")
+	wgProxy, err := conn.newProxy(remoteConn)
+	if err != nil {
+		conn.Log.Errorf("failed to add i2p datagram net.Conn to local proxy: %v", err)
+		return
+	}
+	wgProxy.SetDisconnectListener(conn.onI2PDatagramDisconnected)
+
+	if conn.currentConnPriority > conntype.I2PDatagram {
+		conn.Log.Infof("current connection priority (%s) is higher than i2p datagram, keep current connection", conn.currentConnPriority)
+		conn.setI2PDatagramProxy(wgProxy)
+		conn.statusI2PDatagram.SetConnected()
+		conn.updateI2PDatagramStatus(remoteConn.RemoteAddr().String(), time.Now())
+		return
+	}
+
+	if conn.wgProxyRelay != nil {
+		conn.wgProxyRelay.Pause()
+	}
+
+	controller := isController(conn.config)
+	if controller {
+		wgProxy.Work()
+	}
+	updateTime := time.Now()
+	conn.startOrResetWgWatcher(updateTime)
+	if err := conn.endpointUpdater.ConfigureWGEndpoint(wgProxy.EndpointAddr(), conn.presharedKey(nil)); err != nil {
+		if err := wgProxy.CloseConn(); err != nil {
+			conn.Log.Warnf("failed to close i2p datagram connection: %v", err)
+		}
+		conn.Log.Errorf("failed to update WireGuard peer configuration for i2p datagram: %v", err)
+		return
+	}
+	if !controller {
+		wgProxy.Work()
+	}
+
+	wgConfigWorkaround()
+
+	conn.currentConnPriority = conntype.I2PDatagram
+	conn.statusI2PDatagram.SetConnected()
+	conn.setI2PDatagramProxy(wgProxy)
+	conn.updateI2PDatagramStatus(remoteConn.RemoteAddr().String(), updateTime)
+	conn.Log.Infof("start to communicate with peer via direct i2p datagram transport")
+	conn.doOnConnected(nil, "", updateTime)
+}
+
 func (conn *Conn) onRelayConnectionIsReady(rci RelayConnInfo) {
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
@@ -518,7 +671,7 @@ func (conn *Conn) onRelayConnectionIsReady(rci RelayConnInfo) {
 
 	conn.Log.Infof("created new wgProxy for relay connection: %s", wgProxy.EndpointAddr().String())
 
-	if conn.isICEActive() {
+	if conn.isICEActive() || conn.isI2PDatagramActive() {
 		conn.Log.Debugf("do not switch to relay because current priority is: %s", conn.currentConnPriority.String())
 		conn.setRelayedProxy(wgProxy)
 		conn.statusRelay.SetConnected()
@@ -532,7 +685,7 @@ func (conn *Conn) onRelayConnectionIsReady(rci RelayConnInfo) {
 		wgProxy.Work()
 	}
 	updateTime := time.Now()
-	conn.enableWgWatcherIfNeeded(updateTime)
+	conn.startOrResetWgWatcher(updateTime)
 	if err := conn.endpointUpdater.ConfigureWGEndpoint(wgProxy.EndpointAddr(), conn.presharedKey(rci.rosenpassPubKey)); err != nil {
 		if err := wgProxy.CloseConn(); err != nil {
 			conn.Log.Warnf("Failed to close relay connection: %v", err)
@@ -553,12 +706,76 @@ func (conn *Conn) onRelayConnectionIsReady(rci RelayConnInfo) {
 	conn.updateRelayStatus(rci.relayedConn.RemoteAddr().String(), rci.rosenpassPubKey, updateTime)
 	conn.Log.Infof("start to communicate with peer via relay")
 	conn.doOnConnected(rci.rosenpassPubKey, rci.rosenpassAddr, updateTime)
+	conn.scheduleI2PDatagramRetry("relay connected")
 }
 
 func (conn *Conn) onRelayDisconnected() {
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 	conn.handleRelayDisconnectedLocked()
+}
+
+func (conn *Conn) onI2PDatagramDisconnected() {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	conn.handleI2PDatagramDisconnectedLocked()
+}
+
+func (conn *Conn) handleI2PDatagramDisconnectedLocked() {
+	if conn.ctx.Err() != nil {
+		return
+	}
+
+	conn.Log.Debugf("direct i2p datagram connection is disconnected")
+
+	if conn.wgProxyI2PDatagram != nil {
+		_ = conn.wgProxyI2PDatagram.CloseConn()
+		conn.wgProxyI2PDatagram = nil
+	}
+
+	changed := conn.statusI2PDatagram.Get() != worker.StatusDisconnected
+	if changed {
+		conn.guard.SetICEConnDisconnected()
+	}
+	conn.statusI2PDatagram.SetDisconnected()
+
+	if conn.currentConnPriority == conntype.I2PDatagram {
+		if conn.wgProxyRelay != nil && conn.statusRelay.Get() == worker.StatusConnected {
+			conn.Log.Infof("i2p datagram disconnected, switching back to relay")
+			conn.wgProxyRelay.Work()
+			presharedKey := conn.presharedKey(conn.rosenpassRemoteKey)
+			updateTime := time.Now()
+			conn.startOrResetWgWatcher(updateTime)
+			if err := conn.endpointUpdater.SwitchWGEndpoint(conn.wgProxyRelay.EndpointAddr(), presharedKey); err != nil {
+				conn.Log.Errorf("failed to switch to relay conn: %v", err)
+			}
+			conn.currentConnPriority = conntype.Relay
+		} else {
+			conn.Log.Debugf("clean up WireGuard config after i2p datagram disconnect")
+			conn.currentConnPriority = conntype.None
+			if err := conn.config.WgConfig.WgInterface.RemoveEndpointAddress(conn.config.WgConfig.RemoteKey); err != nil {
+				conn.Log.Errorf("failed to remove wg endpoint: %v", err)
+			}
+		}
+	}
+
+	conn.disableWgWatcherIfNeeded()
+
+	if conn.currentConnPriority == conntype.None {
+		conn.metricsStages.Disconnected()
+	}
+
+	conn.scheduleI2PDatagramRetry("direct i2p datagram disconnected")
+
+	peerState := State{
+		PubKey:           conn.config.Key,
+		ConnStatus:       conn.evalStatus(),
+		Relayed:          conn.isRelayed(),
+		ConnStatusUpdate: time.Now(),
+	}
+	if err := conn.statusRecorder.UpdatePeerICEStateToDisconnected(peerState); err != nil {
+		conn.Log.Warnf("unable to set peer's state to disconnected i2p datagram, got error: %v", err)
+	}
 }
 
 // handleRelayDisconnectedLocked handles relay disconnection. Caller must hold conn.mu.
@@ -627,6 +844,8 @@ func (conn *Conn) onWGDisconnected() {
 	case conntype.Relay:
 		conn.workerRelay.CloseConn()
 		conn.handleRelayDisconnectedLocked()
+	case conntype.I2PDatagram:
+		conn.handleI2PDatagramDisconnectedLocked()
 	case conntype.ICEP2P, conntype.ICETurn:
 		conn.workerICE.Close()
 	default:
@@ -669,9 +888,29 @@ func (conn *Conn) updateIceState(iceConnInfo ICEConnInfo, updateTime time.Time) 
 	}
 }
 
+func (conn *Conn) updateI2PDatagramStatus(remoteAddr string, updateTime time.Time) {
+	peerState := State{
+		PubKey:                     conn.config.Key,
+		ConnStatusUpdate:           updateTime,
+		ConnStatus:                 conn.evalStatus(),
+		Relayed:                    false,
+		LocalIceCandidateType:      anonymous.TransportI2PDatagram,
+		RemoteIceCandidateType:     anonymous.TransportI2PDatagram,
+		LocalIceCandidateEndpoint:  anonymous.TransportI2PDatagram,
+		RemoteIceCandidateEndpoint: remoteAddr,
+		RosenpassEnabled:           false,
+	}
+
+	err := conn.statusRecorder.UpdatePeerICEState(peerState)
+	if err != nil {
+		conn.Log.Warnf("unable to save peer's i2p datagram state, got error: %v", err)
+	}
+}
+
 func (conn *Conn) setStatusToDisconnected() {
 	conn.statusRelay.SetDisconnected()
 	conn.statusICE.SetDisconnected()
+	conn.statusI2PDatagram.SetDisconnected()
 	conn.currentConnPriority = conntype.None
 
 	peerState := State{
@@ -707,13 +946,17 @@ func (conn *Conn) isRelayed() bool {
 	switch conn.currentConnPriority {
 	case conntype.Relay, conntype.ICETurn:
 		return true
+	case conntype.I2PDatagram:
+		return false
 	default:
 		return false
 	}
 }
 
 func (conn *Conn) evalStatus() ConnStatus {
-	if conn.statusRelay.Get() == worker.StatusConnected || conn.statusICE.Get() == worker.StatusConnected {
+	if conn.statusRelay.Get() == worker.StatusConnected ||
+		conn.statusICE.Get() == worker.StatusConnected ||
+		conn.statusI2PDatagram.Get() == worker.StatusConnected {
 		return StatusConnected
 	}
 
@@ -741,6 +984,8 @@ func (conn *Conn) isConnectedOnAllWay() (status guard.ConnStatus) {
 	}
 
 	return evalConnStatus(connStatusInputs{
+		anonymousTransport:  conn.canUseI2PDatagramDirect(),
+		anonymousConnected:  conn.statusI2PDatagram.Get() == worker.StatusConnected,
 		forceRelay:          IsForceRelayed(),
 		peerUsesRelay:       conn.workerRelay.IsRelayConnectionSupportedWithPeer(),
 		relayConnected:      conn.statusRelay.Get() == worker.StatusConnected,
@@ -768,6 +1013,14 @@ func (conn *Conn) disableWgWatcherIfNeeded() {
 		conn.wgWatcherCancel()
 		conn.wgWatcherCancel = nil
 	}
+}
+
+func (conn *Conn) startOrResetWgWatcher(updateTime time.Time) {
+	if conn.wgWatcher.IsEnabled() {
+		conn.wgWatcher.Reset()
+		return
+	}
+	conn.enableWgWatcherIfNeeded(updateTime)
 }
 
 func (conn *Conn) newProxy(remoteConn net.Conn) (wgproxy.Proxy, error) {
@@ -804,6 +1057,22 @@ func (conn *Conn) isICEActive() bool {
 	return (conn.currentConnPriority == conntype.ICEP2P || conn.currentConnPriority == conntype.ICETurn) && conn.statusICE.Get() == worker.StatusConnected
 }
 
+func (conn *Conn) isI2PDatagramActive() bool {
+	return conn.currentConnPriority == conntype.I2PDatagram && conn.statusI2PDatagram.Get() == worker.StatusConnected
+}
+
+func (conn *Conn) canUseI2PDatagramDirect() bool {
+	if !conn.config.AnonymousMode {
+		return false
+	}
+	transport := anonymous.NormalizeTransport(conn.config.AnonymousTransport)
+	remoteTransportType := strings.ToLower(strings.TrimSpace(conn.config.RemoteAnonymousTransport.Type))
+	return transport.Type == anonymous.TransportI2PDatagram &&
+		strings.TrimSpace(transport.I2PDestinationPrivate) != "" &&
+		remoteTransportType == anonymous.TransportI2PDatagram &&
+		strings.TrimSpace(conn.config.RemoteAnonymousTransport.I2PDestination) != ""
+}
+
 func (conn *Conn) handleConfigurationFailure(err error, wgProxy wgproxy.Proxy) {
 	conn.Log.Warnf("Failed to update wg peer configuration: %v", err)
 	if wgProxy != nil {
@@ -833,6 +1102,15 @@ func (conn *Conn) setRelayedProxy(proxy wgproxy.Proxy) {
 	conn.wgProxyRelay = proxy
 }
 
+func (conn *Conn) setI2PDatagramProxy(proxy wgproxy.Proxy) {
+	if conn.wgProxyI2PDatagram != nil {
+		if err := conn.wgProxyI2PDatagram.CloseConn(); err != nil {
+			conn.Log.Warnf("failed to close deprecated i2p datagram wg proxy conn: %v", err)
+		}
+	}
+	conn.wgProxyI2PDatagram = proxy
+}
+
 // onWGHandshakeSuccess is called when the first WireGuard handshake is detected
 func (conn *Conn) onWGHandshakeSuccess(when time.Time) {
 	conn.metricsStages.RecordWGHandshakeSuccess(when)
@@ -854,6 +1132,8 @@ func (conn *Conn) recordConnectionMetrics() {
 	switch priority {
 	case conntype.Relay:
 		connType = metrics.ConnectionTypeRelay
+	case conntype.I2PDatagram:
+		connType = metrics.ConnectionTypeI2PDatagram
 	default:
 		connType = metrics.ConnectionTypeICE
 	}
@@ -918,6 +1198,10 @@ func isRosenpassEnabled(remoteRosenpassPubKey []byte) bool {
 }
 
 func evalConnStatus(in connStatusInputs) guard.ConnStatus {
+	if in.anonymousTransport && in.anonymousConnected {
+		return guard.ConnStatusConnected
+	}
+
 	// "Relay up and needed" — the peer uses relay and the transport is connected.
 	relayUsedAndUp := in.peerUsesRelay && in.relayConnected
 

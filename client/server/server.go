@@ -29,6 +29,7 @@ import (
 	"github.com/netbirdio/netbird/shared/management/domain"
 
 	"github.com/netbirdio/netbird/client/internal"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/peer"
 	"github.com/netbirdio/netbird/client/internal/statemanager"
 	"github.com/netbirdio/netbird/client/internal/updater"
@@ -76,6 +77,7 @@ type Server struct {
 	clientGiveUpChan  chan struct{} // closed when connectWithRetryRuns goroutine exits
 
 	connectClient *internal.ConnectClient
+	i2pDaemon     *anonymous.I2PDaemon
 
 	statusRecorder *peer.Status
 	sessionWatcher *internal.SessionWatcher
@@ -149,12 +151,6 @@ func (s *Server) Start() error {
 		log.Warnf(errRestoreResidualState, err)
 	}
 
-	if s.updateManager == nil {
-		stateMgr := statemanager.New(s.profileManager.GetStatePath())
-		s.updateManager = updater.NewManager(s.statusRecorder, stateMgr)
-		s.updateManager.CheckUpdateSuccess(s.rootCtx)
-	}
-
 	// if current state contains any error, return it
 	// in all other cases we can continue execution only if status is idle and up command was
 	// not in the progress or already successfully established connection.
@@ -188,6 +184,7 @@ func (s *Server) Start() error {
 		return err
 	}
 	s.config = config
+	s.configureUpdateManagerForConfig(config)
 
 	s.statusRecorder.UpdateManagementAddress(config.ManagementURL.String())
 	s.statusRecorder.UpdateRosenpass(config.RosenpassEnabled, config.RosenpassPermissive)
@@ -390,6 +387,8 @@ func (s *Server) SetConfig(callerCtx context.Context, msg *proto.SetConfigReques
 	config.EnableSSHSFTP = msg.EnableSSHSFTP
 	config.EnableSSHLocalPortForwarding = msg.EnableSSHLocalPortForwarding
 	config.EnableSSHRemotePortForwarding = msg.EnableSSHRemotePortForwarding
+	config.AnonymousMode = msg.AnonymousMode
+	config.AnonymousTransport = anonymousTransportFromDaemonFields(msg.AnonymousTransport, msg.TorSocks5, msg.I2PSam, msg.I2PTunnelLength, msg.I2PTunnelQuantity, msg.I2PDaemonMode, msg.I2PdPath, msg.I2PDataDir)
 	if msg.DisableSSHAuth != nil {
 		config.DisableSSHAuth = msg.DisableSSHAuth
 	}
@@ -403,10 +402,13 @@ func (s *Server) SetConfig(callerCtx context.Context, msg *proto.SetConfigReques
 		config.MTU = &mtu
 	}
 
-	if _, err := profilemanager.UpdateConfig(config); err != nil {
+	updatedConfig, err := profilemanager.UpdateConfig(config)
+	if err != nil {
 		log.Errorf("failed to update profile config: %v", err)
 		return nil, fmt.Errorf("failed to update profile config: %w", err)
 	}
+	s.config = updatedConfig
+	s.configureUpdateManagerForConfig(updatedConfig)
 
 	return &proto.SetConfigResponse{}, nil
 }
@@ -494,14 +496,27 @@ func (s *Server) Login(callerCtx context.Context, msg *proto.LoginRequest) (*pro
 		log.Errorf("failed to persist login overrides: %v", err)
 		return nil, fmt.Errorf("persist login overrides: %w", err)
 	}
+	if err := persistAnonymousOverrides(activeProf, msg.AnonymousMode, anonymousTransportFromDaemonFields(msg.AnonymousTransport, msg.TorSocks5, msg.I2PSam, msg.I2PTunnelLength, msg.I2PTunnelQuantity, msg.I2PDaemonMode, msg.I2PdPath, msg.I2PDataDir)); err != nil {
+		log.Errorf("failed to persist anonymous overrides: %v", err)
+		return nil, fmt.Errorf("persist anonymous overrides: %w", err)
+	}
 
 	config, _, err := s.getConfig(activeProf)
 	if err != nil {
 		log.Errorf("failed to get active profile config: %v", err)
 		return nil, fmt.Errorf("failed to get active profile config: %w", err)
 	}
+	if err = s.ensureAnonymousRuntime(ctx, config); err != nil {
+		log.Errorf("failed to prepare anonymous runtime: %v", err)
+		return nil, fmt.Errorf("prepare anonymous runtime: %w", err)
+	}
+	if config, _, err = profilemanager.EnsureAnonymousTransportIdentity(ctx, "", config); err != nil {
+		log.Errorf("failed to prepare anonymous transport identity: %v", err)
+		return nil, fmt.Errorf("prepare anonymous transport identity: %w", err)
+	}
 	s.mutex.Lock()
 	s.config = config
+	s.configureUpdateManagerForConfig(config)
 	s.mutex.Unlock()
 
 	if _, err := s.loginAttempt(ctx, "", ""); err == nil {
@@ -894,10 +909,38 @@ func (s *Server) cleanupConnection() error {
 
 	s.connectClient = nil
 	s.isSessionActive.Store(false)
+	s.closeAnonymousRuntime()
 
 	log.Infof("service is down")
 
 	return nil
+}
+
+func (s *Server) ensureAnonymousRuntime(ctx context.Context, config *profilemanager.Config) error {
+	if config == nil || !config.AnonymousMode {
+		return nil
+	}
+	if s.i2pDaemon != nil && s.i2pDaemon.Started() {
+		return nil
+	}
+	daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+	if err != nil {
+		return err
+	}
+	if daemon != nil && daemon.Started() {
+		s.i2pDaemon = daemon
+	}
+	return nil
+}
+
+func (s *Server) closeAnonymousRuntime() {
+	if s.i2pDaemon == nil {
+		return
+	}
+	if err := s.i2pDaemon.Close(); err != nil {
+		log.Warnf("failed to stop managed i2pd: %v", err)
+	}
+	s.i2pDaemon = nil
 }
 
 func (s *Server) Logout(ctx context.Context, msg *proto.LogoutRequest) (*proto.LogoutResponse, error) {
@@ -1055,7 +1098,33 @@ func (s *Server) sendLogoutRequestWithConfig(ctx context.Context, config *profil
 	}
 
 	mgmTlsEnabled := config.ManagementURL.Scheme == "https"
-	mgmClient, err := mgm.NewClient(ctx, config.ManagementURL.Host, key, mgmTlsEnabled)
+	var mgmClient *mgm.GrpcClient
+	if config.AnonymousMode {
+		daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := daemon.Close(); err != nil {
+				log.Warnf("failed to stop managed i2pd: %v", err)
+			}
+		}()
+
+		transport := anonymous.NormalizeTransport(config.AnonymousTransport)
+		if err := anonymous.ValidateServiceURLForTransport("management", config.ManagementURL, transport); err != nil {
+			return err
+		}
+		switch transport.Type {
+		case anonymous.TransportTorRelayOnly:
+			mgmClient, err = mgm.NewClientWithSOCKS5(ctx, config.ManagementURL.Host, key, mgmTlsEnabled, transport.TorSOCKS5)
+		case anonymous.TransportI2PDatagram:
+			mgmClient, err = mgm.NewClientWithI2P(ctx, config.ManagementURL.Host, key, mgmTlsEnabled, transport.I2PSAM, transport.I2PTunnelLength, transport.I2PTunnelQuantity)
+		default:
+			err = anonymous.ValidateTransport(transport)
+		}
+	} else {
+		mgmClient, err = mgm.NewClient(ctx, config.ManagementURL.Host, key, mgmTlsEnabled)
+	}
 	if err != nil {
 		return fmt.Errorf("connect to management server: %w", err)
 	}
@@ -1356,12 +1425,12 @@ func (s *Server) WaitJWTToken(
 	}, nil
 }
 
-// ExposeService exposes a local port via the NetBird reverse proxy.
+// ExposeService exposes a local port via the AnonBird reverse proxy.
 func (s *Server) ExposeService(req *proto.ExposeServiceRequest, srv proto.DaemonService_ExposeServiceServer) error {
 	s.mutex.Lock()
 	if !s.clientRunning {
 		s.mutex.Unlock()
-		return gstatus.Errorf(codes.FailedPrecondition, "client is not running, run 'netbird up' first")
+		return gstatus.Errorf(codes.FailedPrecondition, "client is not running, run 'anonbird up' first")
 	}
 	connectClient := s.connectClient
 	s.mutex.Unlock()
@@ -1548,6 +1617,16 @@ func (s *Server) GetConfig(ctx context.Context, req *proto.GetConfigRequest) (*p
 		EnableSSHRemotePortForwarding: enableSSHRemotePortForwarding,
 		DisableSSHAuth:                disableSSHAuth,
 		SshJWTCacheTTL:                sshJWTCacheTTL,
+		AnonymousMode:                 cfg.AnonymousMode,
+		AnonymousTransport:            cfg.AnonymousTransport.Type,
+		TorSocks5:                     cfg.AnonymousTransport.TorSOCKS5,
+		I2PSam:                        cfg.AnonymousTransport.I2PSAM,
+		I2PTunnelLength:               int32(cfg.AnonymousTransport.I2PTunnelLength),
+		I2PTunnelQuantity:             int32(cfg.AnonymousTransport.I2PTunnelQuantity),
+		I2PDestination:                cfg.AnonymousTransport.I2PDestinationPublic,
+		I2PDaemonMode:                 cfg.AnonymousTransport.I2PDaemonMode,
+		I2PdPath:                      cfg.AnonymousTransport.I2PDaemonPath,
+		I2PDataDir:                    cfg.AnonymousTransport.I2PDataDir,
 	}, nil
 }
 
@@ -1645,7 +1724,7 @@ func (s *Server) GetFeatures(ctx context.Context, msg *proto.GetFeaturesRequest)
 
 	features := &proto.GetFeaturesResponse{
 		DisableProfiles:       s.checkProfilesDisabled(),
-		DisableUpdateSettings: s.checkUpdateSettingsDisabled(),
+		DisableUpdateSettings: s.checkUpdateSettingsDisabled() || s.activeProfileAnonymousMode(),
 		DisableNetworks:       s.networksDisabled,
 	}
 
@@ -1654,6 +1733,13 @@ func (s *Server) GetFeatures(ctx context.Context, msg *proto.GetFeaturesRequest)
 
 func (s *Server) connect(ctx context.Context, config *profilemanager.Config, statusRecorder *peer.Status, runningChan chan struct{}) error {
 	log.Tracef("running client connection")
+	var err error
+	if err = s.ensureAnonymousRuntime(ctx, config); err != nil {
+		return fmt.Errorf("prepare anonymous runtime: %w", err)
+	}
+	if config, _, err = profilemanager.EnsureAnonymousTransportIdentity(ctx, "", config); err != nil {
+		return fmt.Errorf("prepare anonymous transport identity: %w", err)
+	}
 	client := internal.NewConnectClient(ctx, config, statusRecorder)
 	client.SetUpdateManager(s.updateManager)
 	client.SetSyncResponsePersistence(s.persistSyncResponse)
@@ -1686,7 +1772,55 @@ func (s *Server) checkUpdateSettingsDisabled() bool {
 	return false
 }
 
+func (s *Server) configureUpdateManagerForConfig(config *profilemanager.Config) {
+	if config != nil && config.AnonymousMode {
+		s.stopUpdateManagerForAnonymousMode()
+		return
+	}
+
+	if s.updateManager != nil {
+		return
+	}
+
+	stateMgr := statemanager.New(s.profileManager.GetStatePath())
+	s.updateManager = updater.NewManager(s.statusRecorder, stateMgr)
+	s.updateManager.CheckUpdateSuccess(s.rootCtx)
+}
+
+func (s *Server) stopUpdateManagerForAnonymousMode() {
+	if s.updateManager == nil {
+		return
+	}
+	log.Infof("auto-update network checks disabled for anonymous profile")
+	s.updateManager.Stop()
+	s.updateManager = nil
+}
+
+func (s *Server) activeProfileAnonymousMode() bool {
+	activeProf, err := s.profileManager.GetActiveProfileState()
+	if err != nil {
+		log.Debugf("failed to get active profile state for update guard: %v", err)
+		return false
+	}
+	cfgPath, err := activeProf.FilePath()
+	if err != nil {
+		log.Debugf("failed to get active profile config path for update guard: %v", err)
+		return false
+	}
+	cfg, err := profilemanager.GetConfig(cfgPath)
+	if err != nil {
+		log.Debugf("failed to read active profile config for update guard: %v", err)
+		return false
+	}
+	return cfg.AnonymousMode
+}
+
 func (s *Server) startUpdateManagerForGUI() {
+	if s.activeProfileAnonymousMode() {
+		s.stopUpdateManagerForAnonymousMode()
+		return
+	}
+	s.configureUpdateManagerForConfig(s.config)
 	if s.updateManager == nil {
 		return
 	}
@@ -1745,9 +1879,9 @@ func parseEnvDuration(envVar string, defaultDuration time.Duration) time.Duratio
 }
 
 // sendTerminalNotification sends a terminal notification message
-// to inform the user that the NetBird connection session has expired.
+// to inform the user that the AnonBird connection session has expired.
 func sendTerminalNotification() error {
-	message := "NetBird connection session expired\n\nPlease re-authenticate to connect to the network."
+	message := "AnonBird connection session expired\n\nPlease re-authenticate to connect to the network."
 	echoCmd := exec.Command("echo", message)
 	wallCmd := exec.Command("sudo", "wall")
 
@@ -1796,4 +1930,68 @@ func persistLoginOverrides(activeProf *profilemanager.ActiveProfileState, manage
 		return fmt.Errorf("update config: %w", err)
 	}
 	return nil
+}
+
+func persistAnonymousOverrides(activeProf *profilemanager.ActiveProfileState, anonymousMode *bool, transport *anonymous.TransportConfig) error {
+	if anonymousMode == nil && transport == nil {
+		return nil
+	}
+
+	cfgPath, err := activeProf.FilePath()
+	if err != nil {
+		return fmt.Errorf("active profile file path: %w", err)
+	}
+
+	input := profilemanager.ConfigInput{
+		ConfigPath:         cfgPath,
+		AnonymousMode:      anonymousMode,
+		AnonymousTransport: transport,
+	}
+	if _, err := profilemanager.UpdateOrCreateConfig(input); err != nil {
+		return fmt.Errorf("update config: %w", err)
+	}
+	return nil
+}
+
+func anonymousTransportFromDaemonFields(transport, torSOCKS5, i2pSAM *string, i2pTunnelLength, i2pTunnelQuantity *int32, i2pDaemonMode, i2pDaemonPath, i2pDataDir *string) *anonymous.TransportConfig {
+	if transport == nil && torSOCKS5 == nil && i2pSAM == nil && i2pTunnelLength == nil && i2pTunnelQuantity == nil && i2pDaemonMode == nil && i2pDaemonPath == nil && i2pDataDir == nil {
+		return nil
+	}
+
+	cfg := anonymous.TransportConfig{
+		RequireAnonymous: true,
+	}
+	if transport != nil {
+		cfg.Type = *transport
+	}
+	if torSOCKS5 != nil {
+		cfg.TorSOCKS5 = *torSOCKS5
+	}
+	if i2pSAM != nil {
+		cfg.I2PSAM = *i2pSAM
+	}
+	if i2pTunnelLength != nil {
+		cfg.I2PTunnelLength = daemonUint8(*i2pTunnelLength)
+	}
+	if i2pTunnelQuantity != nil {
+		cfg.I2PTunnelQuantity = daemonUint8(*i2pTunnelQuantity)
+	}
+	if i2pDaemonMode != nil {
+		cfg.I2PDaemonMode = *i2pDaemonMode
+	}
+	if i2pDaemonPath != nil {
+		cfg.I2PDaemonPath = *i2pDaemonPath
+	}
+	if i2pDataDir != nil {
+		cfg.I2PDataDir = *i2pDataDir
+	}
+	cfg = anonymous.NormalizeTransport(cfg)
+	return &cfg
+}
+
+func daemonUint8(value int32) uint8 {
+	if value < 0 || value > 255 {
+		return 255
+	}
+	return uint8(value)
 }

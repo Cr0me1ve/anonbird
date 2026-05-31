@@ -83,7 +83,7 @@ func writeFileWithTimeout(filename string, data []byte, perm os.FileMode) error 
 	}
 }
 
-// Manager handles SSH client configuration for NetBird peers
+// Manager handles SSH client configuration for AnonBird peers
 type Manager struct {
 	sshConfigDir  string
 	sshConfigFile string
@@ -122,7 +122,7 @@ func getWindowsSSHConfigDir() string {
 	return filepath.Join(programData, nbssh.WindowsSSHConfigDir)
 }
 
-// SetupSSHClientConfig creates SSH client configuration for NetBird peers
+// SetupSSHClientConfig creates SSH client configuration for AnonBird peers
 func (m *Manager) SetupSSHClientConfig(peers []PeerSSHInfo) error {
 	if !shouldGenerateSSHConfig(len(peers)) {
 		m.logSkipReason(len(peers))
@@ -166,11 +166,11 @@ func (m *Manager) buildSSHConfig(peers []PeerSSHInfo) (string, error) {
 }
 
 func (m *Manager) buildConfigHeader() string {
-	return "# NetBird SSH client configuration\n" +
+	return "# AnonBird SSH client configuration\n" +
 		"# Generated automatically - do not edit manually\n" +
 		"#\n" +
 		"# To disable SSH config management, use:\n" +
-		"#   netbird service reconfigure --service-env NB_DISABLE_SSH_CONFIG=true\n" +
+		"#   anonbird service reconfigure --service-env NB_DISABLE_SSH_CONFIG=true\n" +
 		"#\n\n"
 }
 
@@ -184,9 +184,9 @@ func (m *Manager) buildPeerConfig(allHostPatterns []string) (string, error) {
 		}
 	}
 
-	execPath, err := m.getNetBirdExecutablePath()
+	execPath, err := m.getAnonBirdExecutablePath()
 	if err != nil {
-		return "", fmt.Errorf("get NetBird executable path: %w", err)
+		return "", fmt.Errorf("get AnonBird executable path: %w", err)
 	}
 
 	hostList := strings.Join(deduplicatedPatterns, ",")
@@ -260,11 +260,11 @@ func (m *Manager) writeSSHConfig(sshConfig string) error {
 		return fmt.Errorf("rename SSH config %s -> %s: %w", tmpPath, sshConfigPath, err)
 	}
 
-	log.Infof("Created NetBird SSH client config: %s", sshConfigPath)
+	log.Infof("Created AnonBird SSH client config: %s", sshConfigPath)
 	return nil
 }
 
-// RemoveSSHClientConfig removes NetBird SSH configuration
+// RemoveSSHClientConfig removes AnonBird SSH configuration
 func (m *Manager) RemoveSSHClientConfig() error {
 	sshConfigPath := filepath.Join(m.sshConfigDir, m.sshConfigFile)
 	err := os.Remove(sshConfigPath)
@@ -272,12 +272,12 @@ func (m *Manager) RemoveSSHClientConfig() error {
 		return fmt.Errorf("remove SSH config %s: %w", sshConfigPath, err)
 	}
 	if err == nil {
-		log.Infof("Removed NetBird SSH config: %s", sshConfigPath)
+		log.Infof("Removed AnonBird SSH config: %s", sshConfigPath)
 	}
 	return nil
 }
 
-func (m *Manager) getNetBirdExecutablePath() (string, error) {
+func (m *Manager) getAnonBirdExecutablePath() (string, error) {
 	execPath, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("retrieve executable path: %w", err)

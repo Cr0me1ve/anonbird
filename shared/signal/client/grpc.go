@@ -56,11 +56,29 @@ type GrpcClient struct {
 
 // NewClient creates a new Signal client
 func NewClient(ctx context.Context, addr string, key wgtypes.Key, tlsEnabled bool) (*GrpcClient, error) {
+	return newClient(ctx, addr, key, func() (*grpc.ClientConn, error) {
+		return nbgrpc.CreateConnection(ctx, addr, tlsEnabled, wsproxy.SignalComponent)
+	})
+}
+
+func NewClientWithSOCKS5(ctx context.Context, addr string, key wgtypes.Key, tlsEnabled bool, socks5Proxy string) (*GrpcClient, error) {
+	return newClient(ctx, addr, key, func() (*grpc.ClientConn, error) {
+		return nbgrpc.CreateConnectionThroughSOCKS5(ctx, addr, tlsEnabled, wsproxy.SignalComponent, socks5Proxy)
+	})
+}
+
+func NewClientWithI2P(ctx context.Context, addr string, key wgtypes.Key, tlsEnabled bool, i2pSAM string, tunnelLength, tunnelQuantity uint8) (*GrpcClient, error) {
+	return newClient(ctx, addr, key, func() (*grpc.ClientConn, error) {
+		return nbgrpc.CreateConnectionThroughI2P(ctx, addr, tlsEnabled, wsproxy.SignalComponent, i2pSAM, tunnelLength, tunnelQuantity)
+	})
+}
+
+func newClient(ctx context.Context, addr string, key wgtypes.Key, createConn func() (*grpc.ClientConn, error)) (*GrpcClient, error) {
 	var conn *grpc.ClientConn
 
 	operation := func() error {
 		var err error
-		conn, err = nbgrpc.CreateConnection(ctx, addr, tlsEnabled, wsproxy.SignalComponent)
+		conn, err = createConn()
 		if err != nil {
 			return fmt.Errorf("create connection: %w", err)
 		}

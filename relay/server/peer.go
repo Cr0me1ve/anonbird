@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 
 	"github.com/netbirdio/netbird/relay/metrics"
 	"github.com/netbirdio/netbird/relay/server/listener"
@@ -24,13 +25,16 @@ const (
 
 // Peer represents a peer connection
 type Peer struct {
-	metrics  *metrics.Metrics
-	log      *log.Entry
-	id       messages.PeerID
-	conn     listener.Conn
-	connMu   sync.RWMutex
-	store    *store.Store
-	notifier *store.PeerNotifier
+	metrics               *metrics.Metrics
+	log                   *log.Entry
+	id                    messages.PeerID
+	relayChannelID        uint32
+	conn                  listener.Conn
+	connMu                sync.RWMutex
+	store                 *store.Store
+	notifier              *store.PeerNotifier
+	limiter               *rate.Limiter
+	anonymousHealthChecks bool
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -42,17 +46,20 @@ type Peer struct {
 }
 
 // NewPeer creates a new Peer instance and prepare custom logging
-func NewPeer(metrics *metrics.Metrics, id messages.PeerID, conn listener.Conn, store *store.Store, notifier *store.PeerNotifier) *Peer {
+func NewPeer(metrics *metrics.Metrics, id messages.PeerID, relayChannelID uint32, conn listener.Conn, store *store.Store, notifier *store.PeerNotifier, rateLimit RateLimitConfig, anonymousHealthChecks bool) *Peer {
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &Peer{
-		metrics:   metrics,
-		log:       log.WithField("peer_id", id.String()),
-		id:        id,
-		conn:      conn,
-		store:     store,
-		notifier:  notifier,
-		ctx:       ctx,
-		ctxCancel: cancel,
+		metrics:               metrics,
+		log:                   log.WithField("peer_id", id.String()).WithField("relay_channel", relayChannelID),
+		id:                    id,
+		relayChannelID:        relayChannelID,
+		conn:                  conn,
+		store:                 store,
+		notifier:              notifier,
+		limiter:               rateLimit.NewLimiter(),
+		anonymousHealthChecks: anonymousHealthChecks,
+		ctx:                   ctx,
+		ctxCancel:             cancel,
 	}
 
 	return p
@@ -74,7 +81,7 @@ func (p *Peer) Work() {
 
 	ctx := p.ctx
 
-	hc := healthcheck.NewSender(p.log)
+	hc := p.newHealthcheckSender()
 	go hc.StartHealthCheck(ctx)
 	go p.handleHealthcheckEvents(ctx, hc)
 
@@ -111,15 +118,32 @@ func (p *Peer) Work() {
 	}
 }
 
+func (p *Peer) newHealthcheckSender() *healthcheck.Sender {
+	if p.anonymousHealthChecks {
+		return healthcheck.NewAnonymousSender(p.log)
+	}
+	return healthcheck.NewSender(p.log)
+}
+
 func (p *Peer) ID() messages.PeerID {
 	return p.id
+}
+
+func (p *Peer) ChannelID() uint32 {
+	return p.relayChannelID
 }
 
 func (p *Peer) handleMsgType(ctx context.Context, msgType messages.MsgType, hc *healthcheck.Sender, n int, msg []byte) {
 	switch msgType {
 	case messages.MsgTypeHealthCheck:
 		hc.OnHCResponse()
-	case messages.MsgTypeTransport:
+	case messages.MsgTypeTransport, messages.MsgTypeTransportChannel:
+		if err := p.waitTransportRate(ctx, n); err != nil {
+			if !errors.Is(err, context.Canceled) {
+				p.log.Warnf("transport rate limit wait failed: %s", err)
+			}
+			return
+		}
 		p.metrics.TransferBytesRecv.Add(ctx, int64(n))
 		p.metrics.PeerActivity(p.String())
 		p.handleTransportMsg(msg)
@@ -135,6 +159,13 @@ func (p *Peer) handleMsgType(ctx context.Context, msgType messages.MsgType, hc *
 	default:
 		p.log.Warnf("received unexpected message type: %s", msgType)
 	}
+}
+
+func (p *Peer) waitTransportRate(ctx context.Context, n int) error {
+	if p.limiter == nil {
+		return nil
+	}
+	return p.limiter.WaitN(ctx, n)
 }
 
 // Write writes data to the connection
@@ -207,15 +238,18 @@ func (p *Peer) handleHealthcheckEvents(ctx context.Context, hc *healthcheck.Send
 }
 
 func (p *Peer) handleTransportMsg(msg []byte) {
-	peerID, err := messages.UnmarshalTransportID(msg)
+	peerID, channelID, _, err := messages.UnmarshalTransportChannelMsg(msg)
 	if err != nil {
 		p.log.Errorf("failed to unmarshal transport message: %s", err)
 		return
 	}
 
-	item, ok := p.store.Peer(*peerID)
+	item, ok := p.store.PeerChannel(*peerID, channelID)
+	if !ok && channelID != 0 {
+		item, ok = p.store.PeerChannel(*peerID, 0)
+	}
 	if !ok {
-		p.log.Debugf("peer not found: %s", peerID)
+		p.log.Debugf("peer not found: %s channel: %d", peerID, channelID)
 		return
 	}
 	dp := item.(*Peer)

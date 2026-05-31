@@ -59,10 +59,12 @@ type BaseServer struct {
 	disableMetrics              bool
 	dnsDomain                   string
 	disableGeoliteUpdate        bool
+	disableVersionCheck         bool
 	userDeleteFromIDPEnabled    bool
 	mgmtSingleAccModeDomain     string
 	mgmtMetricsPort             int
 	mgmtPort                    int
+	mgmtListenAddress           string
 	disableLegacyManagementPort bool
 	autoResolveDomains          bool
 
@@ -83,10 +85,12 @@ type Config struct {
 	DNSDomain                   string
 	MgmtSingleAccModeDomain     string
 	MgmtPort                    int
+	MgmtListenAddress           string
 	MgmtMetricsPort             int
 	DisableLegacyManagementPort bool
 	DisableMetrics              bool
 	DisableGeoliteUpdate        bool
+	DisableVersionCheck         bool
 	UserDeleteFromIDPEnabled    bool
 	AutoResolveDomains          bool
 }
@@ -100,8 +104,10 @@ func NewServer(cfg *Config) *BaseServer {
 		mgmtSingleAccModeDomain:     cfg.MgmtSingleAccModeDomain,
 		disableMetrics:              cfg.DisableMetrics,
 		disableGeoliteUpdate:        cfg.DisableGeoliteUpdate,
+		disableVersionCheck:         cfg.DisableVersionCheck,
 		userDeleteFromIDPEnabled:    cfg.UserDeleteFromIDPEnabled,
 		mgmtPort:                    cfg.MgmtPort,
+		mgmtListenAddress:           cfg.MgmtListenAddress,
 		disableLegacyManagementPort: cfg.DisableLegacyManagementPort,
 		mgmtMetricsPort:             cfg.MgmtMetricsPort,
 		autoResolveDomains:          cfg.AutoResolveDomains,
@@ -186,7 +192,7 @@ func (s *BaseServer) Start(ctx context.Context) error {
 	if s.mgmtPort != ManagementLegacyPort && !s.disableLegacyManagementPort {
 		// The Management gRPC server was running on port 33073 previously. Old agents that are already connected to it
 		// are using port 33073. For compatibility purposes we keep running a 2nd gRPC server on port 33073.
-		compatListener, err = s.serveGRPC(srvCtx, s.GRPCServer(), ManagementLegacyPort)
+		compatListener, err = s.serveGRPC(srvCtx, s.GRPCServer(), s.listenAddressForPort(ManagementLegacyPort))
 		if err != nil {
 			return err
 		}
@@ -203,7 +209,7 @@ func (s *BaseServer) Start(ctx context.Context) error {
 			rootHandler = s.certManager.HTTPHandler(rootHandler)
 			s.listener = cml
 		} else {
-			s.listener, err = tls.Listen("tcp", fmt.Sprintf(":%d", s.mgmtPort), s.certManager.TLSConfig())
+			s.listener, err = tls.Listen("tcp", s.managementListenAddress(), s.certManager.TLSConfig())
 			if err != nil {
 				return fmt.Errorf("failed creating TLS listener on port %d: %v", s.mgmtPort, err)
 			}
@@ -211,12 +217,12 @@ func (s *BaseServer) Start(ctx context.Context) error {
 			s.serveHTTP(ctx, cml, s.certManager.HTTPHandler(nil))
 		}
 	case tlsConfig != nil:
-		s.listener, err = tls.Listen("tcp", fmt.Sprintf(":%d", s.mgmtPort), tlsConfig)
+		s.listener, err = tls.Listen("tcp", s.managementListenAddress(), tlsConfig)
 		if err != nil {
 			return fmt.Errorf("failed creating TLS listener on port %d: %v", s.mgmtPort, err)
 		}
 	default:
-		s.listener, err = net.Listen("tcp", fmt.Sprintf(":%d", s.mgmtPort))
+		s.listener, err = net.Listen("tcp", s.managementListenAddress())
 		if err != nil {
 			return fmt.Errorf("failed creating TCP listener on port %d: %v", s.mgmtPort, err)
 		}
@@ -226,11 +232,15 @@ func (s *BaseServer) Start(ctx context.Context) error {
 	log.WithContext(ctx).Infof("running HTTP server and gRPC server on the same port: %s", s.listener.Addr().String())
 	s.serveGRPCWithHTTP(ctx, s.listener, rootHandler, tlsEnabled)
 
-	s.update = version.NewUpdateAndStart("nb/management")
-	s.update.SetDaemonVersion(version.NetbirdVersion())
-	s.update.SetOnUpdateListener(func() {
-		log.WithContext(ctx).Infof("your management version, \"%s\", is outdated, a new management version is available. Learn more here: https://github.com/netbirdio/netbird/releases", version.NetbirdVersion())
-	})
+	if s.disableVersionCheck {
+		log.WithContext(ctx).Info("management version update check disabled")
+	} else {
+		s.update = version.NewUpdateAndStart("nb/management")
+		s.update.SetDaemonVersion(version.NetbirdVersion())
+		s.update.SetOnUpdateListener(func() {
+			log.WithContext(ctx).Infof("your management version, \"%s\", is outdated, a new management version is available. Learn more here: https://github.com/netbirdio/netbird/releases", version.NetbirdVersion())
+		})
+	}
 
 	return nil
 }
@@ -331,8 +341,23 @@ func (s *BaseServer) handlerFunc(_ context.Context, gRPCHandler *grpc.Server, ht
 	})
 }
 
-func (s *BaseServer) serveGRPC(ctx context.Context, grpcServer *grpc.Server, port int) (net.Listener, error) {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+func (s *BaseServer) managementListenAddress() string {
+	if s.mgmtListenAddress != "" {
+		return s.mgmtListenAddress
+	}
+	return fmt.Sprintf(":%d", s.mgmtPort)
+}
+
+func (s *BaseServer) listenAddressForPort(port int) string {
+	host, _, err := net.SplitHostPort(s.mgmtListenAddress)
+	if err != nil || host == "" {
+		return fmt.Sprintf(":%d", port)
+	}
+	return net.JoinHostPort(host, fmt.Sprintf("%d", port))
+}
+
+func (s *BaseServer) serveGRPC(ctx context.Context, grpcServer *grpc.Server, listenAddress string) (net.Listener, error) {
+	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		return nil, err
 	}

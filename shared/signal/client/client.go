@@ -55,6 +55,7 @@ type CredentialPayload struct {
 	RelaySrvAddress string
 	RelaySrvIP      netip.Addr
 	SessionID       []byte
+	AnonymousMode   bool
 }
 
 // UnMarshalCredential parses the credentials from the message and returns a Credential instance
@@ -86,7 +87,7 @@ func MarshalCredential(myKey wgtypes.Key, remoteKey string, p CredentialPayload)
 	if p.RelaySrvAddress != "" {
 		body.RelayServerAddress = &p.RelaySrvAddress
 	}
-	if p.RelaySrvIP.IsValid() {
+	if p.RelaySrvIP.IsValid() && !p.AnonymousMode {
 		body.RelayServerIP = p.RelaySrvIP.Unmap().AsSlice()
 	}
 	return &proto.Message{

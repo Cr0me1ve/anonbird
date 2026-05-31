@@ -20,6 +20,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/netbirdio/netbird/shared/anonymous"
 )
 
 // Jwks is a collection of JSONWebKey obtained from Config.HttpServerConfig.AuthKeysLocation
@@ -248,7 +250,19 @@ func getPemKeys(keysLocation string) (*Jwks, error) {
 		return jwks, err
 	}
 
-	resp, err := http.Get(requestURI.String())
+	httpClient := http.DefaultClient
+	if anonymous.EndpointIsAnonymous(requestURI.String()) {
+		httpClient, err = anonymous.HTTPClientForEndpoint(requestURI.String(), 30*time.Second)
+		if err != nil {
+			return jwks, err
+		}
+	}
+
+	req, err := http.NewRequest(http.MethodGet, requestURI.String(), nil)
+	if err != nil {
+		return jwks, err
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return jwks, err
 	}

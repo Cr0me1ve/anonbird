@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -28,6 +29,7 @@ import (
 	nbconfig "github.com/netbirdio/netbird/management/internals/server/config"
 	"github.com/netbirdio/netbird/management/server/telemetry"
 	"github.com/netbirdio/netbird/relay/healthcheck"
+	"github.com/netbirdio/netbird/relay/protocol"
 	relayServer "github.com/netbirdio/netbird/relay/server"
 	"github.com/netbirdio/netbird/relay/server/listener"
 	"github.com/netbirdio/netbird/relay/server/listener/ws"
@@ -65,6 +67,7 @@ func init() {
 	_ = rootCmd.MarkPersistentFlagRequired("config")
 
 	rootCmd.AddCommand(newTokenCommands())
+	rootCmd.AddCommand(newSetupKeyCommands())
 }
 
 func RootCmd() *cobra.Command {
@@ -186,6 +189,9 @@ func createAllServers(ctx context.Context, cfg *CombinedConfig) (*serverInstance
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics server: %w", err)
 	}
+	if listenHost := hostFromListenAddress(cfg.Server.ListenAddress); listenHost != "" {
+		metricsServer.Addr = net.JoinHostPort(listenHost, strconv.Itoa(cfg.Server.MetricsPort))
+	}
 	servers := &serverInstances{
 		metricsServer: metricsServer,
 	}
@@ -207,7 +213,7 @@ func createAllServers(ctx context.Context, cfg *CombinedConfig) (*serverInstance
 		return nil, err
 	}
 
-	if err := servers.createHealthcheckServer(cfg); err != nil {
+	if err := servers.createHealthcheckServer(cfg, tlsSupport); err != nil {
 		return nil, err
 	}
 
@@ -233,6 +239,7 @@ func (s *serverInstances) createRelayServer(cfg *CombinedConfig, tlsSupport bool
 		ExposedAddress: cfg.Relay.ExposedAddress,
 		AuthValidator:  authenticator,
 		TLSSupport:     tlsSupport,
+		RateLimit:      cfg.Relay.RateLimit,
 	}
 
 	s.relaySrv, err = createRelayServer(relayCfg, s.stunListeners)
@@ -311,15 +318,35 @@ func (s *serverInstances) createSignalServer(ctx context.Context, cfg *CombinedC
 	return nil
 }
 
-func (s *serverInstances) createHealthcheckServer(cfg *CombinedConfig) error {
+func (s *serverInstances) createHealthcheckServer(cfg *CombinedConfig, tlsSupport bool) error {
 	hCfg := healthcheck.Config{
 		ListenAddress:  cfg.Server.HealthcheckAddress,
 		ServiceChecker: s.relaySrv,
+		ProbeURL:       combinedRelayProbeURL(cfg.Server.ListenAddress, tlsSupport),
+		ProbeProtocols: []protocol.Protocol{ws.Proto},
 	}
 
 	var err error
 	s.healthcheck, err = createHealthCheck(hCfg, s.stunListeners)
 	return err
+}
+
+func combinedRelayProbeURL(listenAddress string, tlsSupport bool) *url.URL {
+	host, port, err := net.SplitHostPort(listenAddress)
+	if err != nil {
+		return nil
+	}
+	if host == "" || host == "::" || host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	scheme := relayServer.SchemeREL
+	if tlsSupport {
+		scheme = relayServer.SchemeRELS
+	}
+	return &url.URL{
+		Scheme: scheme,
+		Host:   net.JoinHostPort(host, port),
+	}
 }
 
 // setupServerHooks registers services with management's gRPC server.
@@ -507,20 +534,31 @@ func createManagementServer(cfg *CombinedConfig, mgmtConfig *nbconfig.Config) (m
 
 	mgmtSrv := newServer(
 		&mgmtServer.Config{
-			NbConfig:                mgmtConfig,
-			DNSDomain:               "",
-			MgmtSingleAccModeDomain: "",
-			AutoResolveDomains:      true,
-			MgmtPort:                mgmtPort,
-			MgmtMetricsPort:         cfg.Server.MetricsPort,
-			DisableMetrics:          mgmt.DisableAnonymousMetrics,
-			DisableGeoliteUpdate:    mgmt.DisableGeoliteUpdate,
+			NbConfig:                    mgmtConfig,
+			DNSDomain:                   "",
+			MgmtSingleAccModeDomain:     "",
+			AutoResolveDomains:          true,
+			MgmtPort:                    mgmtPort,
+			MgmtListenAddress:           cfg.Server.ListenAddress,
+			MgmtMetricsPort:             cfg.Server.MetricsPort,
+			DisableLegacyManagementPort: cfg.Server.DisableLegacyManagementPort,
+			DisableMetrics:              mgmt.DisableAnonymousMetrics,
+			DisableGeoliteUpdate:        mgmt.DisableGeoliteUpdate,
+			DisableVersionCheck:         mgmt.DisableVersionCheck,
 			// Always enable user deletion from IDP in combined server (embedded IdP is always enabled)
 			UserDeleteFromIDPEnabled: true,
 		},
 	)
 
 	return mgmtSrv, nil
+}
+
+func hostFromListenAddress(listenAddress string) string {
+	host, _, err := net.SplitHostPort(listenAddress)
+	if err != nil {
+		return ""
+	}
+	return host
 }
 
 // createCombinedHandler creates an HTTP handler that multiplexes Management, Signal (via wsproxy), and Relay WebSocket traffic
@@ -657,6 +695,7 @@ func logManagementConfig(cfg *CombinedConfig) {
 	log.Infof("  Data dir: %s", cfg.Management.DataDir)
 	log.Infof("  DNS domain: %s", cfg.Management.DnsDomain)
 	log.Infof("  Store engine: %s", cfg.Management.Store.Engine)
+	log.Infof("  Version check disabled: %v", cfg.Management.DisableVersionCheck)
 	if cfg.Server.Store.DSN != "" {
 		log.Infof("  Store DSN: %s", maskDSNPassword(cfg.Server.Store.DSN))
 	}

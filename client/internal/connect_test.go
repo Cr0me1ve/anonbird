@@ -3,6 +3,9 @@ package internal
 import (
 	"net"
 	"testing"
+
+	"github.com/netbirdio/netbird/client/internal/metrics"
+	"github.com/netbirdio/netbird/client/internal/profilemanager"
 )
 
 func Test_freePort(t *testing.T) {
@@ -65,5 +68,16 @@ func Test_freePort(t *testing.T) {
 			}
 		})
 
+	}
+}
+
+func TestShouldStartMetricsPushDisabledForAnonymousMode(t *testing.T) {
+	t.Setenv(metrics.EnvMetricsPushEnabled, "true")
+
+	if shouldStartMetricsPush(&profilemanager.Config{AnonymousMode: true}) {
+		t.Fatal("anonymous mode must not start metrics push even when env enables it")
+	}
+	if !shouldStartMetricsPush(&profilemanager.Config{}) {
+		t.Fatal("non-anonymous mode should honor metrics push env")
 	}
 }

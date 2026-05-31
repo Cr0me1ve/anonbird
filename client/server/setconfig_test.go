@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/profilemanager"
 	"github.com/netbirdio/netbird/client/proto"
 )
@@ -74,6 +75,15 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 	disableIPv6 := true
 	mtu := int64(1280)
 	sshJWTCacheTTL := int32(300)
+	anonymousMode := false
+	anonymousTransport := anonymous.TransportI2PDatagram
+	torSOCKS5 := "127.0.0.1:19050"
+	i2pSAM := "127.0.0.1:17656"
+	i2pTunnelLength := int32(2)
+	i2pTunnelQuantity := int32(4)
+	i2pDaemonMode := anonymous.I2PDaemonManaged
+	i2pdPath := "/usr/local/bin/i2pd"
+	i2pDataDir := "/tmp/anonbird-i2pd"
 
 	req := &proto.SetConfigRequest{
 		ProfileName:           profName,
@@ -96,7 +106,7 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 		DisableNotifications:  &disableNotifications,
 		LazyConnectionEnabled: &lazyConnectionEnabled,
 		BlockInbound:          &blockInbound,
-		DisableIpv6:          &disableIPv6,
+		DisableIpv6:           &disableIPv6,
 		NatExternalIPs:        []string{"1.2.3.4", "5.6.7.8"},
 		CleanNATExternalIPs:   false,
 		CustomDNSAddress:      []byte("1.1.1.1:53"),
@@ -106,6 +116,15 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 		DnsRouteInterval:      durationpb.New(2 * time.Minute),
 		Mtu:                   &mtu,
 		SshJWTCacheTTL:        &sshJWTCacheTTL,
+		AnonymousMode:         &anonymousMode,
+		AnonymousTransport:    &anonymousTransport,
+		TorSocks5:             &torSOCKS5,
+		I2PSam:                &i2pSAM,
+		I2PTunnelLength:       &i2pTunnelLength,
+		I2PTunnelQuantity:     &i2pTunnelQuantity,
+		I2PDaemonMode:         &i2pDaemonMode,
+		I2PdPath:              &i2pdPath,
+		I2PDataDir:            &i2pDataDir,
 	}
 
 	_, err = s.SetConfig(ctx, req)
@@ -153,6 +172,15 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 	require.Equal(t, uint16(mtu), cfg.MTU)
 	require.NotNil(t, cfg.SSHJWTCacheTTL)
 	require.Equal(t, int(sshJWTCacheTTL), *cfg.SSHJWTCacheTTL)
+	require.Equal(t, anonymousMode, cfg.AnonymousMode)
+	require.Equal(t, anonymousTransport, cfg.AnonymousTransport.Type)
+	require.Equal(t, torSOCKS5, cfg.AnonymousTransport.TorSOCKS5)
+	require.Equal(t, i2pSAM, cfg.AnonymousTransport.I2PSAM)
+	require.Equal(t, uint8(i2pTunnelLength), cfg.AnonymousTransport.I2PTunnelLength)
+	require.Equal(t, uint8(i2pTunnelQuantity), cfg.AnonymousTransport.I2PTunnelQuantity)
+	require.Equal(t, i2pDaemonMode, cfg.AnonymousTransport.I2PDaemonMode)
+	require.Equal(t, i2pdPath, cfg.AnonymousTransport.I2PDaemonPath)
+	require.Equal(t, i2pDataDir, cfg.AnonymousTransport.I2PDataDir)
 
 	verifyAllFieldsCovered(t, req)
 }
@@ -205,6 +233,15 @@ func verifyAllFieldsCovered(t *testing.T, req *proto.SetConfigRequest) {
 		"EnableSSHRemotePortForwarding": true,
 		"DisableSSHAuth":                true,
 		"SshJWTCacheTTL":                true,
+		"AnonymousMode":                 true,
+		"AnonymousTransport":            true,
+		"TorSocks5":                     true,
+		"I2PSam":                        true,
+		"I2PTunnelLength":               true,
+		"I2PTunnelQuantity":             true,
+		"I2PDaemonMode":                 true,
+		"I2PdPath":                      true,
+		"I2PDataDir":                    true,
 	}
 
 	val := reflect.ValueOf(req).Elem()
@@ -265,6 +302,15 @@ func TestCLIFlags_MappedToSetConfig(t *testing.T) {
 		"enable-ssh-remote-port-forwarding": "EnableSSHRemotePortForwarding",
 		"disable-ssh-auth":                  "DisableSSHAuth",
 		"ssh-jwt-cache-ttl":                 "SshJWTCacheTTL",
+		"anonymous-mode":                    "AnonymousMode",
+		"anonymous-transport":               "AnonymousTransport",
+		"tor-socks5":                        "TorSocks5",
+		"i2p-sam":                           "I2PSam",
+		"i2p-tunnel-length":                 "I2PTunnelLength",
+		"i2p-tunnel-quantity":               "I2PTunnelQuantity",
+		"i2p-daemon-mode":                   "I2PDaemonMode",
+		"i2pd-path":                         "I2PdPath",
+		"i2p-data-dir":                      "I2PDataDir",
 	}
 
 	// SetConfigRequest fields that don't have CLI flags (settable only via UI or other means).

@@ -15,6 +15,8 @@ import (
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 
+	"github.com/netbirdio/netbird/client/internal/anonymous"
+	"github.com/netbirdio/netbird/client/internal/profilemanager"
 	"github.com/netbirdio/netbird/util"
 )
 
@@ -74,7 +76,9 @@ func buildServiceArguments() []string {
 func configurePlatformSpecificSettings(svcConfig *service.Config) error {
 	if runtime.GOOS == "linux" {
 		// Respected only by systemd systems
-		svcConfig.Dependencies = []string{"After=network.target syslog.target"}
+		dependencies := []string{"After=network.target syslog.target"}
+		dependencies = append(dependencies, configuredAnonymousRuntimeServiceDependencies()...)
+		svcConfig.Dependencies = dependencies
 
 		if logFile := util.FindFirstLogPath(logFiles); logFile != "" {
 			setStdLogPath := true
@@ -104,6 +108,40 @@ func configurePlatformSpecificSettings(svcConfig *service.Config) error {
 	return nil
 }
 
+func configuredAnonymousRuntimeServiceDependencies() []string {
+	if anonymousMode || anonymousTransportFlagsChanged() {
+		return anonymousRuntimeServiceDependencies(anonymousMode, anonymousTransportFromFlags())
+	}
+
+	cfg, err := profilemanager.GetConfig(serviceDependencyConfigPath())
+	if err != nil {
+		return nil
+	}
+	return anonymousRuntimeServiceDependencies(cfg.AnonymousMode, cfg.AnonymousTransport)
+}
+
+func serviceDependencyConfigPath() string {
+	if configPath != "" {
+		return configPath
+	}
+	return profilemanager.DefaultConfigPath
+}
+
+func anonymousRuntimeServiceDependencies(enabled bool, transport anonymous.TransportConfig) []string {
+	if !enabled {
+		return nil
+	}
+
+	switch anonymous.NormalizeTransport(transport).Type {
+	case anonymous.TransportI2PDatagram:
+		return []string{"Wants=i2pd.service", "After=i2pd.service"}
+	case anonymous.TransportTorRelayOnly:
+		return []string{"Wants=tor.service", "After=tor.service"}
+	default:
+		return nil
+	}
+}
+
 // Create fully configured service config for install/reconfigure
 func createServiceConfigForInstall() (*service.Config, error) {
 	svcConfig, err := newSVCConfig()
@@ -121,7 +159,7 @@ func createServiceConfigForInstall() (*service.Config, error) {
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install NetBird service",
+	Short: "Install AnonBird service",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := setupServiceCommand(cmd); err != nil {
 			return err
@@ -152,14 +190,14 @@ var installCmd = &cobra.Command{
 			cmd.PrintErrf("Warning: failed to save service params: %v\n", err)
 		}
 
-		cmd.Println("NetBird service has been installed")
+		cmd.Println("AnonBird service has been installed")
 		return nil
 	},
 }
 
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "uninstalls NetBird service from system",
+	Short: "uninstalls AnonBird service from system",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := setupServiceCommand(cmd); err != nil {
 			return err
@@ -188,15 +226,15 @@ var uninstallCmd = &cobra.Command{
 			}
 		}
 
-		cmd.Println("NetBird service has been uninstalled")
+		cmd.Println("AnonBird service has been uninstalled")
 		return nil
 	},
 }
 
 var reconfigureCmd = &cobra.Command{
 	Use:   "reconfigure",
-	Short: "reconfigures NetBird service with new settings",
-	Long: `Reconfigures the NetBird service with new settings without manual uninstall/install.
+	Short: "reconfigures AnonBird service with new settings",
+	Long: `Reconfigures the AnonBird service with new settings without manual uninstall/install.
 This command will temporarily stop the service, update its configuration, and restart it if it was running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := setupServiceCommand(cmd); err != nil {
@@ -226,7 +264,7 @@ This command will temporarily stop the service, update its configuration, and re
 		}
 
 		if wasRunning {
-			cmd.Println("Stopping NetBird service...")
+			cmd.Println("Stopping AnonBird service...")
 			if err := s.Stop(); err != nil {
 				cmd.Printf("Warning: failed to stop service: %v\n", err)
 			}
@@ -247,13 +285,13 @@ This command will temporarily stop the service, update its configuration, and re
 		}
 
 		if wasRunning {
-			cmd.Println("Starting NetBird service...")
+			cmd.Println("Starting AnonBird service...")
 			if err := s.Start(); err != nil {
 				return fmt.Errorf("start service after reconfigure: %w", err)
 			}
-			cmd.Println("NetBird service has been reconfigured and started")
+			cmd.Println("AnonBird service has been reconfigured and started")
 		} else {
-			cmd.Println("NetBird service has been reconfigured")
+			cmd.Println("AnonBird service has been reconfigured")
 		}
 
 		return nil
@@ -285,9 +323,10 @@ func isServiceRunning() (bool, error) {
 const (
 	networkdConf        = "/etc/systemd/networkd.conf"
 	networkdConfDir     = "/etc/systemd/networkd.conf.d"
-	networkdConfFile    = "/etc/systemd/networkd.conf.d/99-netbird.conf"
-	networkdConfContent = `# Created by NetBird to prevent systemd-networkd from removing
-# routes and policy rules managed by NetBird.
+	networkdConfFile    = "/etc/systemd/networkd.conf.d/99-anonbird.conf"
+	networkdLegacyFile  = "/etc/systemd/networkd.conf.d/99-netbird.conf"
+	networkdConfContent = `# Created by AnonBird to prevent systemd-networkd from removing
+# routes and policy rules managed by AnonBird.
 
 [Network]
 ManageForeignRoutes=no
@@ -296,7 +335,7 @@ ManageForeignRoutingPolicyRules=no
 )
 
 // configureSystemdNetworkd creates a drop-in configuration file to prevent
-// systemd-networkd from removing NetBird's routes and policy rules.
+// systemd-networkd from removing AnonBird's routes and policy rules.
 func configureSystemdNetworkd() error {
 	if _, err := os.Stat(networkdConf); os.IsNotExist(err) {
 		log.Debug("systemd-networkd not in use, skipping configuration")
@@ -316,15 +355,15 @@ func configureSystemdNetworkd() error {
 	return nil
 }
 
-// cleanupSystemdNetworkd removes the NetBird systemd-networkd configuration file.
+// cleanupSystemdNetworkd removes the AnonBird systemd-networkd configuration file.
 func cleanupSystemdNetworkd() error {
-	if _, err := os.Stat(networkdConfFile); os.IsNotExist(err) {
-		return nil
+	for _, confFile := range []string{networkdConfFile, networkdLegacyFile} {
+		if _, err := os.Stat(confFile); os.IsNotExist(err) {
+			continue
+		}
+		if err := os.Remove(confFile); err != nil {
+			return fmt.Errorf("remove networkd configuration %s: %w", confFile, err)
+		}
 	}
-
-	if err := os.Remove(networkdConfFile); err != nil {
-		return fmt.Errorf("remove networkd configuration: %w", err)
-	}
-
 	return nil
 }

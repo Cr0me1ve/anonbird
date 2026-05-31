@@ -19,6 +19,7 @@ import (
 
 	"github.com/netbirdio/netbird/client/anonymize"
 	"github.com/netbirdio/netbird/client/configs"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/profilemanager"
 	"github.com/netbirdio/netbird/shared/management/domain"
 	mgmProto "github.com/netbirdio/netbird/shared/management/proto"
@@ -843,6 +844,7 @@ func TestAddConfig_AllFieldsCovered(t *testing.T) {
 		"PreSharedKey":      "sensitive: WireGuard pre-shared key",
 		"SSHKey":            "sensitive: SSH private key",
 		"ClientCertKeyPair": "non-config: parsed cert pair, not serialized",
+		"ConfigPath":        "sensitive: local filesystem path can contain user/profile identifiers",
 	}
 
 	mURL, _ := url.Parse("https://api.example.com:443")
@@ -918,6 +920,41 @@ func TestAddConfig_AllFieldsCovered(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAddCommonConfigFieldsRedactsAnonymousTransportSensitiveFields(t *testing.T) {
+	cfg := &profilemanager.Config{
+		AnonymousMode: true,
+		AnonymousTransport: anonymous.TransportConfig{
+			Type:                  anonymous.TransportI2PDatagram,
+			RequireAnonymous:      true,
+			TorSOCKS5:             "10.0.0.5:9050",
+			I2PSAM:                "10.0.0.6:7656",
+			I2PTunnelLength:       2,
+			I2PTunnelQuantity:     4,
+			I2PDestinationPublic:  "public-destination",
+			I2PDestinationPrivate: "private-destination",
+			I2PDaemonMode:         anonymous.I2PDaemonManaged,
+			I2PDaemonPath:         "/home/alice/bin/i2pd",
+			I2PDataDir:            "/home/alice/.anonbird/i2p",
+		},
+	}
+	g := &BundleGenerator{internalConfig: cfg}
+
+	var sb strings.Builder
+	g.addCommonConfigFields(&sb)
+	rendered := sb.String()
+
+	require.Contains(t, rendered, "AnonymousMode: true")
+	require.Contains(t, rendered, "AnonymousTransport: type=i2p-datagram")
+	require.Contains(t, rendered, "i2p_tunnel_length=2")
+	require.Contains(t, rendered, "i2p_tunnel_quantity=4")
+	require.Contains(t, rendered, "i2p_daemon_mode=managed")
+	require.NotContains(t, rendered, "private-destination")
+	require.NotContains(t, rendered, "public-destination")
+	require.NotContains(t, rendered, "10.0.0.5")
+	require.NotContains(t, rendered, "10.0.0.6")
+	require.NotContains(t, rendered, "/home/alice")
 }
 
 // renderAddConfigSpecific renders the fields handled by the anonymize/non-anonymize

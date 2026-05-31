@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/netip"
 	"testing"
 	"time"
@@ -14,6 +15,32 @@ import (
 	"github.com/netbirdio/netbird/relay/server"
 	"github.com/netbirdio/netbird/shared/relay/auth/allow"
 )
+
+func readRelayTestPayload(t *testing.T, conn net.Conn) string {
+	t.Helper()
+
+	type readResult struct {
+		n   int
+		err error
+	}
+	buf := make([]byte, 65535)
+	resultCh := make(chan readResult, 1)
+	go func() {
+		n, err := conn.Read(buf)
+		resultCh <- readResult{n: n, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("failed to read from channel: %s", result.err)
+		}
+		return string(buf[:result.n])
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for relay channel payload")
+		return ""
+	}
+}
 
 // newManagerTestServerConfig creates a new server config for manager testing with the given address
 func newManagerTestServerConfig(address string) server.Config {
@@ -140,6 +167,39 @@ func TestForeignConn(t *testing.T) {
 	if payload != string(buf[:n]) {
 		t.Fatalf("expected %s, got %s", payload, string(buf[:n]))
 	}
+
+	aliceCh1, err := clientAlice.OpenConnChannel(ctx, bobsSrvAddr, "bob", netip.Addr{}, 11)
+	if err != nil {
+		t.Fatalf("failed to bind channel 11 from alice to bob: %s", err)
+	}
+	aliceCh2, err := clientAlice.OpenConnChannel(ctx, bobsSrvAddr, "bob", netip.Addr{}, 12)
+	if err != nil {
+		t.Fatalf("failed to bind channel 12 from alice to bob: %s", err)
+	}
+	bobCh1, err := clientBob.OpenConnChannel(ctx, bobsSrvAddr, "alice", netip.Addr{}, 11)
+	if err != nil {
+		t.Fatalf("failed to bind channel 11 from bob to alice: %s", err)
+	}
+	bobCh2, err := clientBob.OpenConnChannel(ctx, bobsSrvAddr, "alice", netip.Addr{}, 12)
+	if err != nil {
+		t.Fatalf("failed to bind channel 12 from bob to alice: %s", err)
+	}
+
+	payloadCh1 := "hello over manager channel 11"
+	payloadCh2 := "hello over manager channel 12"
+	if _, err := aliceCh1.Write([]byte(payloadCh1)); err != nil {
+		t.Fatalf("failed to write to channel 11: %s", err)
+	}
+	if _, err := aliceCh2.Write([]byte(payloadCh2)); err != nil {
+		t.Fatalf("failed to write to channel 12: %s", err)
+	}
+
+	if got := readRelayTestPayload(t, bobCh1); got != payloadCh1 {
+		t.Fatalf("expected %s on channel 11, got %s", payloadCh1, got)
+	}
+	if got := readRelayTestPayload(t, bobCh2); got != payloadCh2 {
+		t.Fatalf("expected %s on channel 12, got %s", payloadCh2, got)
+	}
 }
 
 func TestForeginConnClose(t *testing.T) {
@@ -223,6 +283,12 @@ func TestForeginConnClose(t *testing.T) {
 
 func TestForeignAutoClose(t *testing.T) {
 	ctx := context.Background()
+	oldRelayCleanupInterval := relayCleanupInterval
+	oldKeepUnusedServerTime := keepUnusedServerTime
+	defer func() {
+		relayCleanupInterval = oldRelayCleanupInterval
+		keepUnusedServerTime = oldKeepUnusedServerTime
+	}()
 	relayCleanupInterval = 1 * time.Second
 	keepUnusedServerTime = 2 * time.Second
 
@@ -302,7 +368,9 @@ func TestForeignAutoClose(t *testing.T) {
 	}
 
 	t.Log("open connection to another peer")
-	if _, err = mgr.OpenConn(ctx, foreignServerURL, "anotherpeer", netip.Addr{}); err == nil {
+	openCtx, openCancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer openCancel()
+	if _, err = mgr.OpenConn(openCtx, foreignServerURL, "anotherpeer", netip.Addr{}); err == nil {
 		t.Fatalf("should have failed to open connection to another peer")
 	}
 

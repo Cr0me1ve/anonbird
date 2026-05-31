@@ -11,32 +11,42 @@ type IPeer interface {
 	ID() messages.PeerID
 }
 
+type channelPeer interface {
+	ChannelID() uint32
+}
+
 // Store is a thread-safe store of peers
 // It is used to store the peers that are connected to the relay server
 type Store struct {
-	peers     map[messages.PeerID]IPeer
+	peers     map[messages.PeerID]map[uint32]IPeer
 	peersLock sync.RWMutex
 }
 
 // NewStore creates a new Store instance
 func NewStore() *Store {
 	return &Store{
-		peers: make(map[messages.PeerID]IPeer),
+		peers: make(map[messages.PeerID]map[uint32]IPeer),
 	}
 }
 
 // AddPeer adds a peer to the store
-// If the peer already exists, it will be replaced and the old peer will be closed
-// Returns true if the peer was replaced, false if it was added for the first time.
+// If the same peer/channel already exists, it will be replaced and the old peer will be closed.
+// Returns true if the peer/channel was replaced, false if it was added for the first time.
 func (s *Store) AddPeer(peer IPeer) bool {
 	s.peersLock.Lock()
 	defer s.peersLock.Unlock()
-	odlPeer, ok := s.peers[peer.ID()]
+	channelID := peerChannelID(peer)
+	channels, ok := s.peers[peer.ID()]
+	if !ok {
+		channels = make(map[uint32]IPeer)
+		s.peers[peer.ID()] = channels
+	}
+	oldPeer, ok := channels[channelID]
 	if ok {
-		odlPeer.Close()
+		oldPeer.Close()
 	}
 
-	s.peers[peer.ID()] = peer
+	channels[channelID] = peer
 	return ok
 }
 
@@ -45,7 +55,12 @@ func (s *Store) DeletePeer(peer IPeer) bool {
 	s.peersLock.Lock()
 	defer s.peersLock.Unlock()
 
-	dp, ok := s.peers[peer.ID()]
+	channels, ok := s.peers[peer.ID()]
+	if !ok {
+		return false
+	}
+	channelID := peerChannelID(peer)
+	dp, ok := channels[channelID]
 	if !ok {
 		return false
 	}
@@ -53,7 +68,10 @@ func (s *Store) DeletePeer(peer IPeer) bool {
 		return false
 	}
 
-	delete(s.peers, peer.ID())
+	delete(channels, channelID)
+	if len(channels) == 0 {
+		delete(s.peers, peer.ID())
+	}
 	return true
 }
 
@@ -62,8 +80,38 @@ func (s *Store) Peer(id messages.PeerID) (IPeer, bool) {
 	s.peersLock.RLock()
 	defer s.peersLock.RUnlock()
 
-	p, ok := s.peers[id]
+	channels, ok := s.peers[id]
+	if !ok {
+		return nil, false
+	}
+	if p, ok := channels[0]; ok {
+		return p, true
+	}
+	for _, p := range channels {
+		return p, true
+	}
+	return nil, false
+}
+
+// PeerChannel returns a peer by its ID and relay channel.
+func (s *Store) PeerChannel(id messages.PeerID, channelID uint32) (IPeer, bool) {
+	s.peersLock.RLock()
+	defer s.peersLock.RUnlock()
+
+	channels, ok := s.peers[id]
+	if !ok {
+		return nil, false
+	}
+	p, ok := channels[channelID]
 	return p, ok
+}
+
+// HasPeer reports whether any relay channel for the peer is online.
+func (s *Store) HasPeer(id messages.PeerID) bool {
+	s.peersLock.RLock()
+	defer s.peersLock.RUnlock()
+
+	return len(s.peers[id]) > 0
 }
 
 // Peers returns all the peers in the store
@@ -71,9 +119,11 @@ func (s *Store) Peers() []IPeer {
 	s.peersLock.RLock()
 	defer s.peersLock.RUnlock()
 
-	peers := make([]IPeer, 0, len(s.peers))
-	for _, p := range s.peers {
-		peers = append(peers, p)
+	var peers []IPeer
+	for _, channels := range s.peers {
+		for _, p := range channels {
+			peers = append(peers, p)
+		}
 	}
 	return peers
 }
@@ -94,4 +144,11 @@ func (s *Store) GetOnlinePeersAndRegisterInterest(peerIDs []messages.PeerID, lis
 	}
 
 	return onlinePeers
+}
+
+func peerChannelID(peer IPeer) uint32 {
+	if p, ok := peer.(channelPeer); ok {
+		return p.ChannelID()
+	}
+	return 0
 }

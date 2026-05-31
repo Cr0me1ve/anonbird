@@ -99,6 +99,24 @@ func MaxRecvMsgSize() int {
 
 // NewClient creates a new client to Management service
 func NewClient(ctx context.Context, addr string, ourPrivateKey wgtypes.Key, tlsEnabled bool) (*GrpcClient, error) {
+	return newClient(ctx, addr, ourPrivateKey, func(extraOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
+		return nbgrpc.CreateConnection(ctx, addr, tlsEnabled, wsproxy.ManagementComponent, extraOpts...)
+	})
+}
+
+func NewClientWithSOCKS5(ctx context.Context, addr string, ourPrivateKey wgtypes.Key, tlsEnabled bool, socks5Proxy string) (*GrpcClient, error) {
+	return newClient(ctx, addr, ourPrivateKey, func(extraOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
+		return nbgrpc.CreateConnectionThroughSOCKS5(ctx, addr, tlsEnabled, wsproxy.ManagementComponent, socks5Proxy, extraOpts...)
+	})
+}
+
+func NewClientWithI2P(ctx context.Context, addr string, ourPrivateKey wgtypes.Key, tlsEnabled bool, i2pSAM string, tunnelLength, tunnelQuantity uint8) (*GrpcClient, error) {
+	return newClient(ctx, addr, ourPrivateKey, func(extraOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
+		return nbgrpc.CreateConnectionThroughI2P(ctx, addr, tlsEnabled, wsproxy.ManagementComponent, i2pSAM, tunnelLength, tunnelQuantity, extraOpts...)
+	})
+}
+
+func newClient(ctx context.Context, addr string, ourPrivateKey wgtypes.Key, createConn func(extraOpts ...grpc.DialOption) (*grpc.ClientConn, error)) (*GrpcClient, error) {
 	var conn *grpc.ClientConn
 
 	var extraOpts []grpc.DialOption
@@ -109,7 +127,7 @@ func NewClient(ctx context.Context, addr string, ourPrivateKey wgtypes.Key, tlsE
 
 	operation := func() error {
 		var err error
-		conn, err = nbgrpc.CreateConnection(ctx, addr, tlsEnabled, wsproxy.ManagementComponent, extraOpts...)
+		conn, err = createConn(extraOpts...)
 		if err != nil {
 			return fmt.Errorf("create connection: %w", err)
 		}
@@ -993,11 +1011,23 @@ func infoToMetaData(info *system.Info) *proto.PeerSystemMeta {
 			BlockLANAccess:      info.BlockLANAccess,
 			BlockInbound:        info.BlockInbound,
 			DisableIPv6:         info.DisableIPv6,
+			AnonymousMode:       info.AnonymousMode,
 
 			LazyConnectionEnabled: info.LazyConnectionEnabled,
 		},
 
-		Capabilities: peerCapabilities(*info),
+		Capabilities:       peerCapabilities(*info),
+		AnonymousTransport: infoAnonymousTransport(info),
+	}
+}
+
+func infoAnonymousTransport(info *system.Info) *proto.AnonymousTransport {
+	if info.AnonymousTransport == "" && info.I2PDestination == "" {
+		return nil
+	}
+	return &proto.AnonymousTransport{
+		Type:           info.AnonymousTransport,
+		I2PDestination: info.I2PDestination,
 	}
 }
 

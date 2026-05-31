@@ -72,6 +72,7 @@ type handshake struct {
 
 	handshakeMethodAuth bool
 	peerID              *messages.PeerID
+	relayChannelID      uint32
 }
 
 func (h *handshake) handshakeReceive(ctx context.Context) (*messages.PeerID, error) {
@@ -101,6 +102,9 @@ func (h *handshake) handshakeReceive(ctx context.Context) (*messages.PeerID, err
 	case messages.MsgTypeAuth:
 		h.handshakeMethodAuth = true
 		peerID, err = h.handleAuthMsg(buf)
+	case messages.MsgTypeAuthChannel:
+		h.handshakeMethodAuth = true
+		peerID, err = h.handleAuthChannelMsg(buf)
 	default:
 		return nil, fmt.Errorf("invalid message type %d from %s", msgType, h.conn.RemoteAddr())
 	}
@@ -158,5 +162,19 @@ func (h *handshake) handleAuthMsg(buf []byte) (*messages.PeerID, error) {
 		return rawPeerID, fmt.Errorf("validate %s (%s): %w", rawPeerID.String(), h.conn.RemoteAddr(), err)
 	}
 
+	return rawPeerID, nil
+}
+
+func (h *handshake) handleAuthChannelMsg(buf []byte) (*messages.PeerID, error) {
+	rawPeerID, channelID, authPayload, err := messages.UnmarshalAuthChannelMsg(buf)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal auth channel message: %w", err)
+	}
+
+	if err := h.validator.Validate(authPayload); err != nil {
+		return rawPeerID, fmt.Errorf("validate %s (%s): %w", rawPeerID.String(), h.conn.RemoteAddr(), err)
+	}
+
+	h.relayChannelID = channelID
 	return rawPeerID, nil
 }

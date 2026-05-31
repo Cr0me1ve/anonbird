@@ -32,11 +32,25 @@ type Receiver struct {
 
 // NewReceiver creates a new healthcheck receiver and start the timer in the background
 func NewReceiver(log *log.Entry) *Receiver {
-	opts := ReceiverOptions{
+	return NewReceiverWithOpts(log, DefaultReceiverOptions())
+}
+
+func DefaultReceiverOptions() ReceiverOptions {
+	return ReceiverOptions{
 		HeartbeatTimeout: defaultHeartbeatTimeout,
 		AttemptThreshold: getAttemptThresholdFromEnv(),
 	}
-	return NewReceiverWithOpts(log, opts)
+}
+
+func AnonymousReceiverOptions() ReceiverOptions {
+	return ReceiverOptions{
+		HeartbeatTimeout: anonymousHealthCheckInterval + anonymousHealthCheckTimeout,
+		AttemptThreshold: anonymousAttemptThreshold,
+	}
+}
+
+func NewAnonymousReceiver(log *log.Entry) *Receiver {
+	return NewReceiverWithOpts(log, AnonymousReceiverOptions())
 }
 
 func NewReceiverWithOpts(log *log.Entry, opts ReceiverOptions) *Receiver {

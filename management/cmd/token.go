@@ -8,10 +8,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/netbirdio/netbird/formatter/hook"
+	setupkeycmd "github.com/netbirdio/netbird/management/cmd/setupkey"
 	tokencmd "github.com/netbirdio/netbird/management/cmd/token"
 	nbconfig "github.com/netbirdio/netbird/management/internals/server/config"
 	"github.com/netbirdio/netbird/management/server/store"
 	"github.com/netbirdio/netbird/util"
+	"github.com/netbirdio/netbird/util/crypt"
 )
 
 var tokenDatadir string
@@ -19,6 +21,12 @@ var tokenDatadir string
 // newTokenCommands creates the token command tree with management-specific store opener.
 func newTokenCommands() *cobra.Command {
 	cmd := tokencmd.NewCommands(withTokenStore)
+	cmd.PersistentFlags().StringVar(&tokenDatadir, "datadir", "", "Override the data directory from config (where store.db is located)")
+	return cmd
+}
+
+func newSetupKeyCommands() *cobra.Command {
+	cmd := setupkeycmd.NewCommands(withTokenStore)
 	cmd.PersistentFlags().StringVar(&tokenDatadir, "datadir", "", "Override the data directory from config (where store.db is located)")
 	return cmd
 }
@@ -44,6 +52,13 @@ func withTokenStore(cmd *cobra.Command, fn func(ctx context.Context, s store.Sto
 	s, err := store.NewStore(ctx, config.StoreConfig.Engine, datadir, nil, true)
 	if err != nil {
 		return fmt.Errorf("create store: %w", err)
+	}
+	if config.DataStoreEncryptionKey != "" {
+		fieldEncrypt, err := crypt.NewFieldEncrypt(config.DataStoreEncryptionKey)
+		if err != nil {
+			return fmt.Errorf("create field encryptor: %w", err)
+		}
+		s.SetFieldEncrypt(fieldEncrypt)
 	}
 	defer func() {
 		if err := s.Close(ctx); err != nil {

@@ -20,7 +20,7 @@ func createSockFile(t *testing.T, path string) {
 
 func TestResolveUnixDaemonAddr_DefaultExists(t *testing.T) {
 	tmp := t.TempDir()
-	sock := filepath.Join(tmp, "netbird.sock")
+	sock := filepath.Join(tmp, "anonbird.sock")
 	createSockFile(t, sock)
 
 	addr := "unix://" + sock
@@ -34,10 +34,10 @@ func TestResolveUnixDaemonAddr_SingleDiscovered(t *testing.T) {
 	tmp := t.TempDir()
 
 	// Default socket does not exist
-	defaultAddr := "unix://" + filepath.Join(tmp, "netbird.sock")
+	defaultAddr := "unix://" + filepath.Join(tmp, "anonbird.sock")
 
 	// Create a scan dir with one socket
-	sd := filepath.Join(tmp, "netbird")
+	sd := filepath.Join(tmp, "anonbird")
 	if err := os.MkdirAll(sd, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -58,9 +58,9 @@ func TestResolveUnixDaemonAddr_SingleDiscovered(t *testing.T) {
 func TestResolveUnixDaemonAddr_MultipleDiscovered(t *testing.T) {
 	tmp := t.TempDir()
 
-	defaultAddr := "unix://" + filepath.Join(tmp, "netbird.sock")
+	defaultAddr := "unix://" + filepath.Join(tmp, "anonbird.sock")
 
-	sd := filepath.Join(tmp, "netbird")
+	sd := filepath.Join(tmp, "anonbird")
 	if err := os.MkdirAll(sd, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -80,9 +80,9 @@ func TestResolveUnixDaemonAddr_MultipleDiscovered(t *testing.T) {
 func TestResolveUnixDaemonAddr_NoSocketsFound(t *testing.T) {
 	tmp := t.TempDir()
 
-	defaultAddr := "unix://" + filepath.Join(tmp, "netbird.sock")
+	defaultAddr := "unix://" + filepath.Join(tmp, "anonbird.sock")
 
-	sd := filepath.Join(tmp, "netbird")
+	sd := filepath.Join(tmp, "anonbird")
 	if err := os.MkdirAll(sd, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestResolveUnixDaemonAddr_NonUnixAddr(t *testing.T) {
 func TestResolveUnixDaemonAddr_ScanDirMissing(t *testing.T) {
 	tmp := t.TempDir()
 
-	defaultAddr := "unix://" + filepath.Join(tmp, "netbird.sock")
+	defaultAddr := "unix://" + filepath.Join(tmp, "anonbird.sock")
 
 	origScanDir := scanDir
 	setScanDir(filepath.Join(tmp, "nonexistent"))

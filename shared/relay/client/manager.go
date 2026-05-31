@@ -49,6 +49,28 @@ func WithMaxBackoffInterval(d time.Duration) ManagerOption {
 	return func(m *Manager) { m.maxBackoffInterval = d }
 }
 
+func WithSOCKS5Proxy(socks5Proxy string) ManagerOption {
+	return func(m *Manager) {
+		m.socks5Proxy = socks5Proxy
+		if m.serverPicker != nil {
+			m.serverPicker.SOCKS5Proxy = socks5Proxy
+		}
+	}
+}
+
+func WithI2PSAM(i2pSAM string, tunnelLength, tunnelQuantity uint8) ManagerOption {
+	return func(m *Manager) {
+		m.i2pSAM = i2pSAM
+		m.i2pTunnelLength = tunnelLength
+		m.i2pTunnelQuantity = tunnelQuantity
+		if m.serverPicker != nil {
+			m.serverPicker.I2PSAM = i2pSAM
+			m.serverPicker.I2PTunnelLength = tunnelLength
+			m.serverPicker.I2PTunnelQuantity = tunnelQuantity
+		}
+	}
+}
+
 // Manager is a manager for the relay client instances. It establishes one persistent connection to the given relay URL
 // and automatically reconnect to them in case disconnection.
 // The manager also manage temporary relay connection. If a client wants to communicate with a client on a
@@ -76,6 +98,10 @@ type Manager struct {
 
 	mtu                uint16
 	maxBackoffInterval time.Duration
+	socks5Proxy        string
+	i2pSAM             string
+	i2pTunnelLength    uint8
+	i2pTunnelQuantity  uint8
 
 	cleanupInterval      time.Duration
 	keepUnusedServerTime time.Duration
@@ -105,6 +131,10 @@ func NewManager(ctx context.Context, serverURLs []string, peerID string, mtu uin
 	for _, opt := range opts {
 		opt(m)
 	}
+	m.serverPicker.SOCKS5Proxy = m.socks5Proxy
+	m.serverPicker.I2PSAM = m.i2pSAM
+	m.serverPicker.I2PTunnelLength = m.i2pTunnelLength
+	m.serverPicker.I2PTunnelQuantity = m.i2pTunnelQuantity
 	m.serverPicker.ServerURLs.Store(serverURLs)
 	m.reconnectGuard = NewGuard(m.serverPicker, m.maxBackoffInterval)
 	return m
@@ -140,6 +170,12 @@ func (m *Manager) Serve() error {
 // serverIP, when valid and serverAddress is foreign, is used as a dial target if the FQDN-based dial fails.
 // Ignored for the local home-server path. TLS verification still uses the FQDN via SNI.
 func (m *Manager) OpenConn(ctx context.Context, serverAddress, peerKey string, serverIP netip.Addr) (net.Conn, error) {
+	return m.OpenConnChannel(ctx, serverAddress, peerKey, serverIP, 0)
+}
+
+// OpenConnChannel opens a logical relay connection on a specific transport channel.
+// Channel 0 is the legacy/default relay channel used by OpenConn.
+func (m *Manager) OpenConnChannel(ctx context.Context, serverAddress, peerKey string, serverIP netip.Addr, channelID uint32) (net.Conn, error) {
 	m.relayClientMu.RLock()
 	defer m.relayClientMu.RUnlock()
 
@@ -157,16 +193,28 @@ func (m *Manager) OpenConn(ctx context.Context, serverAddress, peerKey string, s
 	)
 	if !foreign {
 		log.Debugf("open peer connection via permanent server: %s", peerKey)
-		netConn, err = m.relayClient.OpenConn(ctx, peerKey)
+		if m.useDedicatedAnonymousRelayChannel(channelID) {
+			netConn, err = m.openDedicatedConn(ctx, serverAddress, peerKey, serverIP, channelID)
+		} else {
+			netConn, err = m.relayClient.OpenConnChannel(ctx, peerKey, channelID)
+		}
 	} else {
 		log.Debugf("open peer connection via foreign server: %s", serverAddress)
-		netConn, err = m.openConnVia(ctx, serverAddress, peerKey, serverIP)
+		if m.useDedicatedAnonymousRelayChannel(channelID) {
+			netConn, err = m.openDedicatedConn(ctx, serverAddress, peerKey, serverIP, channelID)
+		} else {
+			netConn, err = m.openConnVia(ctx, serverAddress, peerKey, serverIP, channelID)
+		}
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	return netConn, err
+}
+
+func (m *Manager) useDedicatedAnonymousRelayChannel(channelID uint32) bool {
+	return channelID != 0 && (m.socks5Proxy != "" || m.i2pSAM != "")
 }
 
 // Ready returns true if the home Relay client is connected to the relay server.
@@ -227,6 +275,9 @@ func (m *Manager) RelayInstanceAddress() (string, netip.Addr, error) {
 	if err != nil {
 		return "", netip.Addr{}, err
 	}
+	if m.socks5Proxy != "" || m.i2pSAM != "" {
+		return addr, netip.Addr{}, nil
+	}
 	return addr, m.relayClient.ConnectedIP(), nil
 }
 
@@ -251,7 +302,7 @@ func (m *Manager) UpdateToken(token *relayAuth.Token) error {
 	return m.tokenStore.UpdateToken(token)
 }
 
-func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string, serverIP netip.Addr) (net.Conn, error) {
+func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string, serverIP netip.Addr, channelID uint32) (net.Conn, error) {
 	// check if already has a connection to the desired relay server
 	m.relayClientsMutex.RLock()
 	rt, ok := m.relayClients[serverAddress]
@@ -262,7 +313,7 @@ func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string
 		if rt.err != nil {
 			return nil, rt.err
 		}
-		return rt.relayClient.OpenConn(ctx, peerKey)
+		return rt.relayClient.OpenConnChannel(ctx, peerKey, channelID)
 	}
 	m.relayClientsMutex.RUnlock()
 
@@ -277,7 +328,7 @@ func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string
 		if rt.err != nil {
 			return nil, rt.err
 		}
-		return rt.relayClient.OpenConn(ctx, peerKey)
+		return rt.relayClient.OpenConnChannel(ctx, peerKey, channelID)
 	}
 
 	// create a new relay client and store it in the relayClients map
@@ -286,7 +337,13 @@ func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string
 	m.relayClients[serverAddress] = rt
 	m.relayClientsMutex.Unlock()
 
-	relayClient := NewClientWithServerIP(serverAddress, serverIP, m.tokenStore, m.peerID, m.mtu)
+	if m.socks5Proxy != "" || m.i2pSAM != "" {
+		serverIP = netip.Addr{}
+	}
+	relayClient := NewClientWithServerIPAndSOCKS5(serverAddress, serverIP, m.tokenStore, m.peerID, m.mtu, m.socks5Proxy)
+	if m.i2pSAM != "" {
+		relayClient = NewClientWithServerIPAndI2P(serverAddress, serverIP, m.tokenStore, m.peerID, m.mtu, m.i2pSAM, m.i2pTunnelLength, m.i2pTunnelQuantity)
+	}
 	err := relayClient.Connect(m.ctx)
 	if err != nil {
 		rt.err = err
@@ -301,11 +358,68 @@ func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string
 	rt.relayClient = relayClient
 	rt.Unlock()
 
-	conn, err := relayClient.OpenConn(ctx, peerKey)
+	conn, err := relayClient.OpenConnChannel(ctx, peerKey, channelID)
 	if err != nil {
 		return nil, err
 	}
 	return conn, nil
+}
+
+func (m *Manager) openDedicatedConn(ctx context.Context, serverAddress, peerKey string, serverIP netip.Addr, channelID uint32) (net.Conn, error) {
+	if m.socks5Proxy != "" || m.i2pSAM != "" {
+		serverIP = netip.Addr{}
+	}
+	relayClient := m.newRelayClient(serverAddress, serverIP, channelID)
+	if err := relayClient.Connect(ctx); err != nil {
+		return nil, err
+	}
+	conn, err := relayClient.OpenConnChannel(ctx, peerKey, channelID)
+	if err != nil {
+		_ = relayClient.Close()
+		return nil, err
+	}
+	return &ownedRelayConn{
+		Conn: conn,
+		closeFn: func() error {
+			return relayClient.Close()
+		},
+	}, nil
+}
+
+func (m *Manager) newRelayClient(serverAddress string, serverIP netip.Addr, channelID uint32) *Client {
+	return newClientWithRelayChannel(
+		serverAddress,
+		serverIP,
+		m.tokenStore,
+		m.peerID,
+		m.mtu,
+		m.socks5Proxy,
+		m.i2pSAM,
+		m.i2pTunnelLength,
+		m.i2pTunnelQuantity,
+		channelID,
+	)
+}
+
+type ownedRelayConn struct {
+	net.Conn
+	closeOnce sync.Once
+	closeFn   func() error
+}
+
+func (c *ownedRelayConn) Close() error {
+	var err error
+	c.closeOnce.Do(func() {
+		if c.Conn != nil {
+			err = c.Conn.Close()
+		}
+		if c.closeFn != nil {
+			if closeErr := c.closeFn(); err == nil {
+				err = closeErr
+			}
+		}
+	})
+	return err
 }
 
 func (m *Manager) onServerConnected() {

@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	daddr "github.com/netbirdio/netbird/client/internal/daemonaddr"
 	"github.com/netbirdio/netbird/client/internal/profilemanager"
 )
@@ -40,6 +41,15 @@ const (
 	dnsRouteIntervalFlag     = "dns-router-interval"
 	enableLazyConnectionFlag = "enable-lazy-connection"
 	mtuFlag                  = "mtu"
+	anonymousModeFlag        = "anonymous-mode"
+	anonymousTransportFlag   = "anonymous-transport"
+	torSOCKS5Flag            = "tor-socks5"
+	i2pSAMFlag               = "i2p-sam"
+	i2pTunnelLengthFlag      = "i2p-tunnel-length"
+	i2pTunnelQuantityFlag    = "i2p-tunnel-quantity"
+	i2pDaemonModeFlag        = "i2p-daemon-mode"
+	i2pDaemonPathFlag        = "i2pd-path"
+	i2pDataDirFlag           = "i2p-data-dir"
 )
 
 var (
@@ -77,9 +87,18 @@ var (
 	updateSettingsDisabled  bool
 	captureEnabled          bool
 	networksDisabled        bool
+	anonymousMode           bool
+	anonymousTransport      string
+	torSOCKS5               string
+	i2pSAM                  string
+	i2pTunnelLength         uint8
+	i2pTunnelQuantity       uint8
+	i2pDaemonMode           string
+	i2pDaemonPath           string
+	i2pDataDir              string
 
 	rootCmd = &cobra.Command{
-		Use:          "netbird",
+		Use:          "anonbird",
 		Short:        "",
 		Long:         "",
 		SilenceUsage: true,
@@ -127,7 +146,7 @@ func init() {
 	oldDefaultConfigPath = oldDefaultConfigPathDir + "config.json"
 	oldDefaultLogFile = oldDefaultLogFileDir + "client.log"
 
-	defaultDaemonAddr := "unix:///var/run/netbird.sock"
+	defaultDaemonAddr := "unix:///var/run/anonbird.sock"
 	if runtime.GOOS == "windows" {
 		defaultDaemonAddr = "tcp://127.0.0.1:41731"
 	}
@@ -135,17 +154,27 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&daemonAddr, "daemon-addr", defaultDaemonAddr, "Daemon service address to serve CLI requests [unix|tcp]://[path|host:port]")
 	rootCmd.PersistentFlags().StringVarP(&managementURL, "management-url", "m", "", fmt.Sprintf("Management Service URL [http|https]://[host]:[port] (default \"%s\")", profilemanager.DefaultManagementURL))
 	rootCmd.PersistentFlags().StringVar(&adminURL, "admin-url", "", fmt.Sprintf("Admin Panel URL [http|https]://[host]:[port] (default \"%s\")", profilemanager.DefaultAdminURL))
-	rootCmd.PersistentFlags().StringVarP(&logLevel, "log-level", "l", "info", "sets NetBird log level")
-	rootCmd.PersistentFlags().StringSliceVar(&logFiles, "log-file", []string{defaultLogFile}, "sets NetBird log paths written to simultaneously. If `console` is specified the log will be output to stdout. If `syslog` is specified the log will be sent to syslog daemon. You can pass the flag multiple times or separate entries by `,` character")
+	rootCmd.PersistentFlags().StringVarP(&logLevel, "log-level", "l", "info", "sets AnonBird log level")
+	rootCmd.PersistentFlags().StringSliceVar(&logFiles, "log-file", []string{defaultLogFile}, "sets AnonBird log paths written to simultaneously. If `console` is specified the log will be output to stdout. If `syslog` is specified the log will be sent to syslog daemon. You can pass the flag multiple times or separate entries by `,` character")
 	rootCmd.PersistentFlags().StringVarP(&setupKey, "setup-key", "k", "", "Setup key obtained from the Management Service Dashboard (used to register peer)")
 	rootCmd.PersistentFlags().StringVar(&setupKeyPath, "setup-key-file", "", "The path to a setup key obtained from the Management Service Dashboard (used to register peer) This is ignored if the setup-key flag is provided.")
 	rootCmd.MarkFlagsMutuallyExclusive("setup-key", "setup-key-file")
 	rootCmd.PersistentFlags().StringVar(&preSharedKey, preSharedKeyFlag, "", "Sets WireGuard PreSharedKey property. If set, then only peers that have the same key can communicate.")
 	rootCmd.PersistentFlags().StringVarP(&hostName, "hostname", "n", "", "Sets a custom hostname for the device")
-	rootCmd.PersistentFlags().BoolVarP(&anonymizeFlag, "anonymize", "A", false, "anonymize IP addresses and non-netbird.io domains in logs and status output")
+	rootCmd.PersistentFlags().BoolVarP(&anonymizeFlag, "anonymize", "A", false, "anonymize IP addresses and external domains in logs and status output")
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", profilemanager.DefaultConfigPath, "Overrides the default profile file location")
+	rootCmd.PersistentFlags().BoolVar(&anonymousMode, anonymousModeFlag, false, "enable AnonBird anonymous mode")
+	rootCmd.PersistentFlags().StringVar(&anonymousTransport, anonymousTransportFlag, anonymous.TransportTorRelayOnly, "anonymous transport: tor-relay-only or i2p-datagram")
+	rootCmd.PersistentFlags().StringVar(&torSOCKS5, torSOCKS5Flag, anonymous.DefaultTorSOCKS5, "Tor SOCKS5 proxy address for anonymous mode")
+	rootCmd.PersistentFlags().StringVar(&i2pSAM, i2pSAMFlag, anonymous.DefaultI2PSAM, "I2P SAM bridge address for anonymous mode")
+	rootCmd.PersistentFlags().Uint8Var(&i2pTunnelLength, i2pTunnelLengthFlag, anonymous.DefaultI2PTunnelLength, "I2P tunnel length for anonymous mode")
+	rootCmd.PersistentFlags().Uint8Var(&i2pTunnelQuantity, i2pTunnelQuantityFlag, anonymous.DefaultI2PTunnelQuantity, "I2P inbound/outbound tunnel quantity for anonymous mode")
+	rootCmd.PersistentFlags().StringVar(&i2pDaemonMode, i2pDaemonModeFlag, anonymous.DefaultI2PDaemonMode, "I2P daemon mode for anonymous mode: external, auto, or managed")
+	rootCmd.PersistentFlags().StringVar(&i2pDaemonPath, i2pDaemonPathFlag, anonymous.DefaultI2PDaemonPath, "i2pd executable path or name for auto/managed I2P mode")
+	rootCmd.PersistentFlags().StringVar(&i2pDataDir, i2pDataDirFlag, "", "i2pd data directory for auto/managed I2P mode")
 
 	rootCmd.AddCommand(upCmd)
+	rootCmd.AddCommand(joinCmd)
 	rootCmd.AddCommand(downCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(loginCmd)
@@ -164,6 +193,7 @@ func init() {
 	forwardingRulesCmd.AddCommand(forwardingRulesListCmd)
 
 	debugCmd.AddCommand(debugBundleCmd)
+	debugCmd.AddCommand(anonymousCheckCmd)
 	debugCmd.AddCommand(logCmd)
 	logCmd.AddCommand(logLevelCmd)
 	debugCmd.AddCommand(forCmd)
@@ -183,7 +213,7 @@ func init() {
 			`or --external-ip-map ""`,
 	)
 	upCmd.PersistentFlags().StringVar(&customDNSAddress, dnsResolverAddress, "",
-		`Sets a custom address for NetBird's local DNS resolver. `+
+		`Sets a custom address for AnonBird's local DNS resolver. `+
 			`If set, the agent won't attempt to discover the best ip and port to listen on. `+
 			`An empty string "" clears the previous configuration. `+
 			`E.g. --dns-resolver-address 127.0.0.1:5053 or --dns-resolver-address ""`,
@@ -405,7 +435,7 @@ func getClient(cmd *cobra.Command) (*grpc.ClientConn, error) {
 		//nolint
 		return nil, fmt.Errorf("failed to connect to daemon error: %v\n"+
 			"If the daemon is not running please run: "+
-			"\nnetbird service install \nnetbird service start\n", err)
+			"\nanonbird service install \nanonbird service start\n", err)
 	}
 
 	return conn, nil

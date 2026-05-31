@@ -9,6 +9,9 @@ const (
 
 	// ConnectionTypeRelay represents a relayed connection
 	ConnectionTypeRelay ConnectionType = "relay"
+
+	// ConnectionTypeI2PDatagram represents direct peer traffic over I2P datagrams
+	ConnectionTypeI2PDatagram ConnectionType = "i2p-datagram"
 )
 
 // String returns the string representation of the connection type

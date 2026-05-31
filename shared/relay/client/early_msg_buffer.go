@@ -24,21 +24,21 @@ const (
 // time so cleanup only needs to walk from the front.
 type earlyMsgBuffer struct {
 	mu     sync.Mutex
-	index  map[messages.PeerID]*list.Element
+	index  map[connKey]*list.Element
 	order  *list.List // front = oldest
 	timer  *time.Timer
 	closed bool
 }
 
 type earlyMsg struct {
-	peerID    messages.PeerID
+	key       connKey
 	msg       Msg
 	createdAt time.Time
 }
 
 func newEarlyMsgBuffer() *earlyMsgBuffer {
 	return &earlyMsgBuffer{
-		index: make(map[messages.PeerID]*list.Element),
+		index: make(map[connKey]*list.Element),
 		order: list.New(),
 	}
 }
@@ -47,6 +47,10 @@ func newEarlyMsgBuffer() *earlyMsgBuffer {
 // peer already exists, it is replaced with the new one. Returns false if the
 // message was not stored (buffer full or buffer closed).
 func (b *earlyMsgBuffer) put(peerID messages.PeerID, msg Msg) bool {
+	return b.putKey(connKey{peerID: peerID}, msg)
+}
+
+func (b *earlyMsgBuffer) putKey(key connKey, msg Msg) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -54,10 +58,10 @@ func (b *earlyMsgBuffer) put(peerID messages.PeerID, msg Msg) bool {
 		return false
 	}
 
-	if existing, exists := b.index[peerID]; exists {
+	if existing, exists := b.index[key]; exists {
 		old := b.order.Remove(existing).(earlyMsg)
 		old.msg.Free()
-		delete(b.index, peerID)
+		delete(b.index, key)
 	}
 
 	if b.order.Len() >= earlyMsgCapacity {
@@ -65,12 +69,12 @@ func (b *earlyMsgBuffer) put(peerID messages.PeerID, msg Msg) bool {
 	}
 
 	entry := earlyMsg{
-		peerID:    peerID,
+		key:       key,
 		msg:       msg,
 		createdAt: time.Now(),
 	}
 	elem := b.order.PushBack(entry)
-	b.index[peerID] = elem
+	b.index[key] = elem
 
 	// Start the cleanup timer if this is the first entry
 	if b.order.Len() == 1 {
@@ -83,16 +87,20 @@ func (b *earlyMsgBuffer) put(peerID messages.PeerID, msg Msg) bool {
 // pop retrieves and removes the buffered message for the given peer.
 // Returns the message and true if found, zero value and false otherwise.
 func (b *earlyMsgBuffer) pop(peerID messages.PeerID) (Msg, bool) {
+	return b.popKey(connKey{peerID: peerID})
+}
+
+func (b *earlyMsgBuffer) popKey(key connKey) (Msg, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	elem, ok := b.index[peerID]
+	elem, ok := b.index[key]
 	if !ok {
 		return Msg{}, false
 	}
 
 	entry := b.order.Remove(elem).(earlyMsg)
-	delete(b.index, peerID)
+	delete(b.index, key)
 
 	if b.order.Len() == 0 {
 		b.stopCleanup()
@@ -117,7 +125,7 @@ func (b *earlyMsgBuffer) close() {
 		entry.msg.Free()
 	}
 	b.order.Init()
-	b.index = make(map[messages.PeerID]*list.Element)
+	b.index = make(map[connKey]*list.Element)
 }
 
 // scheduleCleanup starts or resets the timer. Caller must hold b.mu.
@@ -153,7 +161,7 @@ func (b *earlyMsgBuffer) removeExpired() {
 		}
 		next := elem.Next()
 		b.order.Remove(elem)
-		delete(b.index, entry.peerID)
+		delete(b.index, entry.key)
 		entry.msg.Free()
 		elem = next
 	}

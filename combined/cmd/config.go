@@ -16,6 +16,7 @@ import (
 
 	"github.com/netbirdio/netbird/management/server/idp"
 	"github.com/netbirdio/netbird/management/server/types"
+	relayServer "github.com/netbirdio/netbird/relay/server"
 	"github.com/netbirdio/netbird/util"
 	"github.com/netbirdio/netbird/util/crypt"
 
@@ -46,18 +47,20 @@ type CombinedConfig struct {
 // ServerConfig contains server-wide settings
 // In simplified mode, this contains all configuration
 type ServerConfig struct {
-	ListenAddress      string    `yaml:"listenAddress"`
-	MetricsPort        int       `yaml:"metricsPort"`
-	HealthcheckAddress string    `yaml:"healthcheckAddress"`
-	LogLevel           string    `yaml:"logLevel"`
-	LogFile            string    `yaml:"logFile"`
-	TLS                TLSConfig `yaml:"tls"`
+	ListenAddress               string    `yaml:"listenAddress"`
+	MetricsPort                 int       `yaml:"metricsPort"`
+	HealthcheckAddress          string    `yaml:"healthcheckAddress"`
+	LogLevel                    string    `yaml:"logLevel"`
+	LogFile                     string    `yaml:"logFile"`
+	TLS                         TLSConfig `yaml:"tls"`
+	DisableLegacyManagementPort bool      `yaml:"disableLegacyManagementPort"`
 
 	// Simplified config fields (used when relay/signal/management sections are omitted)
-	ExposedAddress string `yaml:"exposedAddress"` // Public address with protocol (e.g., "https://example.com:443")
-	StunPorts      []int  `yaml:"stunPorts"`      // STUN ports (empty to disable local STUN)
-	AuthSecret     string `yaml:"authSecret"`     // Shared secret for relay authentication
-	DataDir        string `yaml:"dataDir"`        // Data directory for all services
+	ExposedAddress string                      `yaml:"exposedAddress"` // Public address with protocol (e.g., "https://example.com:443")
+	StunPorts      []int                       `yaml:"stunPorts"`      // STUN ports (empty to disable local STUN)
+	AuthSecret     string                      `yaml:"authSecret"`     // Shared secret for relay authentication
+	DataDir        string                      `yaml:"dataDir"`        // Data directory for all services
+	RelayRateLimit relayServer.RateLimitConfig `yaml:"relayRateLimit"` // Optional per-peer relay transport rate limit
 
 	// External service overrides (simplified mode)
 	// When these are set, the corresponding local service is NOT started
@@ -66,9 +69,12 @@ type ServerConfig struct {
 	Relays    RelaysConfig `yaml:"relays"`    // External relay servers (disables local relay)
 	SignalURI string       `yaml:"signalUri"` // External signal server (disables local signal)
 
+	stunPortsConfigured bool
+
 	// Management settings (simplified mode)
 	DisableAnonymousMetrics bool               `yaml:"disableAnonymousMetrics"`
 	DisableGeoliteUpdate    bool               `yaml:"disableGeoliteUpdate"`
+	DisableVersionCheck     bool               `yaml:"disableVersionCheck"`
 	Auth                    AuthConfig         `yaml:"auth"`
 	Store                   StoreConfig        `yaml:"store"`
 	ActivityStore           StoreConfig        `yaml:"activityStore"`
@@ -94,11 +100,12 @@ type LetsEncryptConfig struct {
 
 // RelayConfig contains relay service settings
 type RelayConfig struct {
-	Enabled        bool       `yaml:"enabled"`
-	ExposedAddress string     `yaml:"exposedAddress"`
-	AuthSecret     string     `yaml:"authSecret"`
-	LogLevel       string     `yaml:"logLevel"`
-	Stun           StunConfig `yaml:"stun"`
+	Enabled        bool                        `yaml:"enabled"`
+	ExposedAddress string                      `yaml:"exposedAddress"`
+	AuthSecret     string                      `yaml:"authSecret"`
+	LogLevel       string                      `yaml:"logLevel"`
+	Stun           StunConfig                  `yaml:"stun"`
+	RateLimit      relayServer.RateLimitConfig `yaml:"rateLimit"`
 }
 
 // StunConfig contains embedded STUN service settings
@@ -122,6 +129,7 @@ type ManagementConfig struct {
 	DnsDomain               string             `yaml:"dnsDomain"`
 	DisableAnonymousMetrics bool               `yaml:"disableAnonymousMetrics"`
 	DisableGeoliteUpdate    bool               `yaml:"disableGeoliteUpdate"`
+	DisableVersionCheck     bool               `yaml:"disableVersionCheck"`
 	DisableDefaultPolicy    bool               `yaml:"disableDefaultPolicy"`
 	Auth                    AuthConfig         `yaml:"auth"`
 	Stuns                   []HostConfig       `yaml:"stuns"`
@@ -270,6 +278,11 @@ func parseExposedAddress(exposedAddress string) (protocol, hostname, hostPort st
 	return protocol, hostname, hostPort
 }
 
+func isAnonymousServiceHost(hostname string) bool {
+	hostname = strings.TrimSuffix(strings.ToLower(strings.Trim(hostname, "[]")), ".")
+	return strings.HasSuffix(hostname, ".onion") || strings.HasSuffix(hostname, ".i2p")
+}
+
 // ApplySimplifiedDefaults populates internal relay/signal/management configs from server settings.
 // Management is always enabled. Signal, Relay, and STUN are enabled unless external
 // overrides are configured (server.signalUri, server.relays, server.stuns).
@@ -286,8 +299,9 @@ func (c *CombinedConfig) ApplySimplifiedDefaults() {
 	hasExternalSignal := c.Server.SignalURI != ""
 	hasExternalStuns := len(c.Server.Stuns) > 0
 
-	// Default stunPorts to [3478] if not specified and no external STUN
-	if len(c.Server.StunPorts) == 0 && !hasExternalStuns {
+	// Default stunPorts to [3478] only when omitted. An explicit empty list
+	// disables local STUN and avoids advertising UDP endpoints to clients.
+	if len(c.Server.StunPorts) == 0 && !hasExternalStuns && !c.Server.stunPortsConfigured {
 		c.Server.StunPorts = []int{3478}
 	}
 
@@ -312,6 +326,7 @@ func (c *CombinedConfig) applyRelayDefaults(exposedProto, exposedHostPort string
 	}
 	c.Relay.ExposedAddress = fmt.Sprintf("%s://%s", relayProto, exposedHostPort)
 	c.Relay.AuthSecret = c.Server.AuthSecret
+	c.Relay.RateLimit = c.Server.RelayRateLimit
 	if c.Relay.LogLevel == "" {
 		c.Relay.LogLevel = c.Server.LogLevel
 	}
@@ -347,9 +362,11 @@ func (c *CombinedConfig) applyManagementDefaults(exposedHost string) {
 	if c.Management.DataDir == "" || c.Management.DataDir == "/var/lib/netbird/" {
 		c.Management.DataDir = c.Server.DataDir
 	}
+	anonymousHost := isAnonymousServiceHost(exposedHost)
 	c.Management.DnsDomain = exposedHost
-	c.Management.DisableAnonymousMetrics = c.Server.DisableAnonymousMetrics
-	c.Management.DisableGeoliteUpdate = c.Server.DisableGeoliteUpdate
+	c.Management.DisableAnonymousMetrics = c.Server.DisableAnonymousMetrics || anonymousHost
+	c.Management.DisableGeoliteUpdate = c.Server.DisableGeoliteUpdate || anonymousHost
+	c.Management.DisableVersionCheck = c.Server.DisableVersionCheck || anonymousHost
 	// Copy auth config from server if management auth issuer is not set
 	if c.Management.Auth.Issuer == "" && c.Server.Auth.Issuer != "" {
 		c.Management.Auth = c.Server.Auth
@@ -433,11 +450,36 @@ func LoadConfig(configPath string) (*CombinedConfig, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
+	cfg.Server.stunPortsConfigured = yamlServerFieldConfigured(data, "stunPorts")
 
 	// Populate internal configs from server settings
 	cfg.ApplySimplifiedDefaults()
 
 	return cfg, nil
+}
+
+func yamlServerFieldConfigured(data []byte, field string) bool {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return false
+	}
+	if len(root.Content) == 0 || root.Content[0].Kind != yaml.MappingNode {
+		return false
+	}
+
+	rootMap := root.Content[0]
+	for i := 0; i+1 < len(rootMap.Content); i += 2 {
+		if rootMap.Content[i].Value != "server" || rootMap.Content[i+1].Kind != yaml.MappingNode {
+			continue
+		}
+		serverMap := rootMap.Content[i+1]
+		for j := 0; j+1 < len(serverMap.Content); j += 2 {
+			if serverMap.Content[j].Value == field {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Validate validates the configuration
@@ -465,6 +507,9 @@ func (c *CombinedConfig) Validate() error {
 	hasExternalRelay := len(c.Server.Relays.Addresses) > 0
 	if !hasExternalRelay && c.Server.AuthSecret == "" {
 		return fmt.Errorf("server.authSecret is required when running local relay")
+	}
+	if _, err := c.Server.RelayRateLimit.Normalize(); err != nil {
+		return fmt.Errorf("invalid server.relayRateLimit: %w", err)
 	}
 
 	return nil

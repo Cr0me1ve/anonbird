@@ -205,6 +205,15 @@ message LoginRequest {
   optional bool disableSSHAuth = 38;
   optional int32 sshJWTCacheTTL = 39;
   optional bool disable_ipv6 = 40;
+  optional bool anonymous_mode = 41;
+  optional string anonymous_transport = 42;
+  optional string tor_socks5 = 43;
+  optional string i2p_sam = 44;
+  optional int32 i2p_tunnel_length = 45;
+  optional int32 i2p_tunnel_quantity = 46;
+  optional string i2p_daemon_mode = 47;
+  optional string i2pd_path = 48;
+  optional string i2p_data_dir = 49;
 }
 
 message LoginResponse {
@@ -314,6 +323,17 @@ message GetConfigResponse {
   int32 sshJWTCacheTTL = 26;
 
   bool disable_ipv6 = 27;
+
+  bool anonymous_mode = 28;
+  string anonymous_transport = 29;
+  string tor_socks5 = 30;
+  string i2p_sam = 31;
+  int32 i2p_tunnel_length = 32;
+  int32 i2p_tunnel_quantity = 33;
+  string i2p_destination = 34;
+  string i2p_daemon_mode = 35;
+  string i2pd_path = 36;
+  string i2p_data_dir = 37;
 }
 
 // PeerState contains the latest state of a peer
@@ -678,6 +698,15 @@ message SetConfigRequest {
   optional bool disableSSHAuth = 33;
   optional int32 sshJWTCacheTTL = 34;
   optional bool disable_ipv6 = 35;
+  optional bool anonymous_mode = 36;
+  optional string anonymous_transport = 37;
+  optional string tor_socks5 = 38;
+  optional string i2p_sam = 39;
+  optional int32 i2p_tunnel_length = 40;
+  optional int32 i2p_tunnel_quantity = 41;
+  optional string i2p_daemon_mode = 42;
+  optional string i2pd_path = 43;
+  optional string i2p_data_dir = 44;
 }
 
 message SetConfigResponse{}

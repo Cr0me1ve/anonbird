@@ -823,6 +823,13 @@ components:
               description: Peer's public connection IP address
               type: string
               example: 35.64.0.1
+            anonymous_transport:
+              description: Selected AnonBird anonymous transport for this peer. Omitted for non-anonymous peers.
+              type: string
+              enum:
+                - tor-relay-only
+                - i2p-datagram
+              example: i2p-datagram
             connected:
               description: Peer to Management connection status
               type: boolean
@@ -986,6 +993,10 @@ components:
           description: Indicates whether lazy connection is enabled on this peer
           type: boolean
           example: false
+        anonymous_mode:
+          description: Indicates whether AnonBird anonymous mode is enabled on this peer
+          type: boolean
+          example: true
     PeerTemporaryAccessRequest:
       type: object
       properties:

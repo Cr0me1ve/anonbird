@@ -15,6 +15,7 @@ import (
 	"path"
 	"strings"
 	"syscall"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -24,6 +25,7 @@ import (
 	"github.com/netbirdio/netbird/formatter/hook"
 	"github.com/netbirdio/netbird/management/internals/server"
 	nbconfig "github.com/netbirdio/netbird/management/internals/server/config"
+	sharedanon "github.com/netbirdio/netbird/shared/anonymous"
 	nbdomain "github.com/netbirdio/netbird/shared/management/domain"
 	"github.com/netbirdio/netbird/util"
 	"github.com/netbirdio/netbird/util/crypt"
@@ -110,6 +112,24 @@ var (
 				mgmtSingleAccModeDomain = ""
 			}
 
+			disableMetricsForServer := disableMetrics
+			disableVersionCheckForServer := disableVersionCheck
+			disableGeoliteUpdateForServer := disableGeoliteUpdate
+			if managementConfigUsesAnonymousEndpoint(config) {
+				if !disableMetricsForServer {
+					log.Info("anonymous management endpoint detected, disabling anonymous usage metrics")
+				}
+				if !disableVersionCheckForServer {
+					log.Info("anonymous management endpoint detected, disabling version update checks")
+				}
+				if !disableGeoliteUpdateForServer {
+					log.Info("anonymous management endpoint detected, disabling geolocation database updates")
+				}
+				disableMetricsForServer = true
+				disableVersionCheckForServer = true
+				disableGeoliteUpdateForServer = true
+			}
+
 			srv := newServer(&server.Config{
 				NbConfig:                    config,
 				DNSDomain:                   dnsDomain,
@@ -117,8 +137,9 @@ var (
 				MgmtPort:                    mgmtPort,
 				MgmtMetricsPort:             mgmtMetricsPort,
 				DisableLegacyManagementPort: disableLegacyManagementPort,
-				DisableMetrics:              disableMetrics,
-				DisableGeoliteUpdate:        disableGeoliteUpdate,
+				DisableMetrics:              disableMetricsForServer,
+				DisableGeoliteUpdate:        disableGeoliteUpdateForServer,
+				DisableVersionCheck:         disableVersionCheckForServer,
 				UserDeleteFromIDPEnabled:    userDeleteFromIDPEnabled,
 			})
 			go func() {
@@ -144,6 +165,52 @@ var (
 		},
 	}
 )
+
+func managementConfigUsesAnonymousEndpoint(cfg *nbconfig.Config) bool {
+	if cfg == nil || cfg.HttpConfig == nil {
+		return false
+	}
+
+	candidates := []string{
+		cfg.HttpConfig.AuthIssuer,
+		cfg.HttpConfig.OIDCConfigEndpoint,
+		cfg.HttpConfig.AuthCallbackURL,
+	}
+	if cfg.DeviceAuthorizationFlow != nil {
+		candidates = append(candidates,
+			cfg.DeviceAuthorizationFlow.ProviderConfig.TokenEndpoint,
+			cfg.DeviceAuthorizationFlow.ProviderConfig.DeviceAuthEndpoint,
+			cfg.DeviceAuthorizationFlow.ProviderConfig.AuthorizationEndpoint,
+		)
+	}
+	if cfg.PKCEAuthorizationFlow != nil {
+		candidates = append(candidates,
+			cfg.PKCEAuthorizationFlow.ProviderConfig.TokenEndpoint,
+			cfg.PKCEAuthorizationFlow.ProviderConfig.DeviceAuthEndpoint,
+			cfg.PKCEAuthorizationFlow.ProviderConfig.AuthorizationEndpoint,
+		)
+	}
+
+	for _, candidate := range candidates {
+		if isAnonymousEndpoint(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func isAnonymousEndpoint(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	return strings.HasSuffix(host, ".onion") || strings.HasSuffix(host, ".i2p")
+}
 
 func LoadMgmtConfig(ctx context.Context, mgmtConfigPath string) (*nbconfig.Config, error) {
 	loadedConfig := &nbconfig.Config{}
@@ -355,7 +422,20 @@ type OIDCConfigResponse struct {
 
 // fetchOIDCConfig fetches OIDC configuration from the IDP
 func fetchOIDCConfig(ctx context.Context, oidcEndpoint string) (OIDCConfigResponse, error) {
-	res, err := http.Get(oidcEndpoint)
+	httpClient := http.DefaultClient
+	if sharedanon.EndpointIsAnonymous(oidcEndpoint) {
+		var err error
+		httpClient, err = sharedanon.HTTPClientForEndpoint(oidcEndpoint, 30*time.Second)
+		if err != nil {
+			return OIDCConfigResponse{}, fmt.Errorf("failed preparing anonymous OIDC client for endpoint %s %v", oidcEndpoint, err)
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, oidcEndpoint, nil)
+	if err != nil {
+		return OIDCConfigResponse{}, fmt.Errorf("failed creating OIDC configuration request for endpoint %s %v", oidcEndpoint, err)
+	}
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return OIDCConfigResponse{}, fmt.Errorf("failed fetching OIDC configuration from endpoint %s %v", oidcEndpoint, err)
 	}

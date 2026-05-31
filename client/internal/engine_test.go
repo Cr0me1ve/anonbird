@@ -88,6 +88,18 @@ var (
 	}
 )
 
+func TestShouldStartPortForwardManagerDisabledInAnonymousMode(t *testing.T) {
+	engine := &Engine{config: &EngineConfig{AnonymousMode: true}}
+
+	assert.False(t, engine.shouldStartPortForwardManager())
+}
+
+func TestShouldStartPortForwardManagerEnabledOutsideAnonymousMode(t *testing.T) {
+	engine := &Engine{config: &EngineConfig{}}
+
+	assert.True(t, engine.shouldStartPortForwardManager())
+}
+
 type MockWGIface struct {
 	CreateFunc                 func() error
 	CreateOnAndroidFunc        func(routeRange []string, ip string, domains []string) error
@@ -1524,6 +1536,55 @@ func TestCompareNetIPLists(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetInterfacePrefixesExcludesNamedInterface(t *testing.T) {
+	ifaces, err := net.Interfaces()
+	require.NoError(t, err)
+
+	for _, iface := range ifaces {
+		expectedExcluded := nonLocalPrefixesForInterface(t, iface)
+		if len(expectedExcluded) == 0 {
+			continue
+		}
+
+		filtered, err := getInterfacePrefixes(iface.Name)
+		require.NoError(t, err)
+
+		for _, prefix := range expectedExcluded {
+			require.NotContains(t, filtered, prefix)
+		}
+		return
+	}
+
+	t.Skip("no non-loopback interface prefixes available")
+}
+
+func nonLocalPrefixesForInterface(t *testing.T, iface net.Interface) []netip.Prefix {
+	t.Helper()
+
+	addrs, err := iface.Addrs()
+	require.NoError(t, err)
+
+	var prefixes []netip.Prefix
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip, ok := netip.AddrFromSlice(ipNet.IP)
+		if !ok {
+			continue
+		}
+		ones, _ := ipNet.Mask.Size()
+		prefix := netip.PrefixFrom(ip.Unmap(), ones).Masked()
+		prefixIP := prefix.Addr()
+		if prefixIP.IsLoopback() || prefixIP.IsMulticast() || prefixIP.IsLinkLocalUnicast() || prefixIP.IsLinkLocalMulticast() {
+			continue
+		}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes
 }
 
 func createEngine(ctx context.Context, cancel context.CancelFunc, setupKey string, i int, mgmtAddr string, signalAddr string) (*Engine, error) {

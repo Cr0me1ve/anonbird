@@ -33,12 +33,12 @@ var (
 var debugCmd = &cobra.Command{
 	Use:   "debug",
 	Short: "Debugging commands",
-	Long:  "Commands for debugging and logging within the NetBird daemon.",
+	Long:  "Commands for debugging and logging within the AnonBird daemon.",
 }
 
 var debugBundleCmd = &cobra.Command{
 	Use:     "bundle",
-	Example: "  netbird debug bundle",
+	Example: "  anonbird debug bundle",
 	Short:   "Create a debug bundle",
 	Long:    "Generates a compressed archive of the daemon's logs and status for debugging purposes.",
 	RunE:    debugBundle,
@@ -46,8 +46,8 @@ var debugBundleCmd = &cobra.Command{
 
 var logCmd = &cobra.Command{
 	Use:   "log",
-	Short: "Manage logging for the NetBird daemon",
-	Long:  `Commands to manage logging settings for the NetBird daemon, including ICE, gRPC, and general log levels.`,
+	Short: "Manage logging for the AnonBird daemon",
+	Long:  `Commands to manage logging settings for the AnonBird daemon, including ICE, gRPC, and general log levels.`,
 }
 
 var logLevelCmd = &cobra.Command{
@@ -70,7 +70,7 @@ var forCmd = &cobra.Command{
 	Use:     "for <time>",
 	Short:   "Run debug logs for a specified duration and create a debug bundle",
 	Long:    `Sets the logging level to trace, runs for the specified duration, and then generates a debug bundle.`,
-	Example: "  netbird debug for 5m",
+	Example: "  anonbird debug for 5m",
 	Args:    cobra.ExactArgs(1),
 	RunE:    runForDuration,
 }
@@ -79,7 +79,7 @@ var persistenceCmd = &cobra.Command{
 	Use:     "persistence [on|off]",
 	Short:   "Set sync response memory persistence",
 	Long:    `Configure whether the latest sync response should persist in memory. When enabled, the last known sync response will be kept in memory.`,
-	Example: "  netbird debug persistence on",
+	Example: "  anonbird debug persistence on",
 	Args:    cobra.ExactArgs(1),
 	RunE:    setSyncResponsePersistence,
 }
@@ -184,7 +184,7 @@ func runForDuration(cmd *cobra.Command, args []string) error {
 		if _, err := client.Up(cmd.Context(), &proto.UpRequest{}); err != nil {
 			cmd.PrintErrf("Failed to bring service up: %v\n", status.Convert(err).Message())
 		} else {
-			cmd.Println("netbird up")
+			cmd.Println("anonbird up")
 			time.Sleep(time.Second * 10)
 		}
 	}
@@ -205,7 +205,7 @@ func runForDuration(cmd *cobra.Command, args []string) error {
 		cmd.PrintErrf("Failed to bring service down: %v\n", status.Convert(err).Message())
 	} else {
 		needsRestoreUp = !stateWasDown
-		cmd.Println("netbird down")
+		cmd.Println("anonbird down")
 	}
 
 	time.Sleep(1 * time.Second)
@@ -221,7 +221,7 @@ func runForDuration(cmd *cobra.Command, args []string) error {
 		cmd.PrintErrf("Failed to bring service up: %v\n", status.Convert(err).Message())
 	} else {
 		needsRestoreUp = false
-		cmd.Println("netbird up")
+		cmd.Println("anonbird up")
 	}
 
 	time.Sleep(3 * time.Second)
@@ -311,7 +311,7 @@ func runForDuration(cmd *cobra.Command, args []string) error {
 		if _, err := client.Up(cmd.Context(), &proto.UpRequest{}); err != nil {
 			cmd.PrintErrf("Failed to restore service up state: %v\n", status.Convert(err).Message())
 		} else {
-			cmd.Println("netbird up (restored)")
+			cmd.Println("anonbird up (restored)")
 		}
 	}
 
@@ -319,7 +319,7 @@ func runForDuration(cmd *cobra.Command, args []string) error {
 		if _, err := client.Down(cmd.Context(), &proto.DownRequest{}); err != nil {
 			cmd.PrintErrf("Failed to restore service down state: %v\n", status.Convert(err).Message())
 		} else {
-			cmd.Println("netbird down")
+			cmd.Println("anonbird down")
 		}
 	}
 

@@ -44,15 +44,15 @@ const apiPrefix = "/api"
 
 var (
 	kaep = keepalive.EnforcementPolicy{
-		MinTime:             15 * time.Second,
+		MinTime:             60 * time.Second,
 		PermitWithoutStream: true,
 	}
 
 	kasp = keepalive.ServerParameters{
-		MaxConnectionIdle:     15 * time.Second,
-		MaxConnectionAgeGrace: 5 * time.Second,
-		Time:                  5 * time.Second,
-		Timeout:               2 * time.Second,
+		MaxConnectionIdle:     0,
+		MaxConnectionAgeGrace: 2 * time.Minute,
+		Time:                  2 * time.Minute,
+		Timeout:               2 * time.Minute,
 	}
 )
 

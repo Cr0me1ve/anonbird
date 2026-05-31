@@ -644,6 +644,14 @@ func (g *BundleGenerator) addCommonConfigFields(configContent *strings.Builder) 
 	configContent.WriteString(fmt.Sprintf("BlockLANAccess: %v\n", g.internalConfig.BlockLANAccess))
 	configContent.WriteString(fmt.Sprintf("BlockInbound: %v\n", g.internalConfig.BlockInbound))
 	configContent.WriteString(fmt.Sprintf("DisableIPv6: %v\n", g.internalConfig.DisableIPv6))
+	configContent.WriteString(fmt.Sprintf("AnonymousMode: %v\n", g.internalConfig.AnonymousMode))
+	configContent.WriteString(fmt.Sprintf("AnonymousTransport: type=%s require_anonymous=%v i2p_tunnel_length=%d i2p_tunnel_quantity=%d i2p_daemon_mode=%s\n",
+		g.internalConfig.AnonymousTransport.Type,
+		g.internalConfig.AnonymousTransport.RequireAnonymous,
+		g.internalConfig.AnonymousTransport.I2PTunnelLength,
+		g.internalConfig.AnonymousTransport.I2PTunnelQuantity,
+		g.internalConfig.AnonymousTransport.I2PDaemonMode,
+	))
 
 	if g.internalConfig.DisableNotifications != nil {
 		configContent.WriteString(fmt.Sprintf("DisableNotifications: %v\n", *g.internalConfig.DisableNotifications))

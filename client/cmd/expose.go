@@ -35,12 +35,12 @@ var (
 
 var exposeCmd = &cobra.Command{
 	Use:   "expose <port>",
-	Short: "Expose a local port via the NetBird reverse proxy",
+	Short: "Expose a local port via the AnonBird reverse proxy",
 	Args:  cobra.ExactArgs(1),
-	Example: `  netbird expose --with-password safe-pass 8080
-  netbird expose --protocol tcp 5432
-  netbird expose --protocol tcp --with-external-port 5433 5432
-  netbird expose --protocol tls --with-custom-domain tls.example.com 4443`,
+	Example: `  anonbird expose --with-password safe-pass 8080
+  anonbird expose --protocol tcp 5432
+  anonbird expose --protocol tcp --with-external-port 5433 5432
+  anonbird expose --protocol tls --with-custom-domain tls.example.com 4443`,
 	RunE: exposeFn,
 }
 

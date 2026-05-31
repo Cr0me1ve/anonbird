@@ -146,7 +146,7 @@ type cliFlags struct {
 func parseFlags() *cliFlags {
 	var flags cliFlags
 
-	defaultDaemonAddr := "unix:///var/run/netbird.sock"
+	defaultDaemonAddr := "unix:///var/run/anonbird.sock"
 	if runtime.GOOS == "windows" {
 		defaultDaemonAddr = "tcp://127.0.0.1:41731"
 	}

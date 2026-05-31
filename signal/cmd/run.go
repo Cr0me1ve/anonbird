@@ -47,15 +47,15 @@ var (
 	signalCertKey            string
 
 	signalKaep = grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-		MinTime:             5 * time.Second,
+		MinTime:             60 * time.Second,
 		PermitWithoutStream: true,
 	})
 
 	signalKasp = grpc.KeepaliveParams(keepalive.ServerParameters{
-		MaxConnectionIdle:     15 * time.Second,
-		MaxConnectionAgeGrace: 5 * time.Second,
-		Time:                  5 * time.Second,
-		Timeout:               2 * time.Second,
+		MaxConnectionIdle:     0,
+		MaxConnectionAgeGrace: 2 * time.Minute,
+		Time:                  2 * time.Minute,
+		Timeout:               2 * time.Minute,
 	})
 
 	runCmd = &cobra.Command{

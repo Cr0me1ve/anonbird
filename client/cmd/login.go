@@ -15,6 +15,7 @@ import (
 	gstatus "google.golang.org/grpc/status"
 
 	"github.com/netbirdio/netbird/client/internal"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/auth"
 	"github.com/netbirdio/netbird/client/internal/profilemanager"
 	"github.com/netbirdio/netbird/client/proto"
@@ -26,13 +27,13 @@ func init() {
 	loginCmd.PersistentFlags().BoolVar(&noBrowser, noBrowserFlag, false, noBrowserDesc)
 	loginCmd.PersistentFlags().BoolVar(&showQR, showQRFlag, false, showQRDesc)
 	loginCmd.PersistentFlags().StringVar(&profileName, profileNameFlag, "", profileNameDesc)
-	loginCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "(DEPRECATED) Netbird config file location")
+	loginCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "(DEPRECATED) AnonBird config file location")
 }
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
-	Short: "Log in to the NetBird network",
-	Long:  "Log in to the NetBird network using a setup key or SSO",
+	Short: "Log in to the AnonBird network",
+	Long:  "Log in to the AnonBird network using a setup key or SSO",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := setEnvAndFlags(cmd); err != nil {
 			return fmt.Errorf("set env and flags: %v", err)
@@ -85,7 +86,7 @@ func doDaemonLogin(ctx context.Context, cmd *cobra.Command, providedSetupKey str
 		//nolint
 		return fmt.Errorf("failed to connect to daemon error: %v\n"+
 			"If the daemon is not running please run: "+
-			"\nnetbird service install \nnetbird service start\n", err)
+			"\nanonbird service install \nanonbird service start\n", err)
 	}
 	defer conn.Close()
 
@@ -116,6 +117,7 @@ func doDaemonLogin(ctx context.Context, cmd *cobra.Command, providedSetupKey str
 	if rootCmd.PersistentFlags().Changed(preSharedKeyFlag) {
 		loginRequest.OptionalPreSharedKey = &preSharedKey
 	}
+	applyAnonymousLoginRequest(&loginRequest)
 
 	var loginErr error
 
@@ -165,7 +167,7 @@ func getActiveProfile(ctx context.Context, pm *profilemanager.ProfileManager, pr
 	}
 
 	if activeProf == nil {
-		return nil, fmt.Errorf("active profile not found, please run 'netbird profile create' first")
+		return nil, fmt.Errorf("active profile not found, please run 'anonbird profile add <profile_name>' first")
 	}
 	return activeProf, nil
 }
@@ -211,7 +213,7 @@ func switchProfile(ctx context.Context, profileName string, username string) err
 		//nolint
 		return fmt.Errorf("failed to connect to daemon error: %v\n"+
 			"If the daemon is not running please run: "+
-			"\nnetbird service install \nnetbird service start\n", err)
+			"\nanonbird service install \nanonbird service start\n", err)
 	}
 	defer conn.Close()
 
@@ -248,6 +250,21 @@ func doForegroundLogin(ctx context.Context, cmd *cobra.Command, setupKey string,
 	if err != nil {
 		return fmt.Errorf("read config file %s: %v", configFilePath, err)
 	}
+	if config.AnonymousMode {
+		daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+		if err != nil {
+			return fmt.Errorf("prepare anonymous runtime: %v", err)
+		}
+		defer func() {
+			if err := daemon.Close(); err != nil {
+				log.Warnf("failed to stop managed i2pd: %v", err)
+			}
+		}()
+		config, _, err = profilemanager.EnsureAnonymousTransportIdentity(ctx, configFilePath, config)
+		if err != nil {
+			return fmt.Errorf("prepare anonymous transport identity: %v", err)
+		}
+	}
 
 	err = foregroundLogin(ctx, cmd, config, setupKey, activeProf.Name)
 	if err != nil {
@@ -278,6 +295,18 @@ func handleSSOLogin(ctx context.Context, cmd *cobra.Command, loginResp *proto.Lo
 }
 
 func foregroundLogin(ctx context.Context, cmd *cobra.Command, config *profilemanager.Config, setupKey, profileName string) error {
+	if config.AnonymousMode {
+		daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+		if err != nil {
+			return fmt.Errorf("prepare anonymous runtime: %v", err)
+		}
+		defer func() {
+			if err := daemon.Close(); err != nil {
+				log.Warnf("failed to stop managed i2pd: %v", err)
+			}
+		}()
+	}
+
 	authClient, err := auth.NewAuth(ctx, config.PrivateKey, config.ManagementURL, config)
 	if err != nil {
 		return fmt.Errorf("failed to create auth client: %v", err)
@@ -360,8 +389,7 @@ func openURL(cmd *cobra.Command, verificationURIComplete, userCode string, noBro
 
 	if !noBrowser {
 		if err := util.OpenBrowser(verificationURIComplete); err != nil {
-			cmd.Println("\nAlternatively, you may want to use a setup key, see:\n\n" +
-				"https://docs.netbird.io/how-to/register-machines-using-setup-keys")
+			cmd.Println("\nAlternatively, create a setup key in your management dashboard and run anonbird up with --setup-key.")
 		}
 	}
 }

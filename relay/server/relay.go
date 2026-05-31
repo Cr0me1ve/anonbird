@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,10 @@ type Config struct {
 	ExposedAddress string
 	TLSSupport     bool
 	AuthValidator  Validator
+	RateLimit      RateLimitConfig
+	// AnonymousHealthChecks uses relay health-check timings that tolerate
+	// high-latency onion/I2P circuits.
+	AnonymousHealthChecks bool
 
 	instanceURL url.URL
 }
@@ -48,10 +53,18 @@ func (c *Config) validate() error {
 		return fmt.Errorf("invalid url: %v", err)
 	}
 	c.instanceURL = *instanceURL
+	if isAnonymousRelayHost(instanceURL.Hostname()) {
+		c.AnonymousHealthChecks = true
+	}
 
 	if c.AuthValidator == nil {
 		return fmt.Errorf("auth validator is required")
 	}
+	rateLimit, err := c.RateLimit.Normalize()
+	if err != nil {
+		return err
+	}
+	c.RateLimit = rateLimit
 	return nil
 }
 
@@ -61,11 +74,13 @@ type Relay struct {
 	metricsCancel context.CancelFunc
 	validator     Validator
 
-	store          *store.Store
-	notifier       *store.PeerNotifier
-	instanceURL    url.URL
-	exposedAddress string
-	preparedMsg    *preparedMsg
+	store                 *store.Store
+	notifier              *store.PeerNotifier
+	instanceURL           url.URL
+	exposedAddress        string
+	preparedMsg           *preparedMsg
+	rateLimit             RateLimitConfig
+	anonymousHealthChecks bool
 
 	closed  bool
 	closeMu sync.RWMutex
@@ -98,13 +113,15 @@ func NewRelay(config Config) (*Relay, error) {
 	}
 
 	r := &Relay{
-		metrics:        m,
-		metricsCancel:  metricsCancel,
-		validator:      config.AuthValidator,
-		instanceURL:    config.instanceURL,
-		exposedAddress: config.ExposedAddress,
-		store:          store.NewStore(),
-		notifier:       store.NewPeerNotifier(),
+		metrics:               m,
+		metricsCancel:         metricsCancel,
+		validator:             config.AuthValidator,
+		instanceURL:           config.instanceURL,
+		exposedAddress:        config.ExposedAddress,
+		store:                 store.NewStore(),
+		notifier:              store.NewPeerNotifier(),
+		rateLimit:             config.RateLimit,
+		anonymousHealthChecks: config.AnonymousHealthChecks,
 	}
 
 	r.preparedMsg, err = newPreparedMsg(r.instanceURL.String())
@@ -146,20 +163,25 @@ func (r *Relay) Accept(conn listener.Conn) {
 		return
 	}
 
-	peer := NewPeer(r.metrics, *peerID, conn, r.store, r.notifier)
+	peer := NewPeer(r.metrics, *peerID, h.relayChannelID, conn, r.store, r.notifier, r.rateLimit, r.anonymousHealthChecks)
 	peer.log.Infof("peer connected from: %s", conn.RemoteAddr())
 	storeTime := time.Now()
+	wasOnline := r.store.HasPeer(peer.ID())
 	if isReconnection := r.store.AddPeer(peer); isReconnection {
 		r.metrics.RecordPeerReconnection()
 	}
-	r.notifier.PeerCameOnline(peer.ID())
+	if !wasOnline {
+		r.notifier.PeerCameOnline(peer.ID())
+	}
 
 	r.metrics.RecordPeerStoreTime(time.Since(storeTime))
 	r.metrics.PeerConnected(peer.String())
 	go func() {
 		peer.Work()
 		if deleted := r.store.DeletePeer(peer); deleted {
-			r.notifier.PeerWentOffline(peer.ID())
+			if !r.store.HasPeer(peer.ID()) {
+				r.notifier.PeerWentOffline(peer.ID())
+			}
 		}
 		peer.log.Debugf("relay connection closed")
 		r.metrics.PeerDisconnected(peer.String())
@@ -170,6 +192,11 @@ func (r *Relay) Accept(conn listener.Conn) {
 		peer.Close()
 	}
 	r.metrics.RecordAuthenticationTime(time.Since(acceptTime))
+}
+
+func isAnonymousRelayHost(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	return strings.HasSuffix(host, ".onion") || strings.HasSuffix(host, ".i2p")
 }
 
 // Shutdown closes the relay server

@@ -35,6 +35,7 @@ import (
 	"github.com/netbirdio/netbird/client/iface/udpmux"
 	"github.com/netbirdio/netbird/client/iface/wgaddr"
 	"github.com/netbirdio/netbird/client/internal/acl"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/debug"
 	"github.com/netbirdio/netbird/client/internal/dns"
 	dnsconfig "github.com/netbirdio/netbird/client/internal/dns/config"
@@ -142,6 +143,9 @@ type EngineConfig struct {
 	LazyConnectionEnabled bool
 
 	MTU uint16
+
+	AnonymousMode      bool
+	AnonymousTransport anonymous.TransportConfig
 
 	// for debug bundle generation
 	ProfileConfig *profilemanager.Config
@@ -293,6 +297,7 @@ func NewEngine(
 		clientMetrics:      services.ClientMetrics,
 		updateManager:      services.UpdateManager,
 	}
+	engine.signaler.SetAnonymousMode(config.AnonymousMode)
 
 	log.Infof("I am: %s", config.WgPrivateKey.PublicKey().String())
 	return engine
@@ -437,6 +442,11 @@ func (e *Engine) Start(netbirdConfig *mgmProto.NetbirdConfig, mgmtURL *url.URL) 
 	if err := iface.ValidateMTU(e.config.MTU); err != nil {
 		return fmt.Errorf("invalid MTU configuration: %w", err)
 	}
+	if e.config.AnonymousMode {
+		if err := anonymous.ValidateNetbirdConfigForTransport(netbirdConfig, e.config.AnonymousTransport); err != nil {
+			return fmt.Errorf("validate anonymous network config: %w", err)
+		}
+	}
 
 	if e.cancel != nil {
 		e.cancel()
@@ -541,12 +551,7 @@ func (e *Engine) Start(netbirdConfig *mgmProto.NetbirdConfig, mgmtURL *url.URL) 
 	// conntrack entries from being created before the rules are in place
 	e.setupWGProxyNoTrack()
 
-	// Start after interface is up since port may have been resolved from 0 or changed if occupied
-	e.shutdownWg.Add(1)
-	go func() {
-		defer e.shutdownWg.Done()
-		e.portForwardManager.Start(e.ctx, uint16(e.config.WgPort))
-	}()
+	e.startPortForwardManager()
 
 	// Set the WireGuard interface for rosenpass after interface is up
 	if e.rpManager != nil {
@@ -570,7 +575,7 @@ func (e *Engine) Start(netbirdConfig *mgmProto.NetbirdConfig, mgmtURL *url.URL) 
 	e.connMgr.Start(e.ctx)
 
 	e.srWatcher = guard.NewSRWatcher(e.signal, e.relayManager, e.mobileDep.IFaceDiscover, iceCfg)
-	e.srWatcher.Start(peer.IsForceRelayed())
+	e.srWatcher.Start(peer.IsForceRelayed() || e.config.AnonymousMode)
 
 	e.receiveSignalEvents()
 	e.receiveManagementEvents()
@@ -596,6 +601,24 @@ func (e *Engine) Start(netbirdConfig *mgmProto.NetbirdConfig, mgmtURL *url.URL) 
 	}()
 
 	return nil
+}
+
+func (e *Engine) startPortForwardManager() {
+	if !e.shouldStartPortForwardManager() {
+		log.Debugf("NAT port mapper is disabled in anonymous mode")
+		return
+	}
+
+	// Start after interface is up since port may have been resolved from 0 or changed if occupied.
+	e.shutdownWg.Add(1)
+	go func() {
+		defer e.shutdownWg.Done()
+		e.portForwardManager.Start(e.ctx, uint16(e.config.WgPort))
+	}()
+}
+
+func (e *Engine) shouldStartPortForwardManager() bool {
+	return !e.config.AnonymousMode
 }
 
 func (e *Engine) createFirewall() error {
@@ -684,7 +707,12 @@ func (e *Engine) blockLanAccess() {
 	var merr *multierror.Error
 
 	// TODO: keep this updated
-	toBlock, err := getInterfacePrefixes()
+	var excludedInterfaces []string
+	if e.wgInterface != nil {
+		excludedInterfaces = append(excludedInterfaces, e.wgInterface.Name())
+	}
+
+	toBlock, err := getInterfacePrefixes(excludedInterfaces...)
 	if err != nil {
 		merr = multierror.Append(merr, fmt.Errorf("get local addresses: %w", err))
 	}
@@ -871,28 +899,35 @@ func (e *Engine) handleSync(update *mgmProto.SyncResponse) error {
 
 	if update.GetNetbirdConfig() != nil {
 		wCfg := update.GetNetbirdConfig()
-		err := e.updateTURNs(wCfg.GetTurns())
-		if err != nil {
-			return fmt.Errorf("update TURNs: %w", err)
+		if e.config.AnonymousMode {
+			if err := anonymous.ValidateNetbirdConfigForTransport(wCfg, e.config.AnonymousTransport); err != nil {
+				return fmt.Errorf("validate anonymous network config: %w", err)
+			}
+			e.STUNs = nil
+			e.TURNs = nil
+			e.stunTurn.Store([]*stun.URI{})
+		} else {
+			err := e.updateTURNs(wCfg.GetTurns())
+			if err != nil {
+				return fmt.Errorf("update TURNs: %w", err)
+			}
+
+			err = e.updateSTUNs(wCfg.GetStuns())
+			if err != nil {
+				return fmt.Errorf("update STUNs: %w", err)
+			}
+
+			var stunTurn []*stun.URI
+			stunTurn = append(stunTurn, e.STUNs...)
+			stunTurn = append(stunTurn, e.TURNs...)
+			e.stunTurn.Store(stunTurn)
 		}
 
-		err = e.updateSTUNs(wCfg.GetStuns())
-		if err != nil {
-			return fmt.Errorf("update STUNs: %w", err)
-		}
-
-		var stunTurn []*stun.URI
-		stunTurn = append(stunTurn, e.STUNs...)
-		stunTurn = append(stunTurn, e.TURNs...)
-		e.stunTurn.Store(stunTurn)
-
-		err = e.handleRelayUpdate(wCfg.GetRelay())
-		if err != nil {
+		if err := e.handleRelayUpdate(wCfg.GetRelay()); err != nil {
 			return err
 		}
 
-		err = e.handleFlowUpdate(wCfg.GetFlow())
-		if err != nil {
+		if err := e.handleFlowUpdate(wCfg.GetFlow()); err != nil {
 			return fmt.Errorf("handle the flow configuration: %w", err)
 		}
 
@@ -935,6 +970,13 @@ func (e *Engine) handleSync(update *mgmProto.SyncResponse) error {
 	e.statusRecorder.PublishEvent(cProto.SystemEvent_INFO, cProto.SystemEvent_SYSTEM, "Network map updated", "", nil)
 
 	return nil
+}
+
+func (e *Engine) sanitizeSystemInfoForAnonymousMode(info *system.Info) {
+	if e.config.AnonymousMode {
+		anonymous.SanitizeSystemInfo(info, e.config.WgPrivateKey.PublicKey().String())
+		anonymous.SetSystemInfoTransport(info, e.config.AnonymousTransport)
+	}
 }
 
 func (e *Engine) handleRelayUpdate(update *mgmProto.RelayConfig) error {
@@ -1024,6 +1066,7 @@ func (e *Engine) updateChecksIfNew(checks []*mgmProto.Checks) error {
 		e.config.EnableSSHRemotePortForwarding,
 		e.config.DisableSSHAuth,
 	)
+	e.sanitizeSystemInfoForAnonymousMode(info)
 
 	if err := e.mgmClient.SyncMeta(info); err != nil {
 		log.Errorf("could not sync meta: error %s", err)
@@ -1196,6 +1239,7 @@ func (e *Engine) receiveManagementEvents() {
 			e.config.EnableSSHRemotePortForwarding,
 			e.config.DisableSSHAuth,
 		)
+		e.sanitizeSystemInfoForAnonymousMode(info)
 
 		err = e.mgmClient.Sync(e.ctx, info, e.handleSync)
 		if err != nil {
@@ -1591,7 +1635,7 @@ func (e *Engine) addNewPeer(peerConfig *mgmProto.RemotePeerConfig) error {
 		return fmt.Errorf("peer %s has no usable AllowedIPs", peerKey)
 	}
 
-	conn, err := e.createPeerConn(peerKey, peerIPs, peerConfig.AgentVersion)
+	conn, err := e.createPeerConn(peerKey, peerIPs, peerConfig.AgentVersion, peerConfig.GetAnonymousTransport())
 	if err != nil {
 		return fmt.Errorf("create peer connection: %w", err)
 	}
@@ -1610,7 +1654,7 @@ func (e *Engine) addNewPeer(peerConfig *mgmProto.RemotePeerConfig) error {
 	return nil
 }
 
-func (e *Engine) createPeerConn(pubKey string, allowedIPs []netip.Prefix, agentVersion string) (*peer.Conn, error) {
+func (e *Engine) createPeerConn(pubKey string, allowedIPs []netip.Prefix, agentVersion string, remoteTransport *mgmProto.AnonymousTransport) (*peer.Conn, error) {
 	log.Debugf("creating peer connection %s", pubKey)
 
 	wgConfig := peer.WgConfig{
@@ -1635,7 +1679,10 @@ func (e *Engine) createPeerConn(pubKey string, allowedIPs []netip.Prefix, agentV
 			Addr:           e.getRosenpassAddr(),
 			PermissiveMode: e.config.RosenpassPermissive,
 		},
-		ICEConfig: e.createICEConfig(),
+		ICEConfig:                e.createICEConfig(),
+		AnonymousMode:            e.config.AnonymousMode,
+		AnonymousTransport:       e.config.AnonymousTransport,
+		RemoteAnonymousTransport: remoteAnonymousTransport(remoteTransport),
 	}
 
 	serviceDependencies := peer.ServiceDependencies{
@@ -1659,6 +1706,16 @@ func (e *Engine) createPeerConn(pubKey string, allowedIPs []netip.Prefix, agentV
 	}
 
 	return peerConn, nil
+}
+
+func remoteAnonymousTransport(remoteTransport *mgmProto.AnonymousTransport) peer.RemoteAnonymousTransport {
+	if remoteTransport == nil {
+		return peer.RemoteAnonymousTransport{}
+	}
+	return peer.RemoteAnonymousTransport{
+		Type:           remoteTransport.GetType(),
+		I2PDestination: remoteTransport.GetI2PDestination(),
+	}
 }
 
 // receiveSignalEvents connects to the Signal Service event stream to negotiate connection with remote peers
@@ -1703,6 +1760,10 @@ func (e *Engine) receiveSignalEvents() {
 					conn.OnRemoteAnswer(*offerAnswer)
 				}
 			case sProto.Body_CANDIDATE:
+				if e.config.AnonymousMode {
+					log.Warnf("ignoring ICE candidate from peer %s in anonymous mode", msg.Key)
+					return nil
+				}
 				candidate, err := ice.UnmarshalCandidate(msg.GetBody().Payload)
 				if err != nil {
 					log.Errorf("failed on parsing remote candidate %s -> %s", candidate, err)
@@ -1840,6 +1901,7 @@ func (e *Engine) readInitialSettings() ([]*route.Route, *nbdns.Config, bool, err
 		e.config.EnableSSHRemotePortForwarding,
 		e.config.DisableSSHAuth,
 	)
+	e.sanitizeSystemInfoForAnonymousMode(info)
 
 	netMap, err := e.mgmClient.GetNetworkMap(info)
 	if err != nil {
@@ -1858,14 +1920,15 @@ func (e *Engine) newWgIface() (*iface.WGIface, error) {
 	}
 
 	opts := iface.WGIFaceOpts{
-		IFaceName:    e.config.WgIfaceName,
-		Address:      e.config.WgAddr,
-		WGPort:       e.config.WgPort,
-		WGPrivKey:    e.config.WgPrivateKey.String(),
-		MTU:          e.config.MTU,
-		TransportNet: transportNet,
-		FilterFn:     e.addrViaRoutes,
-		DisableDNS:   e.config.DisableDNS,
+		IFaceName:      e.config.WgIfaceName,
+		Address:        e.config.WgAddr,
+		WGPort:         e.config.WgPort,
+		WGPrivKey:      e.config.WgPrivateKey.String(),
+		MTU:            e.config.MTU,
+		TransportNet:   transportNet,
+		FilterFn:       e.addrViaRoutes,
+		DisableDNS:     e.config.DisableDNS,
+		ForceUserspace: e.config.AnonymousMode,
 	}
 
 	switch runtime.GOOS {
@@ -2036,8 +2099,11 @@ func (e *Engine) RunHealthProbes(waitForResult bool) bool {
 	managementHealthy := e.mgmClient.IsHealthy()
 	log.Debugf("management health check: healthy=%t", managementHealthy)
 
-	stuns := slices.Clone(e.STUNs)
-	turns := slices.Clone(e.TURNs)
+	var stuns, turns []*stun.URI
+	if !e.config.AnonymousMode {
+		stuns = slices.Clone(e.STUNs)
+		turns = slices.Clone(e.TURNs)
+	}
 
 	if err := e.statusRecorder.RefreshWireGuardStats(); err != nil {
 		log.Debugf("failed to refresh WireGuard stats: %v", err)
@@ -2047,7 +2113,7 @@ func (e *Engine) RunHealthProbes(waitForResult bool) bool {
 
 	// Skip STUN/TURN probing for JS/WASM as it's not available
 	relayHealthy := true
-	if runtime.GOOS != "js" {
+	if runtime.GOOS != "js" && !e.config.AnonymousMode {
 		var results []relay.ProbeResult
 		if waitForResult {
 			results = e.probeStunTurn.ProbeAllWaitResult(e.ctx, stuns, turns)
@@ -2063,6 +2129,9 @@ func (e *Engine) RunHealthProbes(waitForResult bool) bool {
 			}
 		}
 		log.Debugf("relay health check: healthy=%t", relayHealthy)
+	} else if e.config.AnonymousMode {
+		e.statusRecorder.UpdateRelayStates(nil)
+		log.Debugf("STUN/TURN health probes are disabled in anonymous mode")
 	}
 
 	allHealthy := signalHealthy && managementHealthy && relayHealthy
@@ -2450,16 +2519,29 @@ func isChecksEqual(checks1, checks2 []*mgmProto.Checks) bool {
 	return slices.Equal(n1, n2)
 }
 
-func getInterfacePrefixes() ([]netip.Prefix, error) {
+func getInterfacePrefixes(excludedInterfaceNames ...string) ([]netip.Prefix, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, fmt.Errorf("get interfaces: %w", err)
+	}
+
+	excluded := make(map[string]struct{}, len(excludedInterfaceNames))
+	for _, name := range excludedInterfaceNames {
+		if name == "" {
+			continue
+		}
+		excluded[name] = struct{}{}
 	}
 
 	var prefixes []netip.Prefix
 	var merr *multierror.Error
 
 	for _, iface := range ifaces {
+		if _, ok := excluded[iface.Name]; ok {
+			log.Debugf("skipping interface %s while collecting LAN block prefixes", iface.Name)
+			continue
+		}
+
 		addrs, err := iface.Addrs()
 		if err != nil {
 			merr = multierror.Append(merr, fmt.Errorf("get addresses for interface %s: %w", iface.Name, err))

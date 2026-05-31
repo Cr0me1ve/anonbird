@@ -37,14 +37,23 @@ type PacketCapture interface {
 	Offer(data []byte, outbound bool)
 }
 
+// PacketObserver observes filtered packets on the hot path. Implementations
+// must return quickly and copy data before storing it.
+type PacketObserver interface {
+	ObservePacket(data []byte, outbound bool)
+}
+
 // FilteredDevice to override Read or Write of packets
 type FilteredDevice struct {
 	tun.Device
 
-	filter    PacketFilter
-	capture   atomic.Pointer[PacketCapture]
-	mutex     sync.RWMutex
-	closeOnce sync.Once
+	filter         PacketFilter
+	capture        atomic.Pointer[PacketCapture]
+	mutex          sync.RWMutex
+	observersMu    sync.RWMutex
+	observers      map[uint64]PacketObserver
+	nextObserverID uint64
+	closeOnce      sync.Once
 }
 
 // newDeviceFilter constructor function
@@ -94,6 +103,9 @@ func (d *FilteredDevice) Read(bufs [][]byte, sizes []int, offset int) (n int, er
 			(*pc).Offer(bufs[i][offset:offset+sizes[i]], true)
 		}
 	}
+	for i := 0; i < n; i++ {
+		d.observe(bufs[i][offset:offset+sizes[i]], true)
+	}
 
 	return n, nil
 }
@@ -105,6 +117,9 @@ func (d *FilteredDevice) Write(bufs [][]byte, offset int) (int, error) {
 		for _, buf := range bufs {
 			(*pc).Offer(buf[offset:], false)
 		}
+	}
+	for _, buf := range bufs {
+		d.observe(buf[offset:], false)
 	}
 
 	d.mutex.RLock()
@@ -146,4 +161,38 @@ func (d *FilteredDevice) SetCapture(pc PacketCapture) {
 		return
 	}
 	d.capture.Store(&pc)
+}
+
+// AddPacketObserver registers a packet observer and returns an unregister function.
+func (d *FilteredDevice) AddPacketObserver(observer PacketObserver) func() {
+	if observer == nil {
+		return func() {}
+	}
+
+	d.observersMu.Lock()
+	if d.observers == nil {
+		d.observers = make(map[uint64]PacketObserver)
+	}
+	d.nextObserverID++
+	id := d.nextObserverID
+	d.observers[id] = observer
+	d.observersMu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			d.observersMu.Lock()
+			delete(d.observers, id)
+			d.observersMu.Unlock()
+		})
+	}
+}
+
+func (d *FilteredDevice) observe(data []byte, outbound bool) {
+	d.observersMu.RLock()
+	defer d.observersMu.RUnlock()
+
+	for _, observer := range d.observers {
+		observer.ObservePacket(data, outbound)
+	}
 }

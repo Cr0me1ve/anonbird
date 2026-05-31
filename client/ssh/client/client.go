@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// DefaultDaemonAddr is the default address for the NetBird daemon
-	DefaultDaemonAddr = "unix:///var/run/netbird.sock"
+	// DefaultDaemonAddr is the default address for the AnonBird daemon
+	DefaultDaemonAddr = "unix:///var/run/anonbird.sock"
 	// DefaultDaemonAddrWindows is the default address for the NetBird daemon on Windows
 	DefaultDaemonAddrWindows = "tcp://127.0.0.1:41731"
 )

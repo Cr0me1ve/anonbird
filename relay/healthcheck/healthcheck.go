@@ -40,6 +40,8 @@ type HealthStatus struct {
 type Config struct {
 	ListenAddress  string
 	ServiceChecker ServiceChecker
+	ProbeURL       *url.URL
+	ProbeProtocols []protocol.Protocol
 }
 
 type Server struct {
@@ -150,20 +152,30 @@ func (s *Server) getHealthStatus(ctx context.Context) (*HealthStatus, bool) {
 
 func (s *Server) validateListeners() ([]protocol.Protocol, bool) {
 	listeners := s.config.ServiceChecker.ListenerProtocols()
-	if len(listeners) == 0 {
-		return nil, false
+	if len(listeners) > 0 {
+		return listeners, true
 	}
-	return listeners, true
+	if len(s.config.ProbeProtocols) > 0 {
+		return append([]protocol.Protocol(nil), s.config.ProbeProtocols...), true
+	}
+	return nil, false
 }
 
 func (s *Server) validateConnection(ctx context.Context) bool {
-	addr := s.config.ServiceChecker.InstanceURL()
+	addr := s.probeURL()
 	if err := dialWS(ctx, addr); err != nil {
 		log.Errorf("failed to dial WebSocket listener at %s: %v", addr.String(), err)
 		return false
 	}
 
 	return true
+}
+
+func (s *Server) probeURL() url.URL {
+	if s.config.ProbeURL != nil && s.config.ProbeURL.Host != "" {
+		return *s.config.ProbeURL
+	}
+	return s.config.ServiceChecker.InstanceURL()
 }
 
 func dialAddress(listenAddress string) string {

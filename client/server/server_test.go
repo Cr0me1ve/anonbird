@@ -81,10 +81,26 @@ func TestConnectWithRetryRuns(t *testing.T) {
 
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(30*time.Second))
 	defer cancel()
+	tempDir := t.TempDir()
+	origDefaultProfileDir := profilemanager.DefaultConfigPathDir
+	origDefaultConfigPath := profilemanager.DefaultConfigPath
+	origActiveProfileStatePath := profilemanager.ActiveProfileStatePath
+	origConfigDirOverride := profilemanager.ConfigDirOverride
+	profilemanager.DefaultConfigPathDir = tempDir
+	profilemanager.DefaultConfigPath = filepath.Join(tempDir, "default.json")
+	profilemanager.ActiveProfileStatePath = filepath.Join(tempDir, "active_profile.json")
+	profilemanager.ConfigDirOverride = tempDir
+	t.Cleanup(func() {
+		profilemanager.DefaultConfigPathDir = origDefaultProfileDir
+		profilemanager.DefaultConfigPath = origDefaultConfigPath
+		profilemanager.ActiveProfileStatePath = origActiveProfileStatePath
+		profilemanager.ConfigDirOverride = origConfigDirOverride
+	})
+
 	// create new server
 	ic := profilemanager.ConfigInput{
 		ManagementURL: "http://" + mgmtAddr,
-		ConfigPath:    t.TempDir() + "/test-profile.json",
+		ConfigPath:    filepath.Join(tempDir, "test-profile.json"),
 	}
 
 	config, err := profilemanager.UpdateOrCreateConfig(ic)
@@ -258,6 +274,42 @@ func TestServer_SubcribeEvents(t *testing.T) {
 	err = s.SubscribeEvents(upReq, mockServer)
 
 	assert.NoError(t, err)
+}
+
+func TestAnonymousProfileDisablesUpdateManager(t *testing.T) {
+	ctx := internal.CtxInitState(context.Background())
+	tempDir := t.TempDir()
+	origDefaultProfileDir := profilemanager.DefaultConfigPathDir
+	origDefaultConfigPath := profilemanager.DefaultConfigPath
+	origActiveProfileStatePath := profilemanager.ActiveProfileStatePath
+	profilemanager.DefaultConfigPathDir = tempDir
+	profilemanager.DefaultConfigPath = filepath.Join(tempDir, "default.json")
+	profilemanager.ActiveProfileStatePath = filepath.Join(tempDir, "active_profile.json")
+	t.Cleanup(func() {
+		profilemanager.DefaultConfigPathDir = origDefaultProfileDir
+		profilemanager.DefaultConfigPath = origDefaultConfigPath
+		profilemanager.ActiveProfileStatePath = origActiveProfileStatePath
+	})
+
+	enabled := true
+	_, err := profilemanager.UpdateOrCreateConfig(profilemanager.ConfigInput{
+		ConfigPath:    profilemanager.DefaultConfigPath,
+		ManagementURL: "http://anonbirdexample.onion",
+		AnonymousMode: &enabled,
+	})
+	require.NoError(t, err)
+	require.NoError(t, profilemanager.NewServiceManager("").SetActiveProfileStateToDefault())
+
+	s := New(ctx, "console", "", false, false, false, false)
+	s.configureUpdateManagerForConfig(s.config)
+	require.NotNil(t, s.updateManager)
+
+	s.startUpdateManagerForGUI()
+	require.Nil(t, s.updateManager)
+
+	features, err := s.GetFeatures(ctx, &daemonProto.GetFeaturesRequest{})
+	require.NoError(t, err)
+	require.True(t, features.DisableUpdateSettings)
 }
 
 type mockServer struct {

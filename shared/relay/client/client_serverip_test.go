@@ -117,6 +117,38 @@ func TestClient_ConnectedIPAfterFQDNDial(t *testing.T) {
 	}
 }
 
+func TestClient_ServerIPShortcutDisabledForAnonymousDialers(t *testing.T) {
+	serverURL := "rel://relay.example.invalid:80"
+	serverIP := netip.MustParseAddr("203.0.113.10")
+
+	tests := []struct {
+		name   string
+		client *Client
+	}{
+		{
+			name:   "socks5",
+			client: NewClientWithServerIPAndSOCKS5(serverURL, serverIP, hmacTokenStore, "alice-socks", iface.DefaultMTU, "127.0.0.1:9050"),
+		},
+		{
+			name:   "i2p",
+			client: NewClientWithServerIPAndI2P(serverURL, serverIP, hmacTokenStore, "alice-i2p", iface.DefaultMTU, "127.0.0.1:7656", 1, 3),
+		},
+		{
+			name:   "clearnet",
+			client: NewClientWithServerIP(serverURL, serverIP, hmacTokenStore, "alice-clearnet", iface.DefaultMTU),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := tt.name == "clearnet"
+			if got := tt.client.shouldDialServerIP(); got != want {
+				t.Fatalf("shouldDialServerIP() = %t, want %t", got, want)
+			}
+		})
+	}
+}
+
 func TestSubstituteHost(t *testing.T) {
 	tests := []struct {
 		name           string

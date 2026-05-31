@@ -13,6 +13,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
 	"github.com/netbirdio/netbird/client/iface"
+	"github.com/netbirdio/netbird/client/internal/anonymous"
 	"github.com/netbirdio/netbird/client/internal/routemanager/dynamic"
 	"github.com/netbirdio/netbird/util"
 )
@@ -200,6 +201,117 @@ func TestWireguardPortZeroExplicit(t *testing.T) {
 	assert.Equal(t, 0, readConfig.WgPort, "WgPort should remain 0 after reading from file")
 }
 
+func TestAnonymousModeConfig(t *testing.T) {
+	enabled := true
+	config, err := UpdateOrCreateConfig(ConfigInput{
+		ConfigPath:    filepath.Join(t.TempDir(), "config.json"),
+		ManagementURL: "http://managementexampleabcdefghijklmnop.onion",
+		AnonymousMode: &enabled,
+	})
+	require.NoError(t, err)
+
+	require.True(t, config.AnonymousMode)
+	require.Equal(t, anonymous.TransportTorRelayOnly, config.AnonymousTransport.Type)
+	require.Equal(t, anonymous.DefaultTorSOCKS5, config.AnonymousTransport.TorSOCKS5)
+	require.True(t, config.AnonymousTransport.RequireAnonymous)
+	require.True(t, config.DisableClientRoutes)
+	require.True(t, config.DisableServerRoutes)
+	require.True(t, config.BlockLANAccess)
+	require.False(t, config.BlockInbound)
+	require.False(t, config.LazyConnectionEnabled)
+}
+
+func TestAnonymousModeI2PConfig(t *testing.T) {
+	enabled := true
+	transport := anonymous.TransportConfig{Type: anonymous.TransportI2PDatagram}
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	config, err := UpdateOrCreateConfig(ConfigInput{
+		ConfigPath:         configPath,
+		ManagementURL:      "http://managementexample.b32.i2p",
+		AnonymousMode:      &enabled,
+		AnonymousTransport: &transport,
+	})
+	require.NoError(t, err)
+
+	require.True(t, config.AnonymousMode)
+	require.Equal(t, anonymous.TransportI2PDatagram, config.AnonymousTransport.Type)
+	require.Equal(t, anonymous.DefaultI2PSAM, config.AnonymousTransport.I2PSAM)
+	require.Equal(t, uint8(anonymous.DefaultI2PTunnelLength), config.AnonymousTransport.I2PTunnelLength)
+	require.Equal(t, uint8(anonymous.DefaultI2PTunnelQuantity), config.AnonymousTransport.I2PTunnelQuantity)
+	require.Equal(t, anonymous.DefaultI2PDaemonMode, config.AnonymousTransport.I2PDaemonMode)
+	require.Equal(t, anonymous.DefaultI2PDaemonPath, config.AnonymousTransport.I2PDaemonPath)
+	require.Empty(t, config.AnonymousTransport.I2PDataDir)
+	require.True(t, config.AnonymousTransport.RequireAnonymous)
+}
+
+func TestAnonymousModeI2PCustomTunnelConfig(t *testing.T) {
+	enabled := true
+	transport := anonymous.TransportConfig{
+		Type:                  anonymous.TransportI2PDatagram,
+		I2PSAM:                "127.0.0.1:17656",
+		I2PTunnelLength:       2,
+		I2PTunnelQuantity:     4,
+		I2PDestinationPublic:  "public-destination",
+		I2PDestinationPrivate: "private-destination",
+		I2PDaemonMode:         anonymous.I2PDaemonManaged,
+		I2PDaemonPath:         "/usr/local/bin/i2pd",
+		I2PDataDir:            "/tmp/anonbird-i2pd",
+	}
+	config, err := UpdateOrCreateConfig(ConfigInput{
+		ConfigPath:         filepath.Join(t.TempDir(), "config.json"),
+		ManagementURL:      "http://managementexample.b32.i2p",
+		AnonymousMode:      &enabled,
+		AnonymousTransport: &transport,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, anonymous.TransportI2PDatagram, config.AnonymousTransport.Type)
+	require.Equal(t, "127.0.0.1:17656", config.AnonymousTransport.I2PSAM)
+	require.Equal(t, uint8(2), config.AnonymousTransport.I2PTunnelLength)
+	require.Equal(t, uint8(4), config.AnonymousTransport.I2PTunnelQuantity)
+	require.Equal(t, "public-destination", config.AnonymousTransport.I2PDestinationPublic)
+	require.Equal(t, "private-destination", config.AnonymousTransport.I2PDestinationPrivate)
+	require.Equal(t, anonymous.I2PDaemonManaged, config.AnonymousTransport.I2PDaemonMode)
+	require.Equal(t, "/usr/local/bin/i2pd", config.AnonymousTransport.I2PDaemonPath)
+	require.Equal(t, "/tmp/anonbird-i2pd", config.AnonymousTransport.I2PDataDir)
+}
+
+func TestAnonymousModeRejectsClearnetManagement(t *testing.T) {
+	enabled := true
+	_, err := UpdateOrCreateConfig(ConfigInput{
+		ConfigPath:    filepath.Join(t.TempDir(), "config.json"),
+		ManagementURL: "https://api.netbird.io",
+		AnonymousMode: &enabled,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "anonymous mode violation")
+}
+
+func TestAnonymousModeRejectsTransportMismatch(t *testing.T) {
+	enabled := true
+	transport := anonymous.TransportConfig{Type: anonymous.TransportI2PDatagram}
+	_, err := UpdateOrCreateConfig(ConfigInput{
+		ConfigPath:         filepath.Join(t.TempDir(), "config.json"),
+		ManagementURL:      "http://managementexampleabcdefghijklmnop.onion",
+		AnonymousMode:      &enabled,
+		AnonymousTransport: &transport,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "i2p-datagram")
+}
+
+func TestAnonymousModeRejectsNATExternalIPs(t *testing.T) {
+	enabled := true
+	_, err := UpdateOrCreateConfig(ConfigInput{
+		ConfigPath:     filepath.Join(t.TempDir(), "config.json"),
+		ManagementURL:  "http://managementexampleabcdefghijklmnop.onion",
+		AnonymousMode:  &enabled,
+		NATExternalIPs: []string{"93.177.116.58"},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NAT external IP mappings")
+}
+
 func TestWireguardPortDefaultVsExplicit(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -302,4 +414,29 @@ func TestUpdateOldManagementURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdateOldManagementURLSkipsAnonymousMode(t *testing.T) {
+	proberCalled := false
+	origProber := newMgmProber
+	newMgmProber = func(_ context.Context, _ string, _ wgtypes.Key, _ bool) (mgmProber, error) {
+		proberCalled = true
+		return &mockMgmProber{}, nil
+	}
+	t.Cleanup(func() { newMgmProber = origProber })
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	config, err := UpdateOrCreateConfig(ConfigInput{
+		ManagementURL: oldDefaultManagementURL,
+		ConfigPath:    configPath,
+	})
+	require.NoError(t, err)
+	config.AnonymousMode = true
+
+	resultConfig, err := UpdateOldManagementURL(context.TODO(), config, configPath)
+	require.NoError(t, err)
+	require.Same(t, config, resultConfig)
+	require.False(t, proberCalled, "anonymous mode must not probe cloud management URL")
+	require.Equal(t, oldDefaultManagementURL, resultConfig.ManagementURL.String())
 }

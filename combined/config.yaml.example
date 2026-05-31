@@ -30,6 +30,9 @@ server:
   # Healthcheck endpoint address
   healthcheckAddress: ":9000"
 
+  # Disable legacy management gRPC listener on port 33073
+  disableLegacyManagementPort: false
+
   # Logging configuration
   logLevel: "info"    # Default log level for all components: panic, fatal, error, warn, info, debug, trace
   logFile: "console"  # "console" or path to log file
@@ -47,6 +50,15 @@ server:
 
   # Shared secret for relay authentication (required when running local relay)
   authSecret: "your-secret-key-here"
+
+  # Optional per-peer relay transport rate limit.
+  # Useful for anonymous/onion deployments where the relay is the only data plane.
+  # Set enabled: true and choose a byte rate; burstBytes defaults to bytesPerSecond
+  # and is automatically raised enough to pass one full relay packet.
+  # relayRateLimit:
+  #   enabled: true
+  #   bytesPerSecond: 1048576
+  #   burstBytes: 2097152
 
   # Data directory for all services
   dataDir: "/var/lib/netbird/"
@@ -77,8 +89,12 @@ server:
   # ============================================================================
 
   # Metrics and updates
+  # Automatically disabled when exposedAddress uses a .onion or .i2p host.
   disableAnonymousMetrics: false
+  # Automatically disabled when exposedAddress uses a .onion or .i2p host.
   disableGeoliteUpdate: false
+  # Automatically disabled when exposedAddress uses a .onion or .i2p host.
+  disableVersionCheck: false
 
   # Embedded authentication/identity provider (Dex) configuration (always enabled)
   auth:

@@ -107,6 +107,26 @@ func TestEvalConnStatus_ICEUnavailable(t *testing.T) {
 	}
 }
 
+func TestEvalConnStatus_AnonymousTransport(t *testing.T) {
+	if got := evalConnStatus(connStatusInputs{
+		anonymousTransport: true,
+		anonymousConnected: true,
+		forceRelay:         true,
+	}); got != guard.ConnStatusConnected {
+		t.Fatalf("evalConnStatus = %v, want %v", got, guard.ConnStatusConnected)
+	}
+
+	if got := evalConnStatus(connStatusInputs{
+		anonymousTransport: true,
+		anonymousConnected: false,
+		forceRelay:         true,
+		peerUsesRelay:      true,
+		relayConnected:     true,
+	}); got != guard.ConnStatusConnected {
+		t.Fatalf("evalConnStatus = %v, want %v", got, guard.ConnStatusConnected)
+	}
+}
+
 func TestEvalConnStatus_FullyAvailable(t *testing.T) {
 	base := connStatusInputs{
 		remoteSupportsICE: true,

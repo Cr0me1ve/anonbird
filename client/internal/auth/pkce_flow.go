@@ -60,6 +60,8 @@ type PKCEAuthProviderConfig struct {
 	LoginFlag common.LoginFlag
 	// LoginHint is used to pre-fill the email/username field during authentication
 	LoginHint string
+	// HTTPClient overrides the OAuth token exchange HTTP client
+	HTTPClient *http.Client
 }
 
 // validatePKCEConfig validates PKCE provider configuration
@@ -221,14 +223,11 @@ func (p *PKCEAuthorizationFlow) WaitToken(ctx context.Context, info AuthFlowInfo
 func (p *PKCEAuthorizationFlow) startServer(server *http.Server, tokenChan chan<- *oauth2.Token, errChan chan<- error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		cert := p.providerConfig.ClientCertPair
-		if cert != nil {
-			tr := &http.Transport{
-				TLSClientConfig: &tls.Config{
-					Certificates: []tls.Certificate{*cert},
-				},
-			}
-			sslClient := &http.Client{Transport: tr}
+		if p.providerConfig.HTTPClient != nil {
+			ctx := context.WithValue(req.Context(), oauth2.HTTPClient, p.providerConfig.HTTPClient)
+			req = req.WithContext(ctx)
+		} else if cert := p.providerConfig.ClientCertPair; cert != nil {
+			sslClient := newProviderHTTPClient(cert, 0, nil)
 			ctx := context.WithValue(req.Context(), oauth2.HTTPClient, sslClient)
 			req = req.WithContext(ctx)
 		}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"strings"
 
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
@@ -548,12 +549,13 @@ func toAccessiblePeers(netMap *types.NetworkMap, dnsDomain string) []api.Accessi
 }
 
 func peerToAccessiblePeer(peer *nbpeer.Peer, dnsDomain string) api.AccessiblePeer {
+	countryCode, cityName, geonameID := peerLocationFields(peer)
 	return api.AccessiblePeer{
-		CityName:    peer.Location.CityName,
+		CityName:    cityName,
 		Connected:   peer.Status.Connected,
-		CountryCode: peer.Location.CountryCode,
+		CountryCode: countryCode,
 		DnsLabel:    fqdn(peer, dnsDomain),
-		GeonameId:   int(peer.Location.GeoNameID),
+		GeonameId:   geonameID,
 		Id:          peer.ID,
 		Ip:          peer.IP.String(),
 		Ipv6:        peerIPv6String(peer),
@@ -569,6 +571,7 @@ func toSinglePeerResponse(peer *nbpeer.Peer, groupsInfo []api.GroupMinimum, dnsD
 	if osVersion == "" {
 		osVersion = peer.Meta.Core
 	}
+	countryCode, cityName, geonameID := peerLocationFields(peer)
 
 	apiPeer := &api.Peer{
 		CreatedAt:                   peer.CreatedAt,
@@ -576,12 +579,13 @@ func toSinglePeerResponse(peer *nbpeer.Peer, groupsInfo []api.GroupMinimum, dnsD
 		Name:                        peer.Name,
 		Ip:                          peer.IP.String(),
 		Ipv6:                        peerIPv6String(peer),
-		ConnectionIp:                peer.Location.ConnectionIP.String(),
+		ConnectionIp:                peerConnectionIP(peer),
+		AnonymousTransport:          peerAnonymousTransport(peer),
 		Connected:                   peer.Status.Connected,
 		LastSeen:                    peer.Status.LastSeen,
 		Os:                          fmt.Sprintf("%s %s", peer.Meta.OS, osVersion),
 		KernelVersion:               peer.Meta.KernelVersion,
-		GeonameId:                   int(peer.Location.GeoNameID),
+		GeonameId:                   geonameID,
 		Version:                     peer.Meta.WtVersion,
 		Groups:                      groupsInfo,
 		SshEnabled:                  peer.SSHEnabled,
@@ -594,13 +598,14 @@ func toSinglePeerResponse(peer *nbpeer.Peer, groupsInfo []api.GroupMinimum, dnsD
 		LastLogin:                   peer.GetLastLogin(),
 		LoginExpired:                peer.Status.LoginExpired,
 		ApprovalRequired:            !approved,
-		CountryCode:                 peer.Location.CountryCode,
-		CityName:                    peer.Location.CityName,
-		SerialNumber:                peer.Meta.SystemSerialNumber,
+		CountryCode:                 countryCode,
+		CityName:                    cityName,
+		SerialNumber:                peerSerialNumber(peer),
 		InactivityExpirationEnabled: peer.InactivityExpirationEnabled,
 		Ephemeral:                   peer.Ephemeral,
 		LocalFlags: &api.PeerLocalFlags{
 			BlockInbound:          &peer.Meta.Flags.BlockInbound,
+			AnonymousMode:         &peer.Meta.Flags.AnonymousMode,
 			BlockLanAccess:        &peer.Meta.Flags.BlockLANAccess,
 			DisableClientRoutes:   &peer.Meta.Flags.DisableClientRoutes,
 			DisableDns:            &peer.Meta.Flags.DisableDNS,
@@ -625,18 +630,20 @@ func toPeerListItemResponse(peer *nbpeer.Peer, groupsInfo []api.GroupMinimum, dn
 	if osVersion == "" {
 		osVersion = peer.Meta.Core
 	}
+	countryCode, cityName, geonameID := peerLocationFields(peer)
 	return &api.PeerBatch{
 		CreatedAt:                   peer.CreatedAt,
 		Id:                          peer.ID,
 		Name:                        peer.Name,
 		Ip:                          peer.IP.String(),
 		Ipv6:                        peerIPv6String(peer),
-		ConnectionIp:                peer.Location.ConnectionIP.String(),
+		ConnectionIp:                peerConnectionIP(peer),
+		AnonymousTransport:          peerAnonymousTransport(peer),
 		Connected:                   peer.Status.Connected,
 		LastSeen:                    peer.Status.LastSeen,
 		Os:                          fmt.Sprintf("%s %s", peer.Meta.OS, osVersion),
 		KernelVersion:               peer.Meta.KernelVersion,
-		GeonameId:                   int(peer.Location.GeoNameID),
+		GeonameId:                   geonameID,
 		Version:                     peer.Meta.WtVersion,
 		Groups:                      groupsInfo,
 		SshEnabled:                  peer.SSHEnabled,
@@ -649,13 +656,14 @@ func toPeerListItemResponse(peer *nbpeer.Peer, groupsInfo []api.GroupMinimum, dn
 		LastLogin:                   peer.GetLastLogin(),
 		LoginExpired:                peer.Status.LoginExpired,
 		AccessiblePeersCount:        accessiblePeersCount,
-		CountryCode:                 peer.Location.CountryCode,
-		CityName:                    peer.Location.CityName,
-		SerialNumber:                peer.Meta.SystemSerialNumber,
+		CountryCode:                 countryCode,
+		CityName:                    cityName,
+		SerialNumber:                peerSerialNumber(peer),
 		InactivityExpirationEnabled: peer.InactivityExpirationEnabled,
 		Ephemeral:                   peer.Ephemeral,
 		LocalFlags: &api.PeerLocalFlags{
 			BlockInbound:          &peer.Meta.Flags.BlockInbound,
+			AnonymousMode:         &peer.Meta.Flags.AnonymousMode,
 			BlockLanAccess:        &peer.Meta.Flags.BlockLANAccess,
 			DisableClientRoutes:   &peer.Meta.Flags.DisableClientRoutes,
 			DisableDns:            &peer.Meta.Flags.DisableDNS,
@@ -706,6 +714,39 @@ func fqdnList(extraLabels []string, dnsDomain string) []string {
 		fqdnList = append(fqdnList, fqdn)
 	}
 	return fqdnList
+}
+
+func peerConnectionIP(peer *nbpeer.Peer) string {
+	if peer.Meta.Flags.AnonymousMode || peer.Location.ConnectionIP == nil {
+		return ""
+	}
+	return peer.Location.ConnectionIP.String()
+}
+
+func peerLocationFields(peer *nbpeer.Peer) (string, string, int) {
+	if peer.Meta.Flags.AnonymousMode {
+		return "", "", 0
+	}
+	return peer.Location.CountryCode, peer.Location.CityName, int(peer.Location.GeoNameID)
+}
+
+func peerSerialNumber(peer *nbpeer.Peer) string {
+	if peer.Meta.Flags.AnonymousMode {
+		return ""
+	}
+	return peer.Meta.SystemSerialNumber
+}
+
+func peerAnonymousTransport(peer *nbpeer.Peer) *string {
+	if !peer.Meta.Flags.AnonymousMode {
+		return nil
+	}
+
+	transport := strings.TrimSpace(peer.Meta.AnonymousTransport)
+	if transport == "" {
+		transport = "tor-relay-only"
+	}
+	return &transport
 }
 
 func peerIPv6String(peer *nbpeer.Peer) *string {
