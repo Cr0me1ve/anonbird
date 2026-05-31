@@ -1318,7 +1318,7 @@ Release-readiness gate нельзя закрывать только по лок�
   - `systemctl enable --now anonbird`;
   - `anonbird status`;
   - `anonbird debug anonymous-check`.
-- [ ] Проверить clean install на RHEL-like Linux с теми же критериями.
+- [x] Проверить clean install на RHEL-like Linux с теми же критериями.
 
 Статус 2026-05-31: Linux install/package surface приведён к canonical AnonBird naming. `release_files/install.sh` ставит release binaries из `Cr0me1ve/anonbird` по умолчанию, поддерживает `--no-service`, `--no-start`, `--compat-symlink`, `--force-compat-symlink` и env overrides для RC до фактического repo rename. DEB/RPM postinstall/preremove умеют безопасно создавать/удалять временный `/usr/bin/netbird -> /usr/bin/anonbird` только по явному `ANONBIRD_COMPAT_SYMLINK=true`. Release metadata, updater artifact URLs, Windows/macOS installer naming, README install commands и GitHub release workflow artifact names переключены на `anonbird*`. Проверено локально: `sh -n`, `shellcheck -S error`, YAML parse, WiX XML parse, targeted `go test` по updater/cmd. Открыто: реальный clean install/upgrade из RC artifacts на testbed.
 
@@ -1335,6 +1335,8 @@ Release-readiness gate нельзя закрывать только по лок�
 - enrollment через I2P management URL с redacted setup key OK, `anonbird debug anonymous-check` OK: management/signal/relay `i2p`, STUN/ICE/direct UDP/fallback disabled, published endpoints none.
 
 Заметка из ручного теста: первый RC tarball с macOS owner сохранил `501:staff` при распаковке; `install.sh` исправлен так, чтобы после установки бинарника нормализовать `0755` и `root:root` на Linux (`root:wheel` на macOS). Также `--update` теперь уважает `ANONBIRD_RELEASE`, а version compare больше не шумит `sort -V` для `*-rc-local` strings.
+
+Статус 2026-05-31: RHEL-like clean install закрыт на `213.108.3.228` через одноразовый AlmaLinux 9.8 systemd container (`ID_LIKE="rhel centos fedora"`, `dnf`, `systemctl`, `x86_64`) с mounted release-style artifacts. Artifact `v0.0.3/anonbird_0.0.3_linux_amd64.tar.gz`, SHA256 `f62c30712a701ab0f473361787c16a8f9d83a7c506c97006a332da3690076026`; installer `release_files/install.sh`, SHA256 `f4c4b209bca6ba92998e048b3a313093aec478216409220a9af1e94fb9bd07e3`. Команда установки: `SKIP_UI_APP=true ANONBIRD_RELEASE=v0.0.3 ANONBIRD_RELEASE_BASE_URL=file:///release ANONBIRD_COMPAT_SYMLINK=true /release/install.sh --no-start`. Проверено: script detected `dnf` and used release binaries without configuring upstream RPM repos; `/usr/bin/anonbird` version `0.0.3-rc-rhel`, owner/mode `root:root 755`; `/usr/bin/netbird -> /usr/bin/anonbird`; `systemctl enable --now anonbird.service`; service `active`/`enabled`; `anonbird status` returns `NeedsLogin`; `anonbird debug anonymous-check` returns `Result: OK` in pre-enrollment mode with `Anonymous mode: pending enrollment`, `Default connection policy: anonymous tor-relay-only`, STUN/ICE/direct UDP disabled, no published endpoints. Найден и исправлен диагностический rough edge: pre-enrollment clean install previously reported a false `anonymous_mode disabled` failure even though no clearnet connection was configured or active. Проверено локально: `go test ./client/cmd -run 'TestBuildAnonymousCheckReport|TestAnonymousRootFlagsDefaultToTorRelayOnly|TestDefaultAnonymousModeAppliedToConfigInput|TestUnsafeClearnet' -count=1`.
 
 ### 22.2. Anonymous-by-default UX
 

@@ -9,7 +9,9 @@ import (
 	"github.com/spf13/cobra"
 	gstatus "google.golang.org/grpc/status"
 
+	"github.com/netbirdio/netbird/client/internal"
 	"github.com/netbirdio/netbird/client/internal/anonymous"
+	"github.com/netbirdio/netbird/client/internal/profilemanager"
 	"github.com/netbirdio/netbird/client/proto"
 	"github.com/netbirdio/netbird/shared/anonymous/i2psam"
 )
@@ -130,8 +132,11 @@ func buildAnonymousCheckReport(cfg *proto.GetConfigResponse, status *proto.Statu
 		return report
 	}
 
+	preEnrollmentDefault := isPreEnrollmentDefaultConfig(cfg, status)
 	if cfg.GetAnonymousMode() {
 		addLine("Anonymous mode", "enabled")
+	} else if preEnrollmentDefault {
+		addLine("Anonymous mode", "pending enrollment")
 	} else {
 		addLine("Anonymous mode", "disabled")
 		addViolation("anonymous_mode is disabled")
@@ -174,7 +179,10 @@ func buildAnonymousCheckReport(cfg *proto.GetConfigResponse, status *proto.Statu
 
 	managementTransport := classifyAnonymousEndpoint(cfg.GetManagementUrl())
 	addLine("Management transport", managementTransport)
-	if managementTransport != "tor" && managementTransport != "i2p" {
+	if preEnrollmentDefault && managementTransport == "clearnet" {
+		addLine("Enrollment", "required")
+		addLine("Default connection policy", "anonymous tor-relay-only")
+	} else if managementTransport != "tor" && managementTransport != "i2p" {
 		addViolation("management URL is not an anonymous .onion or .b32.i2p endpoint")
 	} else if expectedTransport != "" && managementTransport != expectedTransport {
 		addViolation(fmt.Sprintf("management URL uses %s but anonymous transport is %s", managementTransport, transport.Type))
@@ -266,7 +274,7 @@ func buildAnonymousCheckReport(cfg *proto.GetConfigResponse, status *proto.Statu
 		}
 	}
 
-	if managementTransport == "clearnet" || signalTransport == "clearnet" || relayTransport == "clearnet" || directUDPStatus == "enabled" {
+	if (!preEnrollmentDefault && managementTransport == "clearnet") || signalTransport == "clearnet" || relayTransport == "clearnet" || directUDPStatus == "enabled" {
 		clearnetFallback = "enabled"
 	}
 
@@ -287,6 +295,28 @@ func buildAnonymousCheckReport(cfg *proto.GetConfigResponse, status *proto.Statu
 	addLine("WireGuard mode", wireGuardMode)
 
 	return report
+}
+
+func isPreEnrollmentDefaultConfig(cfg *proto.GetConfigResponse, status *proto.StatusResponse) bool {
+	if cfg == nil || status == nil {
+		return false
+	}
+	if cfg.GetAnonymousMode() {
+		return false
+	}
+	if status.GetStatus() != string(internal.StatusNeedsLogin) {
+		return false
+	}
+	if strings.TrimSpace(cfg.GetManagementUrl()) != profilemanager.DefaultManagementURL {
+		return false
+	}
+	fullStatus := status.GetFullStatus()
+	if fullStatus == nil {
+		return true
+	}
+	return fullStatus.GetSignalState().GetURL() == "" &&
+		len(fullStatus.GetRelays()) == 0 &&
+		len(fullStatus.GetPeers()) == 0
 }
 
 func peerUsesAnonymousI2PDatagramStatus(peer *proto.PeerState, transport anonymous.TransportConfig) bool {

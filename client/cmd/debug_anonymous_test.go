@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/netbirdio/netbird/client/internal"
 	"github.com/netbirdio/netbird/client/internal/anonymous"
+	"github.com/netbirdio/netbird/client/internal/profilemanager"
 	"github.com/netbirdio/netbird/client/proto"
 )
 
@@ -142,6 +144,40 @@ func TestBuildAnonymousCheckReportI2PDirectPeerOK(t *testing.T) {
 		"Clearnet fallback: disabled",
 		"Published endpoints: none",
 		"Anonymous peer endpoints: i2p-datagram",
+		"Result: OK",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, output)
+		}
+	}
+}
+
+func TestBuildAnonymousCheckReportPreEnrollmentDefaultOK(t *testing.T) {
+	report := buildAnonymousCheckReport(
+		&proto.GetConfigResponse{
+			AnonymousMode:      false,
+			AnonymousTransport: anonymous.TransportTorRelayOnly,
+			TorSocks5:          anonymous.DefaultTorSOCKS5,
+			ManagementUrl:      profilemanager.DefaultManagementURL,
+		},
+		&proto.StatusResponse{
+			Status: string(internal.StatusNeedsLogin),
+			FullStatus: &proto.FullStatus{
+				LocalPeerState: &proto.LocalPeerState{KernelInterface: false},
+			},
+		},
+	)
+
+	if !report.OK() {
+		t.Fatalf("expected pre-enrollment default check to pass, got violations: %v", report.violations)
+	}
+	output := report.String()
+	for _, want := range []string{
+		"Anonymous mode: pending enrollment",
+		"Management transport: clearnet",
+		"Enrollment: required",
+		"Default connection policy: anonymous tor-relay-only",
+		"Clearnet fallback: disabled",
 		"Result: OK",
 	} {
 		if !strings.Contains(output, want) {

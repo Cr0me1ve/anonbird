@@ -109,6 +109,20 @@ curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/install
   | sudo bash -s --
 ```
 
+After a fresh install the daemon can be active while still waiting for
+enrollment:
+
+```bash
+sudo systemctl status anonbird
+anonbird status
+anonbird debug anonymous-check
+```
+
+Before enrollment, `anonymous-check` should report `pending enrollment`,
+`Default connection policy: anonymous tor-relay-only`, and `Result: OK`. After
+enrollment it should report the actual Tor or I2P management/signal/relay
+transports.
+
 For migration dry-runs where old scripts still call `netbird`, add a temporary
 compatibility symlink without making it the canonical command:
 
