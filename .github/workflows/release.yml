@@ -351,6 +351,8 @@ jobs:
 
   release_ui:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       release_ui_artifact_url: ${{ steps.upload_release_ui.outputs.artifact-url }}
     env:
@@ -474,6 +476,8 @@ jobs:
 
   release_ui_darwin:
     runs-on: macos-latest
+    permissions:
+      contents: write
     outputs:
       release_ui_darwin_artifact_url: ${{ steps.upload_release_ui_darwin.outputs.artifact-url }}
     steps:
