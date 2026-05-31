@@ -183,6 +183,7 @@ jobs:
           grep "external-ip" turnserver.conf | grep $CI_NETBIRD_TURN_EXTERNAL_IP
           grep "NETBIRD_STORE_ENGINE_MYSQL_DSN=$NETBIRD_STORE_ENGINE_MYSQL_DSN" docker-compose.yml
           grep NETBIRD_STORE_ENGINE_POSTGRES_DSN docker-compose.yml | egrep "$NETBIRD_STORE_ENGINE_POSTGRES_DSN"
+          grep NB_DISABLE_GEOLOCATION docker-compose.yml | grep true
           # check relay values
           grep "NB_EXPOSED_ADDRESS=rels://$CI_NETBIRD_DOMAIN:33445" docker-compose.yml
           grep "NB_LISTEN_ADDRESS=:33445" docker-compose.yml
@@ -247,13 +248,13 @@ jobs:
           test $count -eq 5 || docker compose logs
         working-directory: infrastructure_files/artifacts
 
-      - name: test geolocation databases
+      - name: test geolocation disabled
         working-directory: infrastructure_files/artifacts
         run: |
           sleep 30
           docker compose logs
-          docker compose exec management ls -l /var/lib/netbird/ | grep -i GeoLite2-City_[0-9]*.mmdb
-          docker compose exec management ls -l /var/lib/netbird/ | grep -i geonames_[0-9]*.db
+          docker compose exec management printenv NB_DISABLE_GEOLOCATION | grep true
+          docker compose logs management | grep 'geolocation service is disabled'
 
   test-getting-started-script:
     runs-on: ubuntu-latest

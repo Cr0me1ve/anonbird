@@ -131,18 +131,31 @@ get_release() {
     if [ "$RELEASE" = "latest" ]; then
         local URL="${RELEASE_API_URL}"
     else
-        TAG_NAME="\"tag_name\":\"${RELEASE}\""
-        echo "${RELEASE}" | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^/v/' | sed 's/^vv/v/'
-        return 0
+        if echo "${RELEASE}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            RELEASE=$(echo "${RELEASE}" | sed 's/^/v/' | sed 's/^vv/v/')
+            TAG_NAME="\"tag_name\":\"${RELEASE}\""
+            echo "${RELEASE}"
+            return 0
+        fi
+        echo "Unsupported release tag: ${RELEASE}" >&2
+        return 1
     fi
 	OUTPUT=""
     if [ -n "$GITHUB_TOKEN" ]; then
-          OUTPUT=$(curl -fH  "Authorization: token ${GITHUB_TOKEN}" -s "${URL}")
+          OUTPUT=$(curl -fH  "Authorization: token ${GITHUB_TOKEN}" -s "${URL}" || true)
     else
-          OUTPUT=$(curl -fsSL "${URL}")
+          OUTPUT=$(curl -fsSL "${URL}" || true)
     fi
-	TAG_NAME=$(echo ${OUTPUT} |  grep -Eo '\"tag_name\":\s*\"v([0-9]+\.){2}[0-9]+"' | tail -n 1)
-	echo "${TAG_NAME}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+'
+    if [ -z "$OUTPUT" ]; then
+        URL="https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=1"
+        if [ -n "$GITHUB_TOKEN" ]; then
+              OUTPUT=$(curl -fH  "Authorization: token ${GITHUB_TOKEN}" -s "${URL}" || true)
+        else
+              OUTPUT=$(curl -fsSL "${URL}" || true)
+        fi
+    fi
+	TAG_NAME=$(echo ${OUTPUT} |  grep -Eo '\"tag_name\":\s*\"v?([0-9]+\.){2}[0-9]+([-+][0-9A-Za-z.-]+)?\"' | head -n 1)
+	echo "${TAG_NAME}" | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?' | sed 's/^/v/' | sed 's/^vv/v/'
 }
 
 download_release_binary() {
@@ -154,11 +167,6 @@ download_release_binary() {
 	echo "Using the following tag name for binary installation: ${TAG_NAME}"
     BASE_URL="${RELEASE_BASE_URL}"
     BINARY_BASE_NAME="${VERSION#v}_${OS_TYPE}_${ARCH}.tar.gz"
-
-    # For Darwin, download the signed AnonBird UI archive if it is published.
-    if [ "$OS_TYPE" = "darwin" ] && [ "$1" = "$UI_APP" ]; then
-        BINARY_BASE_NAME="${VERSION#v}_${OS_TYPE}_${ARCH}_signed.zip"
-    fi
 
     if [ "$1" = "$UI_APP" ]; then
        BINARY_NAME="$1-${OS_TYPE}_${BINARY_BASE_NAME}"
@@ -179,7 +187,7 @@ download_release_binary() {
     fi
 
 
-    if [ "$OS_TYPE" = "darwin" ] && [ "$1" = "$UI_APP" ]; then
+    if [ "$OS_TYPE" = "darwin" ] && [ "$1" = "$UI_APP" ] && echo "$BINARY_NAME" | grep -q '\.zip$'; then
         INSTALL_DIR="/Applications/AnonBird UI.app"
 
         if test -d "$INSTALL_DIR" ; then

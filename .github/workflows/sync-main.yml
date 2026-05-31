@@ -12,6 +12,7 @@ concurrency:
 jobs:
   trigger_sync_main:
     runs-on: ubuntu-latest
+    if: ${{ vars.ANONBIRD_UPSTREAM_SYNC_ENABLED == 'true' }}
     steps:
       - name: Trigger main branch sync
         uses: benc-uk/workflow-dispatch@31e2b3319479a63f0ab15bf800eff9e913504e26 # v1.3.2

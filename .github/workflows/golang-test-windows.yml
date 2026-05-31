@@ -51,6 +51,7 @@ jobs:
         run: |
           $url = 'https://www.wintun.net/builds/wintun-0.14.1.zip'
           $destination = '${{ env.downloadPath }}\wintun.zip'
+          New-Item -ItemType Directory -Force -Path '${{ env.downloadPath }}' | Out-Null
           Invoke-WebRequest -Uri $url -OutFile $destination
           $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
@@ -67,8 +68,8 @@ jobs:
       - run: choco install -y sysinternals --ignore-checksums
       - run: choco install -y mingw
 
-      - run: PsExec64 -s -w ${{ github.workspace }} C:\hostedtoolcache\windows\go\${{ steps.go.outputs.go-version }}\x64\bin\go.exe env -w GOMODCACHE=${{ env.cache }}
-      - run: PsExec64 -s -w ${{ github.workspace }} C:\hostedtoolcache\windows\go\${{ steps.go.outputs.go-version }}\x64\bin\go.exe env -w GOCACHE=${{ env.modcache }}
+      - run: PsExec64 -s -w ${{ github.workspace }} C:\hostedtoolcache\windows\go\${{ steps.go.outputs.go-version }}\x64\bin\go.exe env -w GOCACHE=${{ env.cache }}
+      - run: PsExec64 -s -w ${{ github.workspace }} C:\hostedtoolcache\windows\go\${{ steps.go.outputs.go-version }}\x64\bin\go.exe env -w GOMODCACHE=${{ env.modcache }}
       - run: PsExec64 -s -w ${{ github.workspace }} C:\hostedtoolcache\windows\go\${{ steps.go.outputs.go-version }}\x64\bin\go.exe mod tidy
       - name: Generate test script
         run: |
@@ -81,4 +82,9 @@ jobs:
         run: PsExec64 -s -w ${{ github.workspace }} cmd.exe /c "${{ github.workspace }}\run-tests.cmd"
       - name: test output
         if: ${{ always() }}
-        run: Get-Content test-out.txt
+        run: |
+          if (Test-Path test-out.txt) {
+            Get-Content test-out.txt
+          } else {
+            Write-Host "test-out.txt was not generated"
+          }

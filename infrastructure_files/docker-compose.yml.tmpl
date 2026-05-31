@@ -94,6 +94,7 @@ services:
   #    # command for Let's Encrypt validation without dashboard container
   #    command: ["--letsencrypt-domain", "$NETBIRD_LETSENCRYPT_DOMAIN", "--log-file", "console"]
     environment:
+      - NB_DISABLE_GEOLOCATION=true
       - NETBIRD_STORE_ENGINE_POSTGRES_DSN=$NETBIRD_STORE_ENGINE_POSTGRES_DSN
       - NETBIRD_STORE_ENGINE_MYSQL_DSN=$NETBIRD_STORE_ENGINE_MYSQL_DSN
       

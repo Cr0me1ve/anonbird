@@ -30,10 +30,12 @@ jobs:
         env:
           SKIP_UI_APP: ${{ matrix.skip_ui_mode }}
           USE_BIN_INSTALL: ${{ matrix.install_binary }}
-          GITHUB_TOKEN: ${{ secrets.RO_API_CALLER_TOKEN }}
+          ANONBIRD_RELEASE: v0.72.0-rc.2
+          ANONBIRD_SKIP_SERVICE: true
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           [ "$SKIP_UI_APP" == "false" ] && export XDG_CURRENT_DESKTOP="none"
-          cat release_files/install.sh | sh -x
+          bash -x release_files/install.sh
 
       - name: check cli binary
-        run: command -v netbird
+        run: command -v anonbird
