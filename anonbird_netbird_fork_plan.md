@@ -5,7 +5,7 @@
 Дата: 2026-05-31
 
 - Статус: MVP anonymous mesh реализован и прошёл requirement-by-requirement audit 2026-05-31; post-MVP production/open-source release gate остаётся открытым до полного release-candidate прогона.
-- Текущий фокус: Phase 1-4, Phase 5 Tor relay stream multipath/per-channel health и Phase 6 direct-I2P MVP закрыты на code/unit + стендовом уровне; leak-map audit закрывает найденные clearnet side channels, reconnect/failure soak прошёл, dashboard/runtime/release packaging/proxy web/docs/infrastructure surface hardened. Сейчас идёт production-readiness слой: published artifacts/images, full release test suite, реальный Marton через overlay, NetBird->AnonBird migration server+clients, rollback/uninstall/reinstall и итоговый open-source release report.
+- Текущий фокус: Phase 1-4, Phase 5 Tor relay stream multipath/per-channel health и Phase 6 direct-I2P MVP закрыты на code/unit + стендовом уровне; leak-map audit закрывает найденные clearnet side channels, reconnect/failure soak прошёл, dashboard/runtime/release packaging/proxy web/docs/infrastructure surface hardened. Сейчас идёт production-readiness слой: published artifacts/images, full release test suite, Marton master-backed flow через overlay, NetBird->AnonBird migration server+clients, rollback/uninstall/reinstall и итоговый open-source release report.
 - Правило выполнения: каждая реализованная часть отмечается здесь или в соответствующем чеклисте ниже; если в ходе сверки с ТЗ появляются ограничения или риски, они фиксируются в заметках.
 - Сверка с новым ТЗ: четыре сервера пользователя для финального testbed зафиксированы в разделе 22.0; release/open-source readiness нельзя закрывать без полного remote прогона, Marton через виртуальную сеть, server/client migration с обычного NetBird и финального verdict, можно ли заменить NetBird на AnonBird без ручных исправлений.
 - Заметка: проектное имя клиента и пользовательских команд — AnonBird; CLI должен использовать `anonbird`.
@@ -1521,7 +1521,20 @@ anonbird migrate rollback
 - journal grep on `45`, `185` and I2P server `213` after Marton test was empty for public testbed IPs, old upstream hosts and STUN/ICE/NAT discovery patterns;
 - temporary Marton process stopped after test; static test binary left in `/opt/marten-server-test/marten-edge-overlay` for repeatability.
 
-Открыто: full Marton master-backed subscription flow всё ещё не закрыт, потому что этот smoke запускал edge-server с dummy upstream master URL и проверял только реальные edge HTTP/import/metrics endpoints. Для финального release gate нужно поднять Marton master+edge или существующий Marton stack так, чтобы `/sub/{token}` возвращал полноценный subscription payload через AnonBird overlay, затем повторить public-negative и leak/log sweep.
+Статус 2026-05-31: Marton master-backed subscription flow через AnonBird I2P overlay закрыт на распределённом testbed:
+
+- master peer: `45.138.103.224`, isolated Postgres test container bound only to `127.0.0.1:15432`, Marton master bound only to overlay `100.119.114.3:18081` and gRPC `100.119.114.3:18091`;
+- edge peer: `185.246.220.249`, Marton edge bound only to overlay `100.119.42.220:18082` and metrics `100.119.42.220:19092`;
+- edge -> master control path: `cache invalidation stream connected` to `100.119.114.3:18091`, and master logs show `/internal/bind` + `/internal/sub/{token}` from remote_addr `100.119.42.220`;
+- client -> edge path: request from `45.138.103.224` to `http://100.119.42.220:18082/sub/<redacted>` returned `200` with real Marton config payload: `outbounds=1`, first outbound `type=wireguard`, server `100.119.114.3`;
+- import route over overlay returned `302 marten://import?...url=http://100.119.42.220:18082/sub/<redacted>`;
+- edge metrics over overlay returned `200`; master health over overlay from `185.246.220.249` returned `200 {"status":"ok","db":"ok"}`;
+- public negative tests: `http://45.138.103.224:18081/healthz` and `http://185.246.220.249:18082/healthz` both failed with connection refused / HTTP code `000`;
+- `anonbird debug anonymous-check` on `45` and `185`: OK, `i2p-datagram`, management/signal/relay `i2p`, STUN/ICE/direct UDP/fallback disabled, published endpoints none;
+- Marton master/edge logs contain only overlay remote addresses (`100.119.42.220`, `100.119.114.3`) for the tested paths; grep for public testbed IPs and old upstream/STUN/ICE/NAT patterns was empty on Marton logs, AnonBird client journals and the I2P server journal;
+- temporary Marton processes stopped, Postgres test container removed, and files containing the test subscription token removed. Built test binaries/logs without subscription secret were left for repeatability/debug.
+
+Открыто: повторить Marton master-backed flow через Tor relay-only profile and record latency/throughput/errors separately, because the Marton full-flow proof above covers the I2P datagram overlay path only. Для финального release gate также нужно повторить этот тест из release artifacts, not dev/test binaries.
 - [ ] Выполнить release-candidate install/upgrade flow:
   - clean install server/dashboard/client из release packages/images;
   - upgrade с предыдущего AnonBird dev build;

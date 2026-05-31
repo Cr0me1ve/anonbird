@@ -236,10 +236,23 @@ sudo anonbird migrate rollback --backup-dir /var/backups/anonbird/migration-YYYY
 ### Release-readiness status
 
 The current branch contains a working anonymous MVP plus post-MVP production
-hardening tasks. Before a public production release, run the release-readiness
-plan in `anonbird_netbird_fork_plan.md`: release artifact install, migration from
-ordinary NetBird, rollback, Tor/I2P remote smoke, a real application test over
-the overlay, and a final leak sweep.
+hardening tasks. Treat it as a release candidate, not a final production tag,
+until the release-readiness plan in `anonbird_netbird_fork_plan.md` is fully
+green.
+
+Before a public production release, the final manual run must prove:
+
+- one-command server/dashboard install from published images;
+- Linux package install, upgrade, uninstall/reinstall and rollback from release
+  artifacts;
+- migration from ordinary self-hosted NetBird for the server and at least two
+  clients;
+- Tor and I2P remote smoke tests on the fixed release testbed;
+- a real application test over the overlay, currently Marton master+edge
+  subscription flow;
+- focused leak and secret sweeps over logs, git tree and artifacts;
+- an explicit verdict on whether a test project can replace NetBird with
+  AnonBird without manual patches.
 
 ### Internals
 
