@@ -1455,6 +1455,20 @@ anonbird migrate rollback
   - зафиксировать latency/throughput/errors через Tor relay-only и, отдельно, I2P datagram;
   - подтвердить, что service не доступен через real public IP и что логи AnonBird не раскрывают real peer IPs;
   - зафиксировать, какие ports/protocols Marton использовал, команды запуска и команды проверки с обеих сторон.
+
+Статус 2026-05-31: локальный и server-side поиск не нашёл Marton artifact/папку/command на `/Users/kirill/Code` и на четырёх testbed серверах, поэтому Marton-specific пункт остаётся открытым до появления конкретного artifact/команд запуска. Чтобы не блокировать application-layer проверку, добавлен повторяемый тестовый сервис `scripts/anonbird-overlay-smoke-server.py` (HTTP `/health`, HTTP `/echo`, WebSocket `/ws`) и прогнан через AnonBird I2P overlay:
+
+- server peer: `45.138.103.224`, overlay bind только `100.119.114.3:18080`, systemd unit `anonbird-overlay-smoke.service` временно создан и после теста удалён;
+- client peer: `185.246.220.249` (`100.119.42.220`);
+- listener evidence: `ss -ltnp` показывал только `100.119.114.3:18080`, public `45.138.103.224:18080` не слушался;
+- HTTP overlay: `curl http://100.119.114.3:18080/health` -> `{"status":"ok","service":"anonbird-overlay-smoke",...}`;
+- HTTP echo overlay: `/echo?message=anonbird-overlay` -> `{"echo":"anonbird-overlay"}`;
+- WebSocket overlay: `/ws` echo -> `anonbird-ws:anonbird-ws-check`;
+- public IP negative test from `185.246.220.249`: `curl http://45.138.103.224:18080/health` failed with connection refused;
+- overlay ping during app test: `185 -> 45` `4/4`, avg `1058.082 ms` during transient I2P latency spike; subsequent status on both peers `Peers count: 2/2 Connected`, `i2p-datagram/i2p-datagram`, `anonymous-check` OK;
+- journal grep on `45`, `185` and `213` for public IPs `45.138.103.224|185.246.220.249|213.108.3.228|93.177.116.58` after the app test was empty. Smoke app logs intentionally omit peer addresses and contain only request lines.
+
+Открыто: заменить smoke service реальным Marton-server test, когда будет доступен artifact/команды запуска, и повторить тот же HTTP/WebSocket/actual-protocol matrix для Marton.
 - [ ] Выполнить release-candidate install/upgrade flow:
   - clean install server/dashboard/client из release packages/images;
   - upgrade с предыдущего AnonBird dev build;
