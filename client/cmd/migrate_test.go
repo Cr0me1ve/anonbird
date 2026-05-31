@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -148,7 +149,9 @@ func TestApplyClientMigrationWithRejoinHardensConfig(t *testing.T) {
 	require.Equal(t, "NB-SETUP-xxxx\n", readTestFile(t, filepath.Join(root, "etc/anonbird/setup-key")))
 	setupKeyInfo, err := os.Stat(filepath.Join(root, "etc/anonbird/setup-key"))
 	require.NoError(t, err)
-	require.Equal(t, os.FileMode(0o600), setupKeyInfo.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		require.Equal(t, os.FileMode(0o600), setupKeyInfo.Mode().Perm())
+	}
 }
 
 func TestApplyClientMigrationAllowsUnsafeClearnetWithExplicitAck(t *testing.T) {
