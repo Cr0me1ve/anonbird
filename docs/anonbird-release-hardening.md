@@ -32,6 +32,22 @@ embed an upstream signing-key host.
 If `ANONBIRD_SIGNING_KEYS_BASE_URL` is not set, downloadable installer update
 attempts fail closed before downloading artifacts.
 
+## Release Publishing
+
+The default GitHub release workflow publishes container images to GHCR only. The
+one-command installer uses:
+
+| Image | Purpose |
+|---|---|
+| `ghcr.io/cr0me1ve/anonbird-dashboard:latest` | Dashboard UI |
+| `ghcr.io/cr0me1ve/anonbird-server:latest` | Combined management, signal and relay server |
+| `ghcr.io/cr0me1ve/anonbird-reverse-proxy:latest` | Optional AnonBird reverse proxy |
+
+Docker Hub and Homebrew tap publishing are intentionally not required for the
+fork release path. RPM signing is enabled when `GPG_RPM_PRIVATE_KEY` is
+configured; otherwise the workflow still builds GitHub release artifacts and
+GHCR images so a clean one-command self-host smoke can run.
+
 ## Debug Upload
 
 Debug bundle upload is opt-in.

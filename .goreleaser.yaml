@@ -226,7 +226,6 @@ nfpms:
         key_file: '{{ if index .Env "GPG_RPM_KEY_FILE" }}{{ .Env.GPG_RPM_KEY_FILE }}{{ end }}'
 dockers:
   - image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-amd64
       - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-amd64
     ids:
       - anonbird
@@ -244,7 +243,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-arm64v8
       - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm64v8
     ids:
       - anonbird
@@ -262,7 +260,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm
     ids:
       - anonbird
@@ -282,7 +279,6 @@ dockers:
       - "--label=maintainer=dev@anonbird.local"
 
   - image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-amd64
       - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-amd64
     ids:
       - anonbird
@@ -300,7 +296,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-arm64v8
       - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-arm64v8
     ids:
       - anonbird
@@ -318,7 +313,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-arm
       - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-rootless-arm
     ids:
       - anonbird
@@ -338,7 +332,6 @@ dockers:
       - "--label=maintainer=dev@anonbird.local"
 
   - image_templates:
-      - cr0me1ve/anonbird-relay:{{ .Version }}-amd64
       - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-amd64
     ids:
       - anonbird-relay
@@ -354,7 +347,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-relay:{{ .Version }}-arm64v8
       - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-arm64v8
     ids:
       - anonbird-relay
@@ -370,7 +362,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-relay:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird-relay:{{ .Version }}-arm
     ids:
       - anonbird-relay
@@ -387,7 +378,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-signal:{{ .Version }}-amd64
       - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-amd64
     ids:
       - anonbird-signal
@@ -403,7 +393,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-signal:{{ .Version }}-arm64v8
       - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-arm64v8
     ids:
       - anonbird-signal
@@ -419,7 +408,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-signal:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird-signal:{{ .Version }}-arm
     ids:
       - anonbird-signal
@@ -436,7 +424,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-amd64
       - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-amd64
     ids:
       - anonbird-mgmt
@@ -452,7 +439,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-arm64v8
       - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-arm64v8
     ids:
       - anonbird-mgmt
@@ -468,7 +454,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-arm
     ids:
       - anonbird-mgmt
@@ -485,7 +470,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-debug-amd64
       - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-amd64
     ids:
       - anonbird-mgmt
@@ -501,7 +485,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-debug-arm64v8
       - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-arm64v8
     ids:
       - anonbird-mgmt
@@ -518,7 +501,6 @@ dockers:
       - "--label=maintainer=dev@anonbird.local"
 
   - image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-debug-arm
       - ghcr.io/cr0me1ve/anonbird-management:{{ .Version }}-debug-arm
     ids:
       - anonbird-mgmt
@@ -535,7 +517,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-upload:{{ .Version }}-amd64
       - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-amd64
     ids:
       - anonbird-upload
@@ -551,7 +532,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-upload:{{ .Version }}-arm64v8
       - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-arm64v8
     ids:
       - anonbird-upload
@@ -567,7 +547,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-upload:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird-upload:{{ .Version }}-arm
     ids:
       - anonbird-upload
@@ -584,7 +563,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-server:{{ .Version }}-amd64
       - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-amd64
     ids:
       - anonbird-server
@@ -600,7 +578,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-server:{{ .Version }}-arm64v8
       - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm64v8
     ids:
       - anonbird-server
@@ -616,7 +593,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-server:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm
     ids:
       - anonbird-server
@@ -633,7 +609,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
       - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
     ids:
       - anonbird-proxy
@@ -649,7 +624,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
       - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
     ids:
       - anonbird-proxy
@@ -665,7 +639,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
     ids:
       - anonbird-proxy
@@ -682,95 +655,6 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
 docker_manifests:
-  - name_template: cr0me1ve/anonbird:{{ .Version }}
-    image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird:{{ .Version }}-arm
-      - cr0me1ve/anonbird:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird:latest
-    image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird:{{ .Version }}-arm
-      - cr0me1ve/anonbird:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird:{{ .Version }}-rootless
-    image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-arm64v8
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-arm
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-amd64
-
-  - name_template: cr0me1ve/anonbird:rootless-latest
-    image_templates:
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-arm64v8
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-arm
-      - cr0me1ve/anonbird:{{ .Version }}-rootless-amd64
-
-  - name_template: cr0me1ve/anonbird-relay:{{ .Version }}
-    image_templates:
-      - cr0me1ve/anonbird-relay:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-relay:{{ .Version }}-arm
-      - cr0me1ve/anonbird-relay:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-relay:latest
-    image_templates:
-      - cr0me1ve/anonbird-relay:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-relay:{{ .Version }}-arm
-      - cr0me1ve/anonbird-relay:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-signal:{{ .Version }}
-    image_templates:
-      - cr0me1ve/anonbird-signal:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-signal:{{ .Version }}-arm
-      - cr0me1ve/anonbird-signal:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-signal:latest
-    image_templates:
-      - cr0me1ve/anonbird-signal:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-signal:{{ .Version }}-arm
-      - cr0me1ve/anonbird-signal:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-management:{{ .Version }}
-    image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-management:{{ .Version }}-arm
-      - cr0me1ve/anonbird-management:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-management:latest
-    image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-management:{{ .Version }}-arm
-      - cr0me1ve/anonbird-management:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-management:debug-latest
-    image_templates:
-      - cr0me1ve/anonbird-management:{{ .Version }}-debug-arm64v8
-      - cr0me1ve/anonbird-management:{{ .Version }}-debug-arm
-      - cr0me1ve/anonbird-management:{{ .Version }}-debug-amd64
-  - name_template: cr0me1ve/anonbird-upload:{{ .Version }}
-    image_templates:
-      - cr0me1ve/anonbird-upload:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-upload:{{ .Version }}-arm
-      - cr0me1ve/anonbird-upload:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-upload:latest
-    image_templates:
-      - cr0me1ve/anonbird-upload:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-upload:{{ .Version }}-arm
-      - cr0me1ve/anonbird-upload:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-server:{{ .Version }}
-    image_templates:
-      - cr0me1ve/anonbird-server:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-server:{{ .Version }}-arm
-      - cr0me1ve/anonbird-server:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-server:latest
-    image_templates:
-      - cr0me1ve/anonbird-server:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-server:{{ .Version }}-arm
-      - cr0me1ve/anonbird-server:{{ .Version }}-amd64
-
   - name_template: ghcr.io/cr0me1ve/anonbird:{{ .Version }}
     image_templates:
       - ghcr.io/cr0me1ve/anonbird:{{ .Version }}-arm64v8
@@ -861,18 +745,6 @@ docker_manifests:
       - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird-server:{{ .Version }}-amd64
 
-  - name_template: cr0me1ve/anonbird-reverse-proxy:{{ .Version }}
-    image_templates:
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
-
-  - name_template: cr0me1ve/anonbird-reverse-proxy:latest
-    image_templates:
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
-      - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
-
   - name_template: ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}
     image_templates:
       - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
@@ -884,23 +756,6 @@ docker_manifests:
       - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
       - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
       - ghcr.io/cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
-
-brews:
-  - ids:
-      - default
-    repository:
-      owner: Cr0me1ve
-      name: homebrew-anonbird
-      token: "{{ .Env.ANONBIRD_HOMEBREW_TAP_GITHUB_TOKEN }}"
-    commit_author:
-      name: AnonBird
-      email: dev@anonbird.local
-    description: AnonBird anonymous mesh client.
-    download_strategy: CurlDownloadStrategy
-    homepage: https://github.com/Cr0me1ve/anonbird
-    license: "BSD3"
-    test: |
-      system "#{bin}/{{ .ProjectName	}} version"
 
 checksum:
   extra_files:
