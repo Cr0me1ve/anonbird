@@ -1,6 +1,6 @@
 # Client Metrics
 
-Internal documentation for the NetBird client metrics system.
+Internal documentation for the AnonBird client metrics system.
 
 ## Overview
 
@@ -58,7 +58,7 @@ Tags:
 - `deployment_type`: "cloud" | "selfhosted" | "unknown"
 - `connection_type`: "ice" | "relay"
 - `attempt_type`: "initial" | "reconnection"
-- `version`: NetBird version string
+- `version`: AnonBird version string
 - `os`: Operating system (linux, darwin, windows, android, ios, etc.)
 - `arch`: CPU architecture (amd64, arm64, etc.)
 
@@ -74,7 +74,7 @@ Measurement: `netbird_sync`
 
 Tags:
 - `deployment_type`: "cloud" | "selfhosted" | "unknown"
-- `version`: NetBird version string
+- `version`: AnonBird version string
 - `os`: Operating system (linux, darwin, windows, android, ios, etc.)
 - `arch`: CPU architecture (amd64, arm64, etc.)
 
@@ -89,7 +89,7 @@ Measurement: `netbird_login`
 Tags:
 - `deployment_type`: "cloud" | "selfhosted" | "unknown"
 - `result`: "success" | "failure"
-- `version`: NetBird version string
+- `version`: AnonBird version string
 - `os`: Operating system (linux, darwin, windows, android, ios, etc.)
 - `arch`: CPU architecture (amd64, arm64, etc.)
 
@@ -106,10 +106,10 @@ The InfluxDB backend limits in-memory sample storage to prevent unbounded growth
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NB_METRICS_PUSH_ENABLED` | `false` | Enable metrics push to backend |
-| `NB_METRICS_SERVER_URL` | *(from remote config)* | Ingest server URL (e.g., `https://ingest.netbird.io`) |
+| `NB_METRICS_SERVER_URL` | *(from remote config)* | Ingest server URL (e.g., `self-hosted metrics endpoint`) |
 | `NB_METRICS_INTERVAL` | *(from remote config)* | Push interval (e.g., "1m", "30m", "4h") |
 | `NB_METRICS_FORCE_SENDING` | `false` | Skip remote config, push unconditionally |
-| `NB_METRICS_CONFIG_URL` | `https://ingest.netbird.io/config` | Remote push config URL |
+| `NB_METRICS_CONFIG_URL` | `disabled unless NB_METRICS_CONFIG_URL is explicitly set` | Remote push config URL |
 
 `NB_METRICS_SERVER_URL` and `NB_METRICS_INTERVAL` override their respective values but do not bypass remote config eligibility checks (version range). Use `NB_METRICS_FORCE_SENDING=true` to skip all remote config gating.
 

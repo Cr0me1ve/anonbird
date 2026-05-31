@@ -10,7 +10,7 @@ services:
   # UI dashboard
   dashboard:
     <<: *default
-    image: netbirdio/dashboard:$NETBIRD_DASHBOARD_TAG
+    image: $ANONBIRD_DASHBOARD_IMAGE:$NETBIRD_DASHBOARD_TAG
     environment:
       # Endpoints
       - NETBIRD_MGMT_API_ENDPOINT=$NETBIRD_MGMT_API_ENDPOINT
@@ -34,29 +34,29 @@ services:
       - $LETSENCRYPT_VOLUMENAME:/etc/letsencrypt/
     labels:
     - traefik.enable=true
-    - traefik.http.routers.netbird-dashboard.rule=Host(`$NETBIRD_DOMAIN`)
-    - traefik.http.services.netbird-dashboard.loadbalancer.server.port=80
+    - traefik.http.routers.anonbird-dashboard.rule=Host(`$NETBIRD_DOMAIN`)
+    - traefik.http.services.anonbird-dashboard.loadbalancer.server.port=80
 
   # Signal
   signal:
     <<: *default
-    image: netbirdio/signal:$NETBIRD_SIGNAL_TAG
+    image: $ANONBIRD_SIGNAL_IMAGE:$NETBIRD_SIGNAL_TAG
     volumes:
-      - $SIGNAL_VOLUMENAME:/var/lib/netbird
+      - $SIGNAL_VOLUMENAME:/var/lib/anonbird
     labels:
     - traefik.enable=true
-    - traefik.http.routers.netbird-wsproxy-signal.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/ws-proxy/signal`)
-    - traefik.http.routers.netbird-wsproxy-signal.service=netbird-wsproxy-signal
-    - traefik.http.services.netbird-wsproxy-signal.loadbalancer.server.port=80
-    - traefik.http.routers.netbird-signal.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/signalexchange.SignalExchange/`)
-    - traefik.http.routers.netbird-signal.service=netbird-signal
-    - traefik.http.services.netbird-signal.loadbalancer.server.port=10000
-    - traefik.http.services.netbird-signal.loadbalancer.server.scheme=h2c
+    - traefik.http.routers.anonbird-wsproxy-signal.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/ws-proxy/signal`)
+    - traefik.http.routers.anonbird-wsproxy-signal.service=anonbird-wsproxy-signal
+    - traefik.http.services.anonbird-wsproxy-signal.loadbalancer.server.port=80
+    - traefik.http.routers.anonbird-signal.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/signalexchange.SignalExchange/`)
+    - traefik.http.routers.anonbird-signal.service=anonbird-signal
+    - traefik.http.services.anonbird-signal.loadbalancer.server.port=10000
+    - traefik.http.services.anonbird-signal.loadbalancer.server.scheme=h2c
 
   # Relay
   relay:
     <<: *default
-    image: netbirdio/relay:$NETBIRD_RELAY_TAG
+    image: $ANONBIRD_RELAY_IMAGE:$NETBIRD_RELAY_TAG
     environment:
     - NB_LOG_LEVEL=info
     - NB_LISTEN_ADDRESS=:33080
@@ -65,20 +65,21 @@ services:
     - NB_AUTH_SECRET=$NETBIRD_RELAY_AUTH_SECRET
     labels:
     - traefik.enable=true
-    - traefik.http.routers.netbird-relay.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/relay`)
-    - traefik.http.services.netbird-relay.loadbalancer.server.port=33080
+    - traefik.http.routers.anonbird-relay.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/relay`)
+    - traefik.http.services.anonbird-relay.loadbalancer.server.port=33080
 
   # Management
   management:
     <<: *default
-    image: netbirdio/management:$NETBIRD_MANAGEMENT_TAG
+    image: $ANONBIRD_MANAGEMENT_IMAGE:$NETBIRD_MANAGEMENT_TAG
     depends_on:
       - dashboard
     volumes:
-      - $MGMT_VOLUMENAME:/var/lib/netbird
+      - $MGMT_VOLUMENAME:/var/lib/anonbird
       - $LETSENCRYPT_VOLUMENAME:/etc/letsencrypt:ro
-      - ./management.json:/etc/netbird/management.json
+      - ./management.json:/etc/anonbird/management.json
     command: [
+      "--config", "/etc/anonbird/management.json",
       "--port", "33073",
       "--log-file", "console",
       "--log-level", "info",
@@ -88,16 +89,16 @@ services:
       ]
     labels:
     - traefik.enable=true
-    - traefik.http.routers.netbird-api.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/api`)
-    - traefik.http.routers.netbird-api.service=netbird-api
-    - traefik.http.services.netbird-api.loadbalancer.server.port=33073
-    - traefik.http.routers.netbird-wsproxy-mgmt.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/ws-proxy/management`)
-    - traefik.http.routers.netbird-wsproxy-mgmt.service=netbird-wsproxy-mgmt
-    - traefik.http.services.netbird-wsproxy-mgmt.loadbalancer.server.port=33073
-    - traefik.http.routers.netbird-management.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/management.ManagementService/`)
-    - traefik.http.routers.netbird-management.service=netbird-management
-    - traefik.http.services.netbird-management.loadbalancer.server.port=33073
-    - traefik.http.services.netbird-management.loadbalancer.server.scheme=h2c
+    - traefik.http.routers.anonbird-api.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/api`)
+    - traefik.http.routers.anonbird-api.service=anonbird-api
+    - traefik.http.services.anonbird-api.loadbalancer.server.port=33073
+    - traefik.http.routers.anonbird-wsproxy-mgmt.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/ws-proxy/management`)
+    - traefik.http.routers.anonbird-wsproxy-mgmt.service=anonbird-wsproxy-mgmt
+    - traefik.http.services.anonbird-wsproxy-mgmt.loadbalancer.server.port=33073
+    - traefik.http.routers.anonbird-management.rule=Host(`$NETBIRD_DOMAIN`) && PathPrefix(`/management.ManagementService/`)
+    - traefik.http.routers.anonbird-management.service=anonbird-management
+    - traefik.http.services.anonbird-management.loadbalancer.server.port=33073
+    - traefik.http.services.anonbird-management.loadbalancer.server.scheme=h2c
     environment:
       - NETBIRD_STORE_ENGINE_POSTGRES_DSN=$NETBIRD_STORE_ENGINE_POSTGRES_DSN
       - NETBIRD_STORE_ENGINE_MYSQL_DSN=$NETBIRD_STORE_ENGINE_MYSQL_DSN

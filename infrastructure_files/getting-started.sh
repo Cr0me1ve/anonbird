@@ -2,15 +2,15 @@
 
 set -e
 
-# NetBird Getting Started with Embedded IdP (Dex)
-# This script sets up NetBird with the embedded Dex identity provider
+# AnonBird Getting Started with Embedded IdP (Dex)
+# This script sets up AnonBird with the embedded Dex identity provider
 # No separate Dex container or reverse proxy needed - IdP is built into management server
 
 # Sed pattern to strip base64 padding characters
 SED_STRIP_PADDING='s/=//g'
 
 # Constants for repeated string literals
-readonly MSG_STARTING_SERVICES="\nStarting NetBird services\n"
+readonly MSG_STARTING_SERVICES="\nStarting AnonBird services\n"
 readonly MSG_DONE="\nDone!\n"
 readonly MSG_NEXT_STEPS="Next steps:"
 readonly MSG_SEPARATOR="=========================================="
@@ -64,8 +64,8 @@ check_nb_domain() {
     return 1
   fi
 
-  if [[ "$DOMAIN" == "netbird.example.com" ]]; then
-    echo "The NETBIRD_DOMAIN cannot be netbird.example.com" > /dev/stderr
+  if [[ "$DOMAIN" == "anonbird.example.com" ]]; then
+    echo "The NETBIRD_DOMAIN cannot be anonbird.example.com" > /dev/stderr
     return 1
   fi
   return 0
@@ -73,7 +73,7 @@ check_nb_domain() {
 
 read_nb_domain() {
   READ_NETBIRD_DOMAIN=""
-  echo -n "Enter the domain you want to use for NetBird (e.g. netbird.my-domain.com): " > /dev/stderr
+  echo -n "Enter the domain you want to use for AnonBird (e.g. anonbird.my-domain.com): " > /dev/stderr
   read -r READ_NETBIRD_DOMAIN < /dev/tty
   if ! check_nb_domain "$READ_NETBIRD_DOMAIN"; then
     read_nb_domain
@@ -112,7 +112,7 @@ read_reverse_proxy_type() {
 read_traefik_network() {
   echo "" > /dev/stderr
   echo "If you have an existing Traefik instance, enter its external network name." > /dev/stderr
-  echo -n "External network (leave empty to create 'netbird' network): " > /dev/stderr
+  echo -n "External network (leave empty to create 'anonbird' network): " > /dev/stderr
   read -r NETWORK < /dev/tty
   echo "$NETWORK"
   return 0
@@ -159,7 +159,7 @@ read_proxy_docker_network() {
   local proxy_name="$1"
   echo "" > /dev/stderr
   echo "Is ${proxy_name} running in Docker?" > /dev/stderr
-  echo "If yes, enter the Docker network ${proxy_name} is on (NetBird will join it)." > /dev/stderr
+  echo "If yes, enter the Docker network ${proxy_name} is on (AnonBird will join it)." > /dev/stderr
   echo -n "Docker network (leave empty if not in Docker): " > /dev/stderr
   read -r NETWORK < /dev/tty
   echo "$NETWORK"
@@ -168,8 +168,8 @@ read_proxy_docker_network() {
 
 read_enable_proxy() {
   echo "" > /dev/stderr
-  echo "Do you want to enable the NetBird Proxy service?" > /dev/stderr
-  echo "The proxy allows you to selectively expose internal NetBird network resources" > /dev/stderr
+  echo "Do you want to enable the AnonBird Proxy service?" > /dev/stderr
+  echo "The proxy allows you to selectively expose internal AnonBird network resources" > /dev/stderr
   echo "to the internet. You control which resources are exposed through the dashboard." > /dev/stderr
   echo -n "Enable proxy? [y/N]: " > /dev/stderr
   read -r CHOICE < /dev/tty
@@ -245,7 +245,7 @@ wait_management_proxy() {
     fi
   fi
 
-  echo -n "Waiting for NetBird server to become ready"
+  echo -n "Waiting for AnonBird server to become ready"
   counter=1
   while true; do
     # Check the embedded IdP endpoint through the reverse proxy
@@ -262,7 +262,7 @@ wait_management_proxy() {
           $DOCKER_COMPOSE_COMMAND logs --tail=20 "$proxy_container"
         fi
       fi
-      $DOCKER_COMPOSE_COMMAND logs --tail=20 netbird-server
+      $DOCKER_COMPOSE_COMMAND logs --tail=20 anonbird-server
     fi
     echo -n " ."
     sleep 2
@@ -276,7 +276,7 @@ wait_management_proxy() {
 wait_management_direct() {
   set +e
   local upstream_host=$(get_upstream_host)
-  echo -n "Waiting for NetBird server to become ready"
+  echo -n "Waiting for AnonBird server to become ready"
   counter=1
   while true; do
     # Check the embedded IdP endpoint directly (no reverse proxy)
@@ -286,7 +286,7 @@ wait_management_direct() {
     if [[ $counter -eq 60 ]]; then
       echo ""
       echo "Taking too long. Checking logs..."
-      $DOCKER_COMPOSE_COMMAND logs --tail=20 netbird-server
+      $DOCKER_COMPOSE_COMMAND logs --tail=20 anonbird-server
     fi
     echo -n " ."
     sleep 2
@@ -311,10 +311,10 @@ initialize_default_values() {
   NETBIRD_STUN_PORT=3478
 
   # Docker images
-  DASHBOARD_IMAGE="netbirdio/dashboard:latest"
+  DASHBOARD_IMAGE="ghcr.io/cr0me1ve/anonbird-dashboard:latest"
   # Combined server replaces separate signal, relay, and management containers
-  NETBIRD_SERVER_IMAGE="netbirdio/netbird-server:latest"
-  NETBIRD_PROXY_IMAGE="netbirdio/reverse-proxy:latest"
+  NETBIRD_SERVER_IMAGE="ghcr.io/cr0me1ve/anonbird-server:latest"
+  NETBIRD_PROXY_IMAGE="ghcr.io/cr0me1ve/anonbird-reverse-proxy:latest"
 
   # Reverse proxy configuration
   REVERSE_PROXY_TYPE="0"
@@ -330,7 +330,7 @@ initialize_default_values() {
   # Traefik static IP within the internal bridge network
   TRAEFIK_IP="172.30.0.10"
 
-  # NetBird Proxy configuration
+  # AnonBird Proxy configuration
   ENABLE_PROXY="false"
   PROXY_TOKEN=""
 
@@ -397,7 +397,7 @@ check_existing_installation() {
     echo "Generated files already exist, if you want to reinitialize the environment, please remove them first."
     echo "You can use the following commands:"
     echo "  $DOCKER_COMPOSE_COMMAND down --volumes # to remove all containers and volumes"
-    echo "  rm -f docker-compose.yml dashboard.env config.yaml proxy.env traefik-dynamic.yaml nginx-netbird.conf caddyfile-netbird.txt npm-advanced-config.txt && rm -rf crowdsec/"
+    echo "  rm -f docker-compose.yml dashboard.env config.yaml proxy.env traefik-dynamic.yaml nginx-anonbird.conf caddyfile-anonbird.txt npm-advanced-config.txt && rm -rf crowdsec/"
     echo "Be aware that this will remove all data from the database, and you will have to reconfigure the dashboard."
     exit 1
   fi
@@ -413,8 +413,8 @@ generate_configuration_files() {
       render_docker_compose_traefik_builtin > docker-compose.yml
       if [[ "$ENABLE_PROXY" == "true" ]]; then
         # Create placeholder proxy.env so docker-compose can validate
-        # This will be overwritten with the actual token after netbird-server starts
-        echo "# Placeholder - will be updated with token after netbird-server starts" > proxy.env
+        # This will be overwritten with the actual token after anonbird-server starts
+        echo "# Placeholder - will be updated with token after anonbird-server starts" > proxy.env
         echo "NB_PROXY_TOKEN=placeholder" >> proxy.env
         # TCP ServersTransport for PROXY protocol v2 to the proxy backend
         render_traefik_dynamic > traefik-dynamic.yaml
@@ -428,7 +428,7 @@ generate_configuration_files() {
       ;;
     2)
       render_docker_compose_exposed_ports > docker-compose.yml
-      render_nginx_conf > nginx-netbird.conf
+      render_nginx_conf > nginx-anonbird.conf
       ;;
     3)
       render_docker_compose_exposed_ports > docker-compose.yml
@@ -436,7 +436,7 @@ generate_configuration_files() {
       ;;
     4)
       render_docker_compose_exposed_ports > docker-compose.yml
-      render_external_caddyfile > caddyfile-netbird.txt
+      render_external_caddyfile > caddyfile-anonbird.txt
       ;;
     5)
       render_docker_compose_exposed_ports > docker-compose.yml
@@ -463,7 +463,7 @@ start_services_and_show_instructions() {
 
     if [[ "$ENABLE_PROXY" == "true" ]]; then
       # Phase 1: Start core services (without proxy)
-      local core_services="traefik dashboard netbird-server"
+      local core_services="traefik dashboard anonbird-server"
       if [[ "$ENABLE_CROWDSEC" == "true" ]]; then
         core_services="$core_services crowdsec"
       fi
@@ -477,12 +477,12 @@ start_services_and_show_instructions() {
       echo ""
       echo "Creating proxy access token..."
       # Use docker exec with bash to run the token command directly
-      PROXY_TOKEN=$($DOCKER_COMPOSE_COMMAND exec -T netbird-server \
-        /go/bin/netbird-server token create --name "default-proxy" --config /etc/netbird/config.yaml 2>/dev/null | grep "^Token:" | awk '{print $2}')
+      PROXY_TOKEN=$($DOCKER_COMPOSE_COMMAND exec -T anonbird-server \
+        /go/bin/anonbird-server token create --name "default-proxy" --config /etc/anonbird/config.yaml 2>/dev/null | grep "^Token:" | awk '{print $2}')
 
       if [[ -z "$PROXY_TOKEN" ]]; then
-        echo "ERROR: Failed to create proxy token. Check netbird-server logs." > /dev/stderr
-        $DOCKER_COMPOSE_COMMAND logs --tail=20 netbird-server
+        echo "ERROR: Failed to create proxy token. Check anonbird-server logs." > /dev/stderr
+        $DOCKER_COMPOSE_COMMAND logs --tail=20 anonbird-server
         exit 1
       fi
 
@@ -496,7 +496,7 @@ start_services_and_show_instructions() {
           if [[ $cs_retries -ge 30 ]]; then
             echo "WARNING: CrowdSec did not become ready. Skipping CrowdSec setup." > /dev/stderr
             echo "You can register a bouncer manually later with:" > /dev/stderr
-            echo "  docker exec netbird-crowdsec cscli bouncers add netbird-proxy -o raw" > /dev/stderr
+            echo "  docker exec anonbird-crowdsec cscli bouncers add anonbird-proxy -o raw" > /dev/stderr
             ENABLE_CROWDSEC="false"
             break
           fi
@@ -505,7 +505,7 @@ start_services_and_show_instructions() {
 
         if [[ "$ENABLE_CROWDSEC" == "true" ]]; then
           CROWDSEC_BOUNCER_KEY=$($DOCKER_COMPOSE_COMMAND exec -T crowdsec \
-            cscli bouncers add netbird-proxy -o raw 2>/dev/null)
+            cscli bouncers add anonbird-proxy -o raw 2>/dev/null)
           if [[ -z "$CROWDSEC_BOUNCER_KEY" ]]; then
             echo "WARNING: Failed to create CrowdSec bouncer key. Skipping CrowdSec setup." > /dev/stderr
             ENABLE_CROWDSEC="false"
@@ -542,7 +542,7 @@ start_services_and_show_instructions() {
     echo -e "$MSG_DONE"
     print_post_setup_instructions
     echo ""
-    echo "NetBird containers are running. Once Traefik is connected, access the dashboard at:"
+    echo "AnonBird containers are running. Once Traefik is connected, access the dashboard at:"
     echo "  $NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN"
   elif [[ "$REVERSE_PROXY_TYPE" == "3" ]]; then
     # NPM - start containers first, then show instructions
@@ -556,7 +556,7 @@ start_services_and_show_instructions() {
     echo -e "$MSG_DONE"
     print_post_setup_instructions
     echo ""
-    echo "NetBird containers are running. Configure NPM as shown above, then access:"
+    echo "AnonBird containers are running. Configure NPM as shown above, then access:"
     echo "  $NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN"
   else
     # External proxies (nginx, external Caddy, other) - need manual config first
@@ -573,7 +573,7 @@ start_services_and_show_instructions() {
     wait_management_direct
 
     echo -e "$MSG_DONE"
-    echo "NetBird is now running. Access the dashboard at:"
+    echo "AnonBird is now running. Access the dashboard at:"
     echo "  $NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN"
   fi
   return 0
@@ -610,30 +610,30 @@ render_docker_compose_traefik_builtin() {
     traefik_dynamic_volume="      - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro"
 
     local proxy_depends="
-      netbird-server:
+      anonbird-server:
         condition: service_started"
     if [[ "$ENABLE_CROWDSEC" == "true" ]]; then
       proxy_depends="
-      netbird-server:
+      anonbird-server:
         condition: service_started
       crowdsec:
         condition: service_healthy"
     fi
 
     proxy_service="
-  # NetBird Proxy - exposes internal resources to the internet
+  # AnonBird Proxy - exposes internal resources to the internet
   proxy:
     image: $NETBIRD_PROXY_IMAGE
-    container_name: netbird-proxy
+    container_name: anonbird-proxy
     ports:
     - 51820:51820/udp
     restart: unless-stopped
-    networks: [netbird]
+    networks: [anonbird]
     depends_on:${proxy_depends}
     env_file:
       - ./proxy.env
     volumes:
-      - netbird_proxy_certs:/certs
+      - anonbird_proxy_certs:/certs
     labels:
       # TCP passthrough for any unmatched domain (proxy handles its own TLS)
       - traefik.enable=true
@@ -651,15 +651,15 @@ render_docker_compose_traefik_builtin() {
         max-file: \"2\"
 "
     proxy_volumes="
-  netbird_proxy_certs:"
+  anonbird_proxy_certs:"
 
     if [[ "$ENABLE_CROWDSEC" == "true" ]]; then
       crowdsec_service="
   crowdsec:
     image: crowdsecurity/crowdsec:v1.7.7
-    container_name: netbird-crowdsec
+    container_name: anonbird-crowdsec
     restart: unless-stopped
-    networks: [netbird]
+    networks: [anonbird]
     environment:
       COLLECTIONS: crowdsecurity/linux
     volumes:
@@ -688,10 +688,10 @@ services:
   # Traefik reverse proxy (automatic TLS via Let's Encrypt)
   traefik:
     image: traefik:v3.6
-    container_name: netbird-traefik
+    container_name: anonbird-traefik
     restart: unless-stopped
     networks:
-      netbird:
+      anonbird:
         ipv4_address: $TRAEFIK_IP
     command:
       # Logging
@@ -700,7 +700,7 @@ services:
       # Docker provider
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=netbird"
+      - "--providers.docker.network=anonbird"
       # Entrypoints
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
@@ -725,7 +725,7 @@ $traefik_file_provider
       - '80:80'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - netbird_traefik_letsencrypt:/letsencrypt
+      - anonbird_traefik_letsencrypt:/letsencrypt
 $traefik_dynamic_volume
     logging:
       driver: "json-file"
@@ -736,19 +736,19 @@ $traefik_dynamic_volume
   # UI dashboard
   dashboard:
     image: $DASHBOARD_IMAGE
-    container_name: netbird-dashboard
+    container_name: anonbird-dashboard
     restart: unless-stopped
-    networks: [netbird]
+    networks: [anonbird]
     env_file:
       - ./dashboard.env
     labels:
       - traefik.enable=true
-      - traefik.http.routers.netbird-dashboard.rule=Host(\`$NETBIRD_DOMAIN\`)
-      - traefik.http.routers.netbird-dashboard.entrypoints=websecure
-      - traefik.http.routers.netbird-dashboard.tls=true
-      - traefik.http.routers.netbird-dashboard.tls.certresolver=letsencrypt
-      - traefik.http.routers.netbird-dashboard.service=dashboard
-      - traefik.http.routers.netbird-dashboard.priority=1
+      - traefik.http.routers.anonbird-dashboard.rule=Host(\`$NETBIRD_DOMAIN\`)
+      - traefik.http.routers.anonbird-dashboard.entrypoints=websecure
+      - traefik.http.routers.anonbird-dashboard.tls=true
+      - traefik.http.routers.anonbird-dashboard.tls.certresolver=letsencrypt
+      - traefik.http.routers.anonbird-dashboard.service=dashboard
+      - traefik.http.routers.anonbird-dashboard.priority=1
       - traefik.http.services.dashboard.loadbalancer.server.port=80
     logging:
       driver: "json-file"
@@ -757,37 +757,37 @@ $traefik_dynamic_volume
         max-file: "2"
 
   # Combined server (Management + Signal + Relay + STUN)
-  netbird-server:
+  anonbird-server:
     image: $NETBIRD_SERVER_IMAGE
-    container_name: netbird-server
+    container_name: anonbird-server
     restart: unless-stopped
-    networks: [netbird]
+    networks: [anonbird]
     ports:
       - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
     volumes:
-      - netbird_data:/var/lib/netbird
-      - ./config.yaml:/etc/netbird/config.yaml
-    command: ["--config", "/etc/netbird/config.yaml"]
+      - anonbird_data:/var/lib/anonbird
+      - ./config.yaml:/etc/anonbird/config.yaml
+    command: ["--config", "/etc/anonbird/config.yaml"]
     labels:
       - traefik.enable=true
       # gRPC router (needs h2c backend for HTTP/2 cleartext)
-      - traefik.http.routers.netbird-grpc.rule=Host(\`$NETBIRD_DOMAIN\`) && (PathPrefix(\`/signalexchange.SignalExchange/\`) || PathPrefix(\`/management.ManagementService/\`))
-      - traefik.http.routers.netbird-grpc.entrypoints=websecure
-      - traefik.http.routers.netbird-grpc.tls=true
-      - traefik.http.routers.netbird-grpc.tls.certresolver=letsencrypt
-      - traefik.http.routers.netbird-grpc.service=netbird-server-h2c
-      - traefik.http.routers.netbird-grpc.priority=100
+      - traefik.http.routers.anonbird-grpc.rule=Host(\`$NETBIRD_DOMAIN\`) && (PathPrefix(\`/signalexchange.SignalExchange/\`) || PathPrefix(\`/management.ManagementService/\`))
+      - traefik.http.routers.anonbird-grpc.entrypoints=websecure
+      - traefik.http.routers.anonbird-grpc.tls=true
+      - traefik.http.routers.anonbird-grpc.tls.certresolver=letsencrypt
+      - traefik.http.routers.anonbird-grpc.service=anonbird-server-h2c
+      - traefik.http.routers.anonbird-grpc.priority=100
       # Backend router (relay, WebSocket, API, OAuth2)
-      - traefik.http.routers.netbird-backend.rule=Host(\`$NETBIRD_DOMAIN\`) && (PathPrefix(\`/relay\`) || PathPrefix(\`/ws-proxy/\`) || PathPrefix(\`/api\`) || PathPrefix(\`/oauth2\`))
-      - traefik.http.routers.netbird-backend.entrypoints=websecure
-      - traefik.http.routers.netbird-backend.tls=true
-      - traefik.http.routers.netbird-backend.tls.certresolver=letsencrypt
-      - traefik.http.routers.netbird-backend.service=netbird-server
-      - traefik.http.routers.netbird-backend.priority=100
+      - traefik.http.routers.anonbird-backend.rule=Host(\`$NETBIRD_DOMAIN\`) && (PathPrefix(\`/relay\`) || PathPrefix(\`/ws-proxy/\`) || PathPrefix(\`/api\`) || PathPrefix(\`/oauth2\`))
+      - traefik.http.routers.anonbird-backend.entrypoints=websecure
+      - traefik.http.routers.anonbird-backend.tls=true
+      - traefik.http.routers.anonbird-backend.tls.certresolver=letsencrypt
+      - traefik.http.routers.anonbird-backend.service=anonbird-server
+      - traefik.http.routers.anonbird-backend.priority=100
       # Services
-      - traefik.http.services.netbird-server.loadbalancer.server.port=80
-      - traefik.http.services.netbird-server-h2c.loadbalancer.server.port=80
-      - traefik.http.services.netbird-server-h2c.loadbalancer.server.scheme=h2c
+      - traefik.http.services.anonbird-server.loadbalancer.server.port=80
+      - traefik.http.services.anonbird-server-h2c.loadbalancer.server.port=80
+      - traefik.http.services.anonbird-server-h2c.loadbalancer.server.scheme=h2c
     logging:
       driver: "json-file"
       options:
@@ -795,11 +795,11 @@ $traefik_dynamic_volume
         max-file: "2"
 ${proxy_service}${crowdsec_service}
 volumes:
-  netbird_data:
-  netbird_traefik_letsencrypt:${proxy_volumes}${crowdsec_volumes}
+  anonbird_data:
+  anonbird_traefik_letsencrypt:${proxy_volumes}${crowdsec_volumes}
 
 networks:
-  netbird:
+  anonbird:
     driver: bridge
     ipam:
       config:
@@ -811,7 +811,7 @@ EOF
 
 render_combined_yaml() {
   cat <<EOF
-# Combined NetBird Server Configuration (Simplified)
+# Combined AnonBird Server Configuration (Simplified)
 # Generated by getting-started.sh
 
 server:
@@ -825,7 +825,7 @@ server:
   logFile: "console"
 
   authSecret: "$NETBIRD_RELAY_AUTH_SECRET"
-  dataDir: "/var/lib/netbird"
+  dataDir: "/var/lib/anonbird"
 
   auth:
     issuer: "$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN/oauth2"
@@ -853,8 +853,8 @@ render_dashboard_env() {
 NETBIRD_MGMT_API_ENDPOINT=$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN
 NETBIRD_MGMT_GRPC_API_ENDPOINT=$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN
 # OIDC - using embedded IdP
-AUTH_AUDIENCE=netbird-dashboard
-AUTH_CLIENT_ID=netbird-dashboard
+AUTH_AUDIENCE=anonbird-dashboard
+AUTH_CLIENT_ID=anonbird-dashboard
 AUTH_CLIENT_SECRET=
 AUTH_AUTHORITY=$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN/oauth2
 USE_AUTH0=false
@@ -882,10 +882,10 @@ EOF
 
 render_proxy_env() {
   cat <<EOF
-# NetBird Proxy Configuration
+# AnonBird Proxy Configuration
 NB_PROXY_DEBUG_LOGS=false
 # Use internal Docker network to connect to management (avoids hairpin NAT issues)
-NB_PROXY_MANAGEMENT_ADDRESS=http://netbird-server:80
+NB_PROXY_MANAGEMENT_ADDRESS=http://anonbird-server:80
 # Allow insecure gRPC connection to management (required for internal Docker network)
 NB_PROXY_ALLOW_INSECURE=true
 # Public URL where this proxy is reachable (used for cluster registration)
@@ -913,7 +913,7 @@ EOF
 }
 
 render_docker_compose_traefik() {
-  local network_name="${TRAEFIK_EXTERNAL_NETWORK:-netbird}"
+  local network_name="${TRAEFIK_EXTERNAL_NETWORK:-anonbird}"
   local network_config=""
   if [[ -n "$TRAEFIK_EXTERNAL_NETWORK" ]]; then
     network_config="    external: true"
@@ -930,19 +930,19 @@ services:
   # UI dashboard
   dashboard:
     image: $DASHBOARD_IMAGE
-    container_name: netbird-dashboard
+    container_name: anonbird-dashboard
     restart: unless-stopped
     networks: [$network_name]
     env_file:
       - ./dashboard.env
     labels:
       - traefik.enable=true
-      - traefik.http.routers.netbird-dashboard.rule=Host(\`$NETBIRD_DOMAIN\`)
-      - traefik.http.routers.netbird-dashboard.entrypoints=$TRAEFIK_ENTRYPOINT
-      - traefik.http.routers.netbird-dashboard.tls=true
-$(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.netbird-dashboard.${tls_labels}"; fi)
-      - traefik.http.routers.netbird-dashboard.priority=1
-      - traefik.http.services.netbird-dashboard.loadbalancer.server.port=80
+      - traefik.http.routers.anonbird-dashboard.rule=Host(\`$NETBIRD_DOMAIN\`)
+      - traefik.http.routers.anonbird-dashboard.entrypoints=$TRAEFIK_ENTRYPOINT
+      - traefik.http.routers.anonbird-dashboard.tls=true
+$(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-dashboard.${tls_labels}"; fi)
+      - traefik.http.routers.anonbird-dashboard.priority=1
+      - traefik.http.services.anonbird-dashboard.loadbalancer.server.port=80
     logging:
       driver: "json-file"
       options:
@@ -950,35 +950,35 @@ $(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.netbird-das
         max-file: "2"
 
   # Combined server (Management + Signal + Relay + STUN)
-  netbird-server:
+  anonbird-server:
     image: $NETBIRD_SERVER_IMAGE
-    container_name: netbird-server
+    container_name: anonbird-server
     restart: unless-stopped
     networks: [$network_name]
     ports:
       - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
     volumes:
-      - netbird_data:/var/lib/netbird
-      - ./config.yaml:/etc/netbird/config.yaml
-    command: ["--config", "/etc/netbird/config.yaml"]
+      - anonbird_data:/var/lib/anonbird
+      - ./config.yaml:/etc/anonbird/config.yaml
+    command: ["--config", "/etc/anonbird/config.yaml"]
     labels:
       - traefik.enable=true
       # gRPC router (needs h2c backend for HTTP/2 cleartext)
-      - traefik.http.routers.netbird-grpc.rule=Host(\`$NETBIRD_DOMAIN\`) && (PathPrefix(\`/signalexchange.SignalExchange/\`) || PathPrefix(\`/management.ManagementService/\`))
-      - traefik.http.routers.netbird-grpc.entrypoints=$TRAEFIK_ENTRYPOINT
-      - traefik.http.routers.netbird-grpc.tls=true
-$(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.netbird-grpc.${tls_labels}"; fi)
-      - traefik.http.routers.netbird-grpc.service=netbird-server-h2c
+      - traefik.http.routers.anonbird-grpc.rule=Host(\`$NETBIRD_DOMAIN\`) && (PathPrefix(\`/signalexchange.SignalExchange/\`) || PathPrefix(\`/management.ManagementService/\`))
+      - traefik.http.routers.anonbird-grpc.entrypoints=$TRAEFIK_ENTRYPOINT
+      - traefik.http.routers.anonbird-grpc.tls=true
+$(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-grpc.${tls_labels}"; fi)
+      - traefik.http.routers.anonbird-grpc.service=anonbird-server-h2c
       # Backend router (relay, WebSocket, API, OAuth2)
-      - traefik.http.routers.netbird-backend.rule=Host(\`$NETBIRD_DOMAIN\`) && (PathPrefix(\`/relay\`) || PathPrefix(\`/ws-proxy/\`) || PathPrefix(\`/api\`) || PathPrefix(\`/oauth2\`))
-      - traefik.http.routers.netbird-backend.entrypoints=$TRAEFIK_ENTRYPOINT
-      - traefik.http.routers.netbird-backend.tls=true
-$(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.netbird-backend.${tls_labels}"; fi)
-      - traefik.http.routers.netbird-backend.service=netbird-server
+      - traefik.http.routers.anonbird-backend.rule=Host(\`$NETBIRD_DOMAIN\`) && (PathPrefix(\`/relay\`) || PathPrefix(\`/ws-proxy/\`) || PathPrefix(\`/api\`) || PathPrefix(\`/oauth2\`))
+      - traefik.http.routers.anonbird-backend.entrypoints=$TRAEFIK_ENTRYPOINT
+      - traefik.http.routers.anonbird-backend.tls=true
+$(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-backend.${tls_labels}"; fi)
+      - traefik.http.routers.anonbird-backend.service=anonbird-server
       # Services
-      - traefik.http.services.netbird-server.loadbalancer.server.port=80
-      - traefik.http.services.netbird-server-h2c.loadbalancer.server.port=80
-      - traefik.http.services.netbird-server-h2c.loadbalancer.server.scheme=h2c
+      - traefik.http.services.anonbird-server.loadbalancer.server.port=80
+      - traefik.http.services.anonbird-server-h2c.loadbalancer.server.port=80
+      - traefik.http.services.anonbird-server-h2c.loadbalancer.server.scheme=h2c
     logging:
       driver: "json-file"
       options:
@@ -986,7 +986,7 @@ $(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.netbird-bac
         max-file: "2"
 
 volumes:
-  netbird_data:
+  anonbird_data:
 
 networks:
   $network_name:
@@ -997,15 +997,15 @@ EOF
 
 render_docker_compose_exposed_ports() {
   local bind_addr=$(get_bind_address)
-  local networks="[netbird]"
+  local networks="[anonbird]"
   local networks_config="networks:
-  netbird:"
+  anonbird:"
 
   # If an external network is specified, add it and include in service networks
   if [[ -n "$EXTERNAL_PROXY_NETWORK" ]]; then
-    networks="[netbird, $EXTERNAL_PROXY_NETWORK]"
+    networks="[anonbird, $EXTERNAL_PROXY_NETWORK]"
     networks_config="networks:
-  netbird:
+  anonbird:
   $EXTERNAL_PROXY_NETWORK:
     external: true"
   fi
@@ -1015,7 +1015,7 @@ services:
   # UI dashboard
   dashboard:
     image: $DASHBOARD_IMAGE
-    container_name: netbird-dashboard
+    container_name: anonbird-dashboard
     restart: unless-stopped
     networks: ${networks}
     ports:
@@ -1029,18 +1029,18 @@ services:
         max-file: "2"
 
   # Combined server (Management + Signal + Relay + STUN)
-  netbird-server:
+  anonbird-server:
     image: $NETBIRD_SERVER_IMAGE
-    container_name: netbird-server
+    container_name: anonbird-server
     restart: unless-stopped
     networks: ${networks}
     ports:
       - '${bind_addr}:${MANAGEMENT_HOST_PORT}:80'
       - '$NETBIRD_STUN_PORT:$NETBIRD_STUN_PORT/udp'
     volumes:
-      - netbird_data:/var/lib/netbird
-      - ./config.yaml:/etc/netbird/config.yaml
-    command: ["--config", "/etc/netbird/config.yaml"]
+      - anonbird_data:/var/lib/anonbird
+      - ./config.yaml:/etc/anonbird/config.yaml
+    command: ["--config", "/etc/anonbird/config.yaml"]
     logging:
       driver: "json-file"
       options:
@@ -1048,7 +1048,7 @@ services:
         max-file: "2"
 
 volumes:
-  netbird_data:
+  anonbird_data:
 
 ${networks_config}
 EOF
@@ -1061,29 +1061,29 @@ render_nginx_conf() {
   local server_addr="${upstream_host}:${MANAGEMENT_HOST_PORT}"
   local install_note="# 1. Update SSL certificate paths below
 # 2. Copy to your nginx config directory:
-#    Debian/Ubuntu: /etc/nginx/sites-available/netbird (then symlink to sites-enabled)
-#    RHEL/CentOS:   /etc/nginx/conf.d/netbird.conf
+#    Debian/Ubuntu: /etc/nginx/sites-available/anonbird (then symlink to sites-enabled)
+#    RHEL/CentOS:   /etc/nginx/conf.d/anonbird.conf
 # 3. Test and reload: nginx -t && systemctl reload nginx"
 
   # If running in Docker network, use container names
   if [[ -n "$EXTERNAL_PROXY_NETWORK" ]]; then
-    dashboard_addr="netbird-dashboard:80"
-    server_addr="netbird-server:80"
+    dashboard_addr="anonbird-dashboard:80"
+    server_addr="anonbird-server:80"
     install_note="# This config uses container names since Nginx is on the same Docker network.
 # Add this to your nginx.conf or include it from a separate file."
   fi
 
   cat <<EOF
-# NetBird Nginx Configuration
+# AnonBird Nginx Configuration
 # Generated by getting-started.sh
 #
 ${install_note}
 
-upstream netbird_dashboard {
+upstream anonbird_dashboard {
     server ${dashboard_addr};
     keepalive 10;
 }
-upstream netbird_server {
+upstream anonbird_server {
     server ${server_addr};
 }
 
@@ -1137,7 +1137,7 @@ server {
 
     # WebSocket connections (relay, signal, management)
     location ~ ^/(relay|ws-proxy/) {
-        proxy_pass http://netbird_server;
+        proxy_pass http://anonbird_server;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "Upgrade";
@@ -1147,7 +1147,7 @@ server {
 
     # Native gRPC (signal + management)
     location ~ ^/(signalexchange\.SignalExchange|management\.ManagementService)/ {
-        grpc_pass grpc://netbird_server;
+        grpc_pass grpc://anonbird_server;
         grpc_read_timeout 1d;
         grpc_send_timeout 1d;
         grpc_socket_keepalive on;
@@ -1155,13 +1155,13 @@ server {
 
     # HTTP routes (API + OAuth2)
     location ~ ^/(api|oauth2)/ {
-        proxy_pass http://netbird_server;
+        proxy_pass http://anonbird_server;
         proxy_set_header Host \$host;
     }
 
     # Dashboard (catch-all)
     location / {
-        proxy_pass http://netbird_dashboard;
+        proxy_pass http://anonbird_dashboard;
     }
 }
 EOF
@@ -1176,14 +1176,14 @@ render_external_caddyfile() {
 
   # If running in Docker network, use container names
   if [[ -n "$EXTERNAL_PROXY_NETWORK" ]]; then
-    dashboard_addr="netbird-dashboard:80"
-    server_addr="netbird-server:80"
+    dashboard_addr="anonbird-dashboard:80"
+    server_addr="anonbird-server:80"
     install_note="# This config uses container names since Caddy is on the same Docker network.
 # Add this block to your Caddyfile and reload Caddy."
   fi
 
   cat <<EOF
-# NetBird Caddyfile Snippet
+# AnonBird Caddyfile Snippet
 # Generated by getting-started.sh
 #
 ${install_note}
@@ -1210,7 +1210,7 @@ render_npm_advanced_config() {
 
   # If external network is specified, use container names instead of host addresses
   if [[ -n "$EXTERNAL_PROXY_NETWORK" ]]; then
-    server_addr="netbird-server:80"
+    server_addr="anonbird-server:80"
   fi
 
   cat <<EOF
@@ -1263,19 +1263,19 @@ EOF
 print_builtin_traefik_instructions() {
   echo ""
   echo "$MSG_SEPARATOR"
-  echo "  NETBIRD SETUP COMPLETE"
+  echo "  ANONBIRD SETUP COMPLETE"
   echo "$MSG_SEPARATOR"
   echo ""
-  echo "You can access the NetBird dashboard at:"
+  echo "You can access the AnonBird dashboard at:"
   echo "  $NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN"
   echo ""
-  echo "Follow the onboarding steps to set up your NetBird instance."
+  echo "Follow the onboarding steps to set up your AnonBird instance."
   echo ""
   echo "Traefik is handling TLS certificates automatically via Let's Encrypt."
   echo "If you see certificate warnings, wait a moment for certificate issuance to complete."
   echo ""
   echo "Open ports:"
-  echo "  - 443/tcp   (HTTPS - all NetBird services)"
+  echo "  - 443/tcp   (HTTPS - all AnonBird services)"
   echo "  - 80/tcp    (HTTP - redirects to HTTPS)"
   echo "  - $NETBIRD_STUN_PORT/udp   (STUN - required for NAT traversal)"
   if [[ "$ENABLE_PROXY" == "true" ]]; then
@@ -1286,11 +1286,11 @@ print_builtin_traefik_instructions() {
   echo "For enterprise environments requiring high availability and advanced integrations,"
   echo "consider a commercial on-prem license or scaling your open source deployment:"
   echo ""
-  echo "  Commercial license: https://netbird.io/pricing#on-prem"
-  echo "  Scaling guide:      https://docs.netbird.io/scaling-your-self-hosted-deployment"
+  echo "  Project: https://github.com/Cr0me1ve/netbird"
+  echo "  Docs:      https://github.com/Cr0me1ve/netbird/tree/main/docs"
   echo ""
   if [[ "$ENABLE_PROXY" == "true" ]]; then
-    echo "NetBird Proxy:"
+    echo "AnonBird Proxy:"
     echo "  The proxy service is enabled and running."
     echo "  Any domain NOT matching $NETBIRD_DOMAIN will be passed through to the proxy."
     echo "  The proxy handles its own TLS certificates via ACME TLS-ALPN-01 challenge."
@@ -1305,7 +1305,7 @@ print_builtin_traefik_instructions() {
       echo "  Enable CrowdSec per-service in the dashboard under Access Control."
       echo ""
       echo "  To enroll in CrowdSec Console (optional, for dashboard and premium blocklists):"
-      echo "    docker exec netbird-crowdsec cscli console enroll <your-enrollment-key>"
+      echo "    docker exec anonbird-crowdsec cscli console enroll <your-enrollment-key>"
       echo "  Get your enrollment key at: https://app.crowdsec.net"
       echo ""
     fi
@@ -1319,7 +1319,7 @@ print_traefik_instructions() {
   echo "  TRAEFIK SETUP"
   echo "$MSG_SEPARATOR"
   echo ""
-  echo "NetBird containers are configured with Traefik labels."
+  echo "AnonBird containers are configured with Traefik labels."
   echo ""
   echo "Configuration:"
   echo "  Entrypoint: $TRAEFIK_ENTRYPOINT"
@@ -1329,7 +1329,7 @@ print_traefik_instructions() {
   if [[ -n "$TRAEFIK_EXTERNAL_NETWORK" ]]; then
     echo "  Network: $TRAEFIK_EXTERNAL_NETWORK (external)"
   else
-    echo "  Network: netbird"
+    echo "  Network: anonbird"
   fi
   echo ""
   echo "$MSG_NEXT_STEPS"
@@ -1354,36 +1354,36 @@ print_nginx_instructions() {
   echo "  NGINX SETUP"
   echo "$MSG_SEPARATOR"
   echo ""
-  echo "Generated: nginx-netbird.conf"
+  echo "Generated: nginx-anonbird.conf"
   echo ""
   echo "IMPORTANT: Nginx requires manual TLS certificate setup."
   echo "You'll need to obtain SSL/TLS certificates and configure the paths in the"
   echo "generated config file. The config includes examples for common certificate sources."
   echo ""
   if [[ -n "$EXTERNAL_PROXY_NETWORK" ]]; then
-    echo "NetBird containers have joined the '$EXTERNAL_PROXY_NETWORK' Docker network."
+    echo "AnonBird containers have joined the '$EXTERNAL_PROXY_NETWORK' Docker network."
     echo "The config uses container names for upstream servers."
     echo ""
     echo "$MSG_NEXT_STEPS"
     echo "  1. Ensure your Nginx container has access to SSL certificates"
     echo "     (mount certificate directory as volume if needed)"
-    echo "  2. Edit nginx-netbird.conf and update SSL certificate paths"
+    echo "  2. Edit nginx-anonbird.conf and update SSL certificate paths"
     echo "     The config includes examples for certbot, acme.sh, and custom certs"
     echo "  3. Include the config in your Nginx container's configuration"
     echo "  4. Reload Nginx"
   else
     echo "$MSG_NEXT_STEPS"
     echo "  1. Obtain SSL/TLS certificates (Let's Encrypt recommended)"
-    echo "  2. Edit nginx-netbird.conf and update certificate paths"
+    echo "  2. Edit nginx-anonbird.conf and update certificate paths"
     echo "  3. Install to /etc/nginx/sites-available/ (Debian) or /etc/nginx/conf.d/ (RHEL)"
     echo "  4. Test and reload: nginx -t && systemctl reload nginx"
     echo ""
     echo "For detailed TLS setup instructions, see:"
-    echo "https://docs.netbird.io/selfhosted/reverse-proxy#tls-certificate-setup-for-nginx"
+    echo "https://github.com/Cr0me1ve/netbird/tree/main/docs"
     echo ""
     echo "Container ports (bound to ${bind_addr}):"
     echo "  Dashboard:     ${DASHBOARD_HOST_PORT}"
-    echo "  NetBird Server: ${MANAGEMENT_HOST_PORT} (all services)"
+    echo "  AnonBird Server: ${MANAGEMENT_HOST_PORT} (all services)"
   fi
   return 0
 }
@@ -1399,11 +1399,11 @@ print_npm_instructions() {
   echo "Generated: npm-advanced-config.txt"
   echo ""
   if [[ -n "$EXTERNAL_PROXY_NETWORK" ]]; then
-    echo "NetBird containers have joined the '$EXTERNAL_PROXY_NETWORK' Docker network."
+    echo "AnonBird containers have joined the '$EXTERNAL_PROXY_NETWORK' Docker network."
     echo ""
     echo "In NPM, create a Proxy Host:"
     echo "  Domain: $NETBIRD_DOMAIN"
-    echo "  Forward Hostname: netbird-dashboard"
+    echo "  Forward Hostname: anonbird-dashboard"
     echo "  Forward Port: 80"
     echo "  Block Common Exploits: enabled"
     echo ""
@@ -1416,7 +1416,7 @@ print_npm_instructions() {
   else
     echo "Container ports (bound to ${bind_addr}):"
     echo "  Dashboard:     ${DASHBOARD_HOST_PORT}"
-    echo "  NetBird Server: ${MANAGEMENT_HOST_PORT} (all services)"
+    echo "  AnonBird Server: ${MANAGEMENT_HOST_PORT} (all services)"
     echo ""
     echo "In NPM, create a Proxy Host:"
     echo "  Domain: $NETBIRD_DOMAIN"
@@ -1441,23 +1441,23 @@ print_external_caddy_instructions() {
   echo "  EXTERNAL CADDY SETUP"
   echo "$MSG_SEPARATOR"
   echo ""
-  echo "Generated: caddyfile-netbird.txt"
+  echo "Generated: caddyfile-anonbird.txt"
   echo ""
   if [[ -n "$EXTERNAL_PROXY_NETWORK" ]]; then
-    echo "NetBird containers have joined the '$EXTERNAL_PROXY_NETWORK' Docker network."
+    echo "AnonBird containers have joined the '$EXTERNAL_PROXY_NETWORK' Docker network."
     echo "The config uses container names for upstream servers."
     echo ""
     echo "$MSG_NEXT_STEPS"
-    echo "  1. Add the contents of caddyfile-netbird.txt to your Caddyfile"
+    echo "  1. Add the contents of caddyfile-anonbird.txt to your Caddyfile"
     echo "  2. Reload Caddy"
   else
     echo "$MSG_NEXT_STEPS"
-    echo "  1. Add the contents of caddyfile-netbird.txt to your Caddyfile"
+    echo "  1. Add the contents of caddyfile-anonbird.txt to your Caddyfile"
     echo "  2. Reload Caddy: caddy reload --config /path/to/Caddyfile"
     echo ""
     echo "Container ports (bound to ${bind_addr}):"
     echo "  Dashboard:     ${DASHBOARD_HOST_PORT}"
-    echo "  NetBird Server: ${MANAGEMENT_HOST_PORT} (all services)"
+    echo "  AnonBird Server: ${MANAGEMENT_HOST_PORT} (all services)"
   fi
   return 0
 }
@@ -1472,7 +1472,7 @@ print_manual_instructions() {
   echo ""
   echo "Container ports (bound to ${bind_addr}):"
   echo "  Dashboard:     ${DASHBOARD_HOST_PORT}"
-  echo "  NetBird Server: ${MANAGEMENT_HOST_PORT} (all services: management, signal, relay)"
+  echo "  AnonBird Server: ${MANAGEMENT_HOST_PORT} (all services: management, signal, relay)"
   echo ""
   echo "Configure your reverse proxy with these routes (all go to the same backend):"
   echo ""

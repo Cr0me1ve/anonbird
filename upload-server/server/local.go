@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultDir = "/var/lib/netbird"
+	defaultDir = "/var/lib/anonbird"
 	putHandler = "/{dir}/{file}"
 )
 

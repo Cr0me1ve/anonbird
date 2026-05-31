@@ -67,7 +67,7 @@ fi
 
 # local development or tests
 if [[ $NETBIRD_DOMAIN == "localhost" || $NETBIRD_DOMAIN == "127.0.0.1" ]]; then
-  export NETBIRD_MGMT_SINGLE_ACCOUNT_MODE_DOMAIN="netbird.selfhosted"
+  export NETBIRD_MGMT_SINGLE_ACCOUNT_MODE_DOMAIN="anonbird.selfhosted"
   export NETBIRD_MGMT_API_ENDPOINT=http://$NETBIRD_DOMAIN:$NETBIRD_MGMT_API_PORT
   unset NETBIRD_MGMT_API_CERT_FILE
   unset NETBIRD_MGMT_API_CERT_KEY_FILE
@@ -112,17 +112,18 @@ mkdir -p $artifacts_path
 MGMT_VOLUMENAME="${VOLUME_PREFIX}${MGMT_VOLUMESUFFIX}"
 SIGNAL_VOLUMENAME="${VOLUME_PREFIX}${SIGNAL_VOLUMESUFFIX}"
 LETSENCRYPT_VOLUMENAME="${VOLUME_PREFIX}${LETSENCRYPT_VOLUMESUFFIX}"
-# if volume with wiretrustee- prefix already exists, use it, else create new with netbird-
-OLD_PREFIX='wiretrustee-'
-if docker volume ls | grep -q "${OLD_PREFIX}${MGMT_VOLUMESUFFIX}"; then
-  MGMT_VOLUMENAME="${OLD_PREFIX}${MGMT_VOLUMESUFFIX}"
-fi
-if docker volume ls | grep -q "${OLD_PREFIX}${SIGNAL_VOLUMESUFFIX}"; then
-  SIGNAL_VOLUMENAME="${OLD_PREFIX}${SIGNAL_VOLUMESUFFIX}"
-fi
-if docker volume ls | grep -q "${OLD_PREFIX}${LETSENCRYPT_VOLUMESUFFIX}"; then
-  LETSENCRYPT_VOLUMENAME="${OLD_PREFIX}${LETSENCRYPT_VOLUMESUFFIX}"
-fi
+# Reuse legacy NetBird/Wiretrustee volumes when reconfiguring an existing install.
+for OLD_PREFIX in 'netbird-' 'wiretrustee-'; do
+  if docker volume ls | grep -q "${OLD_PREFIX}${MGMT_VOLUMESUFFIX}"; then
+    MGMT_VOLUMENAME="${OLD_PREFIX}${MGMT_VOLUMESUFFIX}"
+  fi
+  if docker volume ls | grep -q "${OLD_PREFIX}${SIGNAL_VOLUMESUFFIX}"; then
+    SIGNAL_VOLUMENAME="${OLD_PREFIX}${SIGNAL_VOLUMESUFFIX}"
+  fi
+  if docker volume ls | grep -q "${OLD_PREFIX}${LETSENCRYPT_VOLUMESUFFIX}"; then
+    LETSENCRYPT_VOLUMENAME="${OLD_PREFIX}${LETSENCRYPT_VOLUMESUFFIX}"
+  fi
+done
 
 export MGMT_VOLUMENAME
 export SIGNAL_VOLUMENAME
@@ -140,7 +141,7 @@ if [[ -z "${NETBIRD_AUTH_OIDC_CONFIGURATION_ENDPOINT}" ]]; then
   echo "It seems like you provided an old setup.env file."
   echo "Since the release of v0.8.10, we introduced a new set of properties."
   echo "The script is backward compatible and will continue automatically."
-  echo "In the future versions it will be deprecated. Please refer to the documentation to learn about the changes http://netbird.io/docs/getting-started/self-hosting"
+  echo "In future versions it will be deprecated. Please refer to the AnonBird docs in https://github.com/Cr0me1ve/netbird/tree/main/docs"
 
   export NETBIRD_AUTH_OIDC_CONFIGURATION_ENDPOINT="https://${NETBIRD_AUTH0_DOMAIN}/.well-known/openid-configuration"
   export NETBIRD_USE_AUTH0="true"

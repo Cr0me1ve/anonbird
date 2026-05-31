@@ -77,7 +77,7 @@ func TestLeaseJSONRoundTrip(t *testing.T) {
 			Namespace:       "default",
 			ResourceVersion: "12345",
 			Annotations: map[string]string{
-				"netbird.io/domain": "app.example.com",
+				"anonbird.local/domain": "app.example.com",
 			},
 		},
 		Spec: LeaseSpec{

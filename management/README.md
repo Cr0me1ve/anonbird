@@ -1,13 +1,13 @@
-# netbird Management Server
-netbird management server will control and synchronize peers configuration within your Netbird account and network.
+# AnonBird Management Server
+AnonBird management server will control and synchronize peers configuration within your AnonBird account and network.
 
 ## Command Options
 The CLI accepts the command **management** with the following options:
 ```shell
-start Netbird Management Server
+start AnonBird Management Server
 
 Usage:
-  netbird-mgmt management [flags]
+  anonbird-mgmt management [flags]
 
 Flags:
       --cert-file string            Location of your SSL certificate. Can be used when you have an existing certificate and don't want a new certificate be generated automatically. If letsencrypt-domain is specified this property has no effect
@@ -18,8 +18,8 @@ Flags:
       --port int                    server port to listen on (default 33073)
 
 Global Flags:
-      --config string      Netbird config file location to write new config to (default "/etc/netbird")
-      --log-file string    sets Netbird log path. If console is specified the the log will be output to stdout (default "/var/log/netbird/management.log")
+      --config string      AnonBird config file location to write new config to (default "/etc/anonbird/management.json")
+      --log-file string    sets AnonBird log path. If console is specified the the log will be output to stdout (default "/var/log/anonbird/management.log")
       --log-level string    (default "info")
 ```
 ## Run Management service (Docker)
@@ -36,14 +36,14 @@ Replace <YOUR-DOMAIN> with your server's public domain (e.g. mydomain.com or sub
 
 ```bash
 # create a volume
-docker volume create netbird-mgmt
+docker volume create anonbird-mgmt
 # run the docker container
-docker run -d --name netbird-management \
+docker run -d --name anonbird-management \
 -p 33073:33073  \
 -p 443:443  \
--v netbird-mgmt:/var/lib/netbird  \
--v ./config.json:/etc/netbird/config.json  \
-netbirdio/management:latest \
+-v anonbird-mgmt:/var/lib/anonbird  \
+-v ./config.json:/etc/anonbird/config.json  \
+ghcr.io/cr0me1ve/anonbird-management:latest \
 --letsencrypt-domain <YOUR-DOMAIN>
 ```
 > An example of config.json can be found here [management.json](../infrastructure_files/management.json.tmpl)
@@ -53,18 +53,18 @@ Trigger Let's encrypt certificate generation:
 curl https://<YOUR-DOMAIN>
 ```
 
-The certificate will be persisted in the ```datadir/letsencrypt/``` folder (e.g. ```/var/lib/netbird/letsencrypt/```) inside the container.
+The certificate will be persisted in the ```datadir/letsencrypt/``` folder (e.g. ```/var/lib/anonbird/letsencrypt/```) inside the container.
 
 Make sure that the ```datadir``` is mapped to some folder on a host machine. In case you used the volume command, you can run the following to retrieve the Mountpoint:
 ```shell
-docker volume inspect netbird-mgmt
+docker volume inspect anonbird-mgmt
 [
     {
         "CreatedAt": "2021-07-25T20:45:28Z",
         "Driver": "local",
         "Labels": {},
         "Mountpoint": "/var/lib/docker/volumes/mgmt/_data",
-        "Name": "netbird-mgmt",
+        "Name": "anonbird-mgmt",
         "Options": {},
         "Scope": "local"
     }
@@ -76,24 +76,24 @@ Consequent restarts of the container will pick up previously generated certifica
 
 ```bash
 # create a volume
-docker volume create netbird-mgmt
+docker volume create anonbird-mgmt
 # run the docker container
-docker run -d --name netbird-management \
+docker run -d --name anonbird-management \
 -p 33073:33073  \
--v netbird-mgmt:/var/lib/netbird  \
--v ./config.json:/etc/netbird/config.json  \
-netbirdio/management:latest
+-v anonbird-mgmt:/var/lib/anonbird  \
+-v ./config.json:/etc/anonbird/config.json  \
+ghcr.io/cr0me1ve/anonbird-management:latest
 ```
 ### Debug tag
 We also publish a docker image with the debug tag which has the log-level set to default, plus it uses the ```gcr.io/distroless/base:debug``` image that can be used with docker exec in order to run some commands in the Management container.
 ```shell
-shell $ docker run -d --name netbird-management-debug \
+shell $ docker run -d --name anonbird-management-debug \
 -p 33073:33073  \
--v netbird-mgmt:/var/lib/netbird  \
--v ./config.json:/etc/netbird/config.json  \
-netbirdio/management:debug-latest
+-v anonbird-mgmt:/var/lib/anonbird  \
+-v ./config.json:/etc/anonbird/config.json  \
+ghcr.io/cr0me1ve/anonbird-management:debug-latest
 
-shell $ docker exec -ti netbird-management-debug /bin/sh
+shell $ docker exec -ti anonbird-management-debug /bin/sh
 container-shell $ 
 ```
 ## For development purposes:

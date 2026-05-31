@@ -209,7 +209,7 @@ func DefaultConfig() *CombinedConfig {
 			LogLevel:           "info",
 			LogFile:            "console",
 			StunPorts:          []int{3478},
-			DataDir:            "/var/lib/netbird/",
+			DataDir:            "/var/lib/anonbird/",
 			Auth: AuthConfig{
 				Storage: AuthStorageConfig{
 					Type: "sqlite3",
@@ -231,7 +231,7 @@ func DefaultConfig() *CombinedConfig {
 			// LogLevel inherited from Server.LogLevel via ApplySimplifiedDefaults
 		},
 		Management: ManagementConfig{
-			DataDir: "/var/lib/netbird/",
+			DataDir: "/var/lib/anonbird/",
 			Auth: AuthConfig{
 				Storage: AuthStorageConfig{
 					Type: "sqlite3",
@@ -359,7 +359,7 @@ func (c *CombinedConfig) applyManagementDefaults(exposedHost string) {
 	if c.Management.LogLevel == "" {
 		c.Management.LogLevel = c.Server.LogLevel
 	}
-	if c.Management.DataDir == "" || c.Management.DataDir == "/var/lib/netbird/" {
+	if c.Management.DataDir == "" || c.Management.DataDir == "/var/lib/netbird/" || c.Management.DataDir == "/var/lib/anonbird/" {
 		c.Management.DataDir = c.Server.DataDir
 	}
 	anonymousHost := isAnonymousServiceHost(exposedHost)
@@ -581,7 +581,7 @@ func parseSignalProtocol(uri string) nbconfig.Protocol {
 }
 
 // stripSignalProtocol removes the protocol prefix from a signal URI.
-// Returns just the host:port (e.g., "selfhosted2.demo.netbird.io:443").
+// Returns just the host:port (e.g., "selfhosted.example.com:443").
 func stripSignalProtocol(uri string) string {
 	uri = strings.TrimPrefix(uri, "https://")
 	uri = strings.TrimPrefix(uri, "http://")

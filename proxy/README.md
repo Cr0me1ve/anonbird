@@ -1,11 +1,11 @@
-# Netbird Reverse Proxy
+# AnonBird Reverse Proxy
 
-The NetBird Reverse Proxy is a separate service that can act as a public entrypoint to certain resources within a NetBird network.
+The AnonBird Reverse Proxy is a separate service that can act as a public entrypoint to certain resources within an AnonBird network.
 At a high level, the way that it operates is:
 - Configured routes are communicated from the Management server to the proxy.
-- For each route the proxy creates a NetBird connection to the NetBird Peer that hosts the resource.
-- When traffic hits the proxy at the address and path configured for the proxied resource, the NetBird Proxy brings up a relevant authentication method for that resource.
-- On successful authentication the proxy will forward traffic onwards to the NetBird Peer.
+- For each route the proxy creates an AnonBird connection to the AnonBird Peer that hosts the resource.
+- When traffic hits the proxy at the address and path configured for the proxied resource, the AnonBird Proxy brings up a relevant authentication method for that resource.
+- On successful authentication the proxy will forward traffic onwards to the AnonBird Peer.
 
 Proxy Authentication methods supported are:
 - No authentication
@@ -61,20 +61,20 @@ The built assets in `web/dist/` are embedded via `//go:embed` and served by the 
 
 ## Configuration
 
-NetBird Proxy deployment configuration is via flags or environment variables, with flags taking precedence over the environment.
+AnonBird Proxy deployment configuration is via flags or environment variables, with flags taking precedence over the environment.
 The following deployment configuration is available:
 
 | Flag             | Env                              | Purpose                                                                                                                            | Default                                            |
 |------------------|----------------------------------|------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------|
 | `-debug`         | `NB_PROXY_DEBUG_LOGS`            | Enable debug logging                                                                                                               | `false`                                            |
-| `-mgmt`          | `NB_PROXY_MANAGEMENT_ADDRESS`    | The address of the management server for the proxy to get configuration from.                                                      | `"https://api.netbird.io:443"`                     |
+| `-mgmt`          | `NB_PROXY_MANAGEMENT_ADDRESS`    | The address of the management server for the proxy to get configuration from.                                                      | `required: set NB_PROXY_MANAGEMENT_ADDRESS`                     |
 | `-addr`          | `NB_PROXY_ADDRESS`               | The address that the reverse proxy will listen on.                                                                                 | `":443`                                            |
-| `-url`           | `NB_PROXY_URL`                   | The URL that the proxy will be reached at (where endpoints will be CNAMEd to). If unset, this will fall back to the proxy address. | `"proxy.netbird.io"`                               |
+| `-domain`           | `NB_PROXY_DOMAIN`                   | The URL that the proxy will be reached at (where endpoints will be CNAMEd to). If unset, this will fall back to the proxy address. | `empty by default; set NB_PROXY_DOMAIN`                               |
 | `-cert-dir`      | `NB_PROXY_CERTIFICATE_DIRECTORY` | The location that certificates are stored in.                                                                                      | `"./certs"`                                        |
 | `-acme-certs`    | `NB_PROXY_ACME_CERTIFICATES`     | Whether to use ACME to generate certificates.                                                                                      | `false`                                            |
 | `-acme-addr`     | `NB_PROXY_ACME_ADDRESS`          | The HTTP address the proxy will listen on to respond to HTTP-01 ACME challenges                                                    | `":80"`                                            |
 | `-acme-dir`      | `NB_PROXY_ACME_DIRECTORY`        | The directory URL of the ACME server to be used                                                                                    | `"https://acme-v02.api.letsencrypt.org/directory"` |
-| `-oidc-id`       | `NB_PROXY_OIDC_CLIENT_ID`        | The OAuth2 Client ID for OIDC User Authentication                                                                                  | `"netbird-proxy"`                                  |
+| `-oidc-id`       | `NB_PROXY_OIDC_CLIENT_ID`        | The OAuth2 Client ID for OIDC User Authentication                                                                                  | `"anonbird-proxy"`                                  |
 | `-oidc-secret`   | `NB_PROXY_OIDC_CLIENT_SECRET`    | The OAuth2 Client Secret for OIDC User Authentication                                                                              | `""`                                               |
-| `-oidc-endpoint` | `NB_PROXY_OIDC_ENDPOINT`         | The OAuth2 provider endpoint for OIDC User Authentication                                                                          | `"https://api.netbird.io/oauth2"`                  |
+| `-oidc-endpoint` | `NB_PROXY_OIDC_ENDPOINT`         | The OAuth2 provider endpoint for OIDC User Authentication                                                                          | `derived from your AnonBird management/IdP config`                  |
 | `-oidc-scopes`   | `NB_PROXY_OIDC_SCOPES`           | The OAuth2 scopes for OIDC User Authentication, comma separated                                                                    | `"openid,profile,email"`                           |

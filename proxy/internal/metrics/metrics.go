@@ -75,7 +75,7 @@ func (m *Metrics) initHTTPMetrics(meter metric.Meter) error {
 	m.requestsTotal, err = meter.Int64Counter(
 		"proxy.http.request.counter",
 		metric.WithUnit("1"),
-		metric.WithDescription("Total number of requests made to the netbird proxy"),
+		metric.WithDescription("Total number of requests made to the AnonBird proxy"),
 	)
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func (m *Metrics) initHTTPMetrics(meter metric.Meter) error {
 	m.activeRequests, err = meter.Int64UpDownCounter(
 		"proxy.http.active_requests",
 		metric.WithUnit("1"),
-		metric.WithDescription("Current in-flight requests handled by the netbird proxy"),
+		metric.WithDescription("Current in-flight requests handled by the AnonBird proxy"),
 	)
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func (m *Metrics) initHTTPMetrics(meter metric.Meter) error {
 	m.configuredDomains, err = meter.Int64UpDownCounter(
 		"proxy.domains.count",
 		metric.WithUnit("1"),
-		metric.WithDescription("Current number of domains configured on the netbird proxy"),
+		metric.WithDescription("Current number of domains configured on the AnonBird proxy"),
 	)
 	if err != nil {
 		return err
@@ -102,7 +102,7 @@ func (m *Metrics) initHTTPMetrics(meter metric.Meter) error {
 	m.totalPaths, err = meter.Int64UpDownCounter(
 		"proxy.paths.count",
 		metric.WithUnit("1"),
-		metric.WithDescription("Total number of paths configured on the netbird proxy"),
+		metric.WithDescription("Total number of paths configured on the AnonBird proxy"),
 	)
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func (m *Metrics) initHTTPMetrics(meter metric.Meter) error {
 	m.requestDuration, err = meter.Int64Histogram(
 		"proxy.http.request.duration.ms",
 		metric.WithUnit("milliseconds"),
-		metric.WithDescription("Duration of requests made to the netbird proxy"),
+		metric.WithDescription("Duration of requests made to the AnonBird proxy"),
 	)
 	if err != nil {
 		return err
@@ -120,7 +120,7 @@ func (m *Metrics) initHTTPMetrics(meter metric.Meter) error {
 	m.backendDuration, err = meter.Int64Histogram(
 		"proxy.backend.duration.ms",
 		metric.WithUnit("milliseconds"),
-		metric.WithDescription("Duration of peer round trip time from the netbird proxy"),
+		metric.WithDescription("Duration of peer round trip time from the AnonBird proxy"),
 	)
 	if err != nil {
 		return err

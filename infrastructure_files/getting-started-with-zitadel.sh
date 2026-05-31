@@ -200,9 +200,9 @@ create_service_user() {
       -H "Authorization: Bearer $PAT" \
       -H "Content-Type: application/json" \
       -d '{
-            "userName": "netbird-service-account",
-            "name": "Netbird Service Account",
-            "description": "Netbird Service Account for IDP management",
+            "userName": "anonbird-service-account",
+            "name": "AnonBird Service Account",
+            "description": "AnonBird Service Account for IDP management",
             "accessTokenType": "ACCESS_TOKEN_TYPE_JWT"
       }'
   )
@@ -368,7 +368,7 @@ delete_default_zitadel_admin() {
 }
 
 init_zitadel() {
-  echo -e "\nInitializing Zitadel with NetBird's applications\n"
+  echo -e "\nInitializing Zitadel with AnonBird's applications\n"
   INSTANCE_URL="$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN"
 
   TOKEN_PATH=./machinekey/zitadel-admin-sa.token
@@ -445,8 +445,8 @@ check_nb_domain() {
     return 1
   fi
 
-  if [ "$DOMAIN" == "netbird.example.com" ]; then
-    echo "The NETBIRD_DOMAIN cannot be netbird.example.com" > /dev/stderr
+  if [ "$DOMAIN" == "anonbird.example.com" ]; then
+    echo "The NETBIRD_DOMAIN cannot be anonbird.example.com" > /dev/stderr
     return 1
   fi
   return 0
@@ -454,7 +454,7 @@ check_nb_domain() {
 
 read_nb_domain() {
   READ_NETBIRD_DOMAIN=""
-  echo -n "Enter the domain you want to use for NetBird (e.g. netbird.my-domain.com): " > /dev/stderr
+  echo -n "Enter the domain you want to use for AnonBird (e.g. anonbird.my-domain.com): " > /dev/stderr
   read -r READ_NETBIRD_DOMAIN < /dev/tty
   if ! check_nb_domain "$READ_NETBIRD_DOMAIN"; then
     read_nb_domain
@@ -552,16 +552,16 @@ initEnvironment() {
   $DOCKER_COMPOSE_COMMAND up -d caddy zitadel
   init_zitadel
 
-  echo -e "\nRendering NetBird files...\n"
+  echo -e "\nRendering AnonBird files...\n"
   renderTurnServerConf > turnserver.conf
   renderManagementJson > management.json
   renderDashboardEnv > dashboard.env
   renderRelayEnv > relay.env
 
-  echo -e "\nStarting NetBird services\n"
+  echo -e "\nStarting AnonBird services\n"
   $DOCKER_COMPOSE_COMMAND up -d
   echo -e "\nDone!\n"
-  echo "You can access the NetBird dashboard at $NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN"
+  echo "You can access the AnonBird dashboard at $NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN"
   echo "Login with the following credentials:"
   install -m 600 /dev/null .env
   printf 'Username: %s\nPassword: %s\n' \
@@ -666,7 +666,7 @@ max-port=$TURN_MAX_PORT
 fingerprint
 lt-cred-mech
 user=$TURN_USER:$TURN_PASSWORD
-realm=wiretrustee.com
+realm=anonbird.local
 cert=/etc/coturn/certs/cert.pem
 pkey=/etc/coturn/private/privkey.pem
 log-file=stdout
@@ -821,13 +821,13 @@ services:
   caddy:
     image: caddy
     restart: unless-stopped
-    networks: [ netbird ]
+    networks: [ anonbird ]
     ports:
       - '443:443'
       - '443:443/udp'
       - '80:80'
     volumes:
-      - netbird_caddy_data:/data
+      - anonbird_caddy_data:/data
       - ./Caddyfile:/etc/caddy/Caddyfile
     logging:
       driver: "json-file"
@@ -836,9 +836,9 @@ services:
         max-file: "2"
   # UI dashboard
   dashboard:
-    image: netbirdio/dashboard:latest
+    image: ghcr.io/cr0me1ve/anonbird-dashboard:latest
     restart: unless-stopped
-    networks: [netbird]
+    networks: [anonbird]
     env_file:
       - ./dashboard.env
     logging:
@@ -848,9 +848,9 @@ services:
         max-file: "2"
   # Signal
   signal:
-    image: netbirdio/signal:latest
+    image: ghcr.io/cr0me1ve/anonbird-signal:latest
     restart: unless-stopped
-    networks: [netbird]
+    networks: [anonbird]
     logging:
       driver: "json-file"
       options:
@@ -858,9 +858,9 @@ services:
         max-file: "2"
   # Relay
   relay:
-    image: netbirdio/relay:latest
+    image: ghcr.io/cr0me1ve/anonbird-relay:latest
     restart: unless-stopped
-    networks: [netbird]
+    networks: [anonbird]
     env_file:
       - ./relay.env
     logging:
@@ -870,19 +870,19 @@ services:
         max-file: "2"
   # Management
   management:
-    image: netbirdio/management:latest
+    image: ghcr.io/cr0me1ve/anonbird-management:latest
     restart: unless-stopped
-    networks: [netbird]
+    networks: [anonbird]
     volumes:
-      - netbird_management:/var/lib/netbird
-      - ./management.json:/etc/netbird/management.json
+      - anonbird_management:/var/lib/anonbird
+      - ./management.json:/etc/anonbird/management.json
     command: [
       "--port", "80",
       "--log-file", "console",
       "--log-level", "info",
       "--disable-anonymous-metrics=false",
-      "--single-account-mode-domain=netbird.selfhosted",
-      "--dns-domain=netbird.selfhosted",
+      "--single-account-mode-domain=anonbird.selfhosted",
+      "--dns-domain=anonbird.selfhosted",
       "--idp-sign-key-refresh-enabled",
     ]
     logging:
@@ -894,7 +894,7 @@ services:
   coturn:
     image: coturn/coturn
     restart: unless-stopped
-    #domainname: netbird.relay.selfhosted
+    #domainname: anonbird.relay.selfhosted
     volumes:
       - ./turnserver.conf:/etc/turnserver.conf:ro
     network_mode: host
@@ -908,7 +908,7 @@ services:
   # Zitadel - identity provider
   zitadel:
     restart: 'always'
-    networks: [netbird]
+    networks: [anonbird]
     image: 'ghcr.io/zitadel/zitadel:v2.64.1'
     command: 'start-from-init --masterkeyFromEnv --tlsMode $ZITADEL_TLS_MODE'
     env_file:
@@ -918,20 +918,20 @@ services:
         condition: 'service_healthy'
     volumes:
       - ./machinekey:/machinekey
-      - netbird_zitadel_certs:/zdb-certs:ro
+      - anonbird_zitadel_certs:/zdb-certs:ro
     logging:
       driver: "json-file"
       options:
         max-size: "500m"
         max-file: "2"
 $ZDB
-  netbird_zdb_data:
-  netbird_management:
-  netbird_caddy_data:
-  netbird_zitadel_certs:
+  anonbird_zdb_data:
+  anonbird_management:
+  anonbird_caddy_data:
+  anonbird_zitadel_certs:
 
 networks:
-  netbird:
+  anonbird:
 EOF
 }
 
@@ -940,13 +940,13 @@ renderDockerComposeCockroachDB() {
   # CockroachDB for Zitadel
   zdb:
     restart: 'always'
-    networks: [netbird]
+    networks: [anonbird]
     image: 'cockroachdb/cockroach:latest-v23.2'
     command: 'start-single-node --advertise-addr zdb'
     volumes:
-      - netbird_zdb_data:/cockroach/cockroach-data
-      - netbird_zdb_certs:/cockroach/certs
-      - netbird_zitadel_certs:/zitadel-certs
+      - anonbird_zdb_data:/cockroach/cockroach-data
+      - anonbird_zdb_certs:/cockroach/certs
+      - anonbird_zitadel_certs:/zitadel-certs
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/health?ready=1" ]
       interval: '10s'
@@ -960,7 +960,7 @@ renderDockerComposeCockroachDB() {
         max-file: "2"
 
 volumes:
-  netbird_zdb_certs:
+  anonbird_zdb_certs:
 EOF
 }
 
@@ -969,12 +969,12 @@ renderDockerComposePostgres() {
   # Postgres for Zitadel
   zdb:
     restart: 'always'
-    networks: [netbird]
+    networks: [anonbird]
     image: 'postgres:16-alpine'
     env_file:
       - ./zdb.env
     volumes:
-      - netbird_zdb_data:/var/lib/postgresql/data:rw
+      - anonbird_zdb_data:/var/lib/postgresql/data:rw
     healthcheck:
       test: ["CMD-SHELL", "pg_isready", "-d", "db_prod"]
       interval: 5s

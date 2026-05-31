@@ -1,18 +1,24 @@
 package cmd
 
 const (
-	defaultMgmtDataDir   = "/var/lib/netbird/"
-	defaultMgmtConfigDir = "/etc/netbird"
-	defaultLogDir        = "/var/log/netbird"
+	defaultMgmtDataDir   = "/var/lib/anonbird/"
+	defaultMgmtConfigDir = "/etc/anonbird"
+	defaultLogDir        = "/var/log/anonbird"
 
-	oldDefaultMgmtDataDir   = "/var/lib/wiretrustee/"
-	oldDefaultMgmtConfigDir = "/etc/wiretrustee"
-	oldDefaultLogDir        = "/var/log/wiretrustee"
+	legacyNetbirdMgmtDataDir   = "/var/lib/netbird/"
+	legacyNetbirdMgmtConfigDir = "/etc/netbird"
+	legacyNetbirdLogDir        = "/var/log/netbird"
 
-	defaultMgmtConfig    = defaultMgmtConfigDir + "/management.json"
-	defaultLogFile       = defaultLogDir + "/management.log"
-	oldDefaultMgmtConfig = oldDefaultMgmtConfigDir + "/management.json"
-	oldDefaultLogFile    = oldDefaultLogDir + "/management.log"
+	legacyWiretrusteeMgmtDataDir   = "/var/lib/wiretrustee/"
+	legacyWiretrusteeMgmtConfigDir = "/etc/wiretrustee"
+	legacyWiretrusteeLogDir        = "/var/log/wiretrustee"
 
-	defaultSingleAccModeDomain = "netbird.selfhosted"
+	defaultMgmtConfig        = defaultMgmtConfigDir + "/management.json"
+	defaultLogFile           = defaultLogDir + "/management.log"
+	legacyNetbirdConfig      = legacyNetbirdMgmtConfigDir + "/management.json"
+	legacyNetbirdLogFile     = legacyNetbirdLogDir + "/management.log"
+	legacyWiretrusteeConfig  = legacyWiretrusteeMgmtConfigDir + "/management.json"
+	legacyWiretrusteeLogFile = legacyWiretrusteeLogDir + "/management.log"
+
+	defaultSingleAccModeDomain = "anonbird.selfhosted"
 )

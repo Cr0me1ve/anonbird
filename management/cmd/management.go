@@ -467,35 +467,39 @@ func fetchOIDCConfig(ctx context.Context, oidcEndpoint string) (OIDCConfigRespon
 }
 
 func handleRebrand(cmd *cobra.Command) error {
-	var err error
 	if logFile == defaultLogFile {
-		if migrateToNetbird(oldDefaultLogFile, defaultLogFile) {
-			cmd.Printf("will copy Log dir %s and its content to %s\n", oldDefaultLogDir, defaultLogDir)
-			err = cpDir(oldDefaultLogDir, defaultLogDir)
-			if err != nil {
-				return err
-			}
+		if err := migrateDefaultDir(cmd, legacyNetbirdLogFile, legacyNetbirdLogDir, defaultLogFile, defaultLogDir, "Log"); err != nil {
+			return err
+		}
+		if err := migrateDefaultDir(cmd, legacyWiretrusteeLogFile, legacyWiretrusteeLogDir, defaultLogFile, defaultLogDir, "Log"); err != nil {
+			return err
 		}
 	}
 	if nbconfig.MgmtConfigPath == defaultMgmtConfig {
-		if migrateToNetbird(oldDefaultMgmtConfig, defaultMgmtConfig) {
-			cmd.Printf("will copy Config dir %s and its content to %s\n", oldDefaultMgmtConfigDir, defaultMgmtConfigDir)
-			err = cpDir(oldDefaultMgmtConfigDir, defaultMgmtConfigDir)
-			if err != nil {
-				return err
-			}
+		if err := migrateDefaultDir(cmd, legacyNetbirdConfig, legacyNetbirdMgmtConfigDir, defaultMgmtConfig, defaultMgmtConfigDir, "Config"); err != nil {
+			return err
+		}
+		if err := migrateDefaultDir(cmd, legacyWiretrusteeConfig, legacyWiretrusteeMgmtConfigDir, defaultMgmtConfig, defaultMgmtConfigDir, "Config"); err != nil {
+			return err
 		}
 	}
 	if mgmtDataDir == defaultMgmtDataDir {
-		if migrateToNetbird(oldDefaultMgmtDataDir, defaultMgmtDataDir) {
-			cmd.Printf("will copy Config dir %s and its content to %s\n", oldDefaultMgmtDataDir, defaultMgmtDataDir)
-			err = cpDir(oldDefaultMgmtDataDir, defaultMgmtDataDir)
-			if err != nil {
-				return err
-			}
+		if err := migrateDefaultDir(cmd, legacyNetbirdMgmtDataDir, legacyNetbirdMgmtDataDir, defaultMgmtDataDir, defaultMgmtDataDir, "Data"); err != nil {
+			return err
+		}
+		if err := migrateDefaultDir(cmd, legacyWiretrusteeMgmtDataDir, legacyWiretrusteeMgmtDataDir, defaultMgmtDataDir, defaultMgmtDataDir, "Data"); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func migrateDefaultDir(cmd *cobra.Command, probePath, srcDir, dstPath, dstDir, label string) error {
+	if !migrateToNetbird(probePath, dstPath) {
+		return nil
+	}
+	cmd.Printf("will copy %s dir %s and its content to %s\n", label, srcDir, dstDir)
+	return cpDir(srcDir, dstDir)
 }
 
 func cpFile(src, dst string) error {
