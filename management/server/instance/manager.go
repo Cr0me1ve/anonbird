@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/mail"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -23,9 +24,9 @@ import (
 )
 
 const (
-	// Version endpoints
-	managementVersionURL = "https://pkgs.netbird.io/releases/latest/version"
-	dashboardReleasesURL = "https://api.github.com/repos/netbirdio/dashboard/releases/latest"
+	// Version endpoint env vars. Empty values disable remote release checks.
+	managementVersionURLEnv = "ANONBIRD_MANAGEMENT_VERSION_URL"
+	dashboardReleasesURLEnv = "ANONBIRD_DASHBOARD_RELEASE_URL"
 
 	// Cache TTL for version information
 	versionCacheTTL = 60 * time.Minute
@@ -310,21 +311,27 @@ func (m *DefaultManager) fetchVersionInfo(ctx context.Context) (*VersionInfo, er
 		CurrentVersion: version.NetbirdVersion(),
 	}
 
-	// Fetch management version from pkgs.netbird.io (plain text)
-	mgmtVersion, err := m.fetchPlainTextVersion(ctx, managementVersionURL)
-	if err != nil {
-		log.WithContext(ctx).Warnf("failed to fetch management version: %v", err)
+	if mgmtVersionURL := configuredInstanceVersionURL(managementVersionURLEnv); mgmtVersionURL != "" {
+		mgmtVersion, err := m.fetchPlainTextVersion(ctx, mgmtVersionURL)
+		if err != nil {
+			log.WithContext(ctx).Warnf("failed to fetch management version: %v", err)
+		} else {
+			info.ManagementVersion = mgmtVersion
+			info.ManagementUpdateAvailable = isNewerVersion(info.CurrentVersion, mgmtVersion)
+		}
 	} else {
-		info.ManagementVersion = mgmtVersion
-		info.ManagementUpdateAvailable = isNewerVersion(info.CurrentVersion, mgmtVersion)
+		log.WithContext(ctx).Debugf("management release check disabled; set %s to enable it", managementVersionURLEnv)
 	}
 
-	// Fetch dashboard version from GitHub
-	dashVersion, err := m.fetchGitHubRelease(ctx, dashboardReleasesURL)
-	if err != nil {
-		log.WithContext(ctx).Warnf("failed to fetch dashboard version from GitHub: %v", err)
+	if dashboardReleaseURL := configuredInstanceVersionURL(dashboardReleasesURLEnv); dashboardReleaseURL != "" {
+		dashVersion, err := m.fetchGitHubRelease(ctx, dashboardReleaseURL)
+		if err != nil {
+			log.WithContext(ctx).Warnf("failed to fetch dashboard version: %v", err)
+		} else {
+			info.DashboardVersion = dashVersion
+		}
 	} else {
-		info.DashboardVersion = dashVersion
+		log.WithContext(ctx).Debugf("dashboard release check disabled; set %s to enable it", dashboardReleasesURLEnv)
 	}
 
 	// Update cache
@@ -334,6 +341,10 @@ func (m *DefaultManager) fetchVersionInfo(ctx context.Context) (*VersionInfo, er
 	m.versionMu.Unlock()
 
 	return info, nil
+}
+
+func configuredInstanceVersionURL(envName string) string {
+	return strings.TrimSpace(os.Getenv(envName))
 }
 
 // isNewerVersion returns true if latestVersion is greater than currentVersion
@@ -357,7 +368,7 @@ func (m *DefaultManager) fetchPlainTextVersion(ctx context.Context, url string) 
 		return "", fmt.Errorf("create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "NetBird-Management/"+version.NetbirdVersion())
+	req.Header.Set("User-Agent", "AnonBird-Management/"+version.NetbirdVersion())
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
@@ -384,7 +395,7 @@ func (m *DefaultManager) fetchGitHubRelease(ctx context.Context, url string) (st
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "NetBird-Management/"+version.NetbirdVersion())
+	req.Header.Set("User-Agent", "AnonBird-Management/"+version.NetbirdVersion())
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {

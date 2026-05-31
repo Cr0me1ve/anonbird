@@ -3,6 +3,8 @@ package version
 import (
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,8 +17,10 @@ const (
 )
 
 var (
-	versionURL = "https://pkgs.netbird.io/releases/latest/version"
+	versionURL = strings.TrimSpace(os.Getenv(VersionURLEnv))
 )
+
+const VersionURLEnv = "ANONBIRD_VERSION_URL"
 
 // Update fetch the version info periodically and notify the onUpdateListener in case the UI version or the
 // daemon version are deprecated
@@ -130,9 +134,15 @@ func (u *Update) StartFetcher() {
 }
 
 func (u *Update) fetchVersion() bool {
-	log.Debugf("fetching version info from %s", versionURL)
+	url := strings.TrimSpace(versionURL)
+	if url == "" {
+		log.Debugf("version check disabled; set %s to enable AnonBird release checks", VersionURLEnv)
+		return false
+	}
 
-	req, err := http.NewRequest("GET", versionURL, nil)
+	log.Debugf("fetching version info from %s", url)
+
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Errorf("failed to create request for version info: %s", err)
 		return false

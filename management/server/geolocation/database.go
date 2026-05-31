@@ -3,10 +3,12 @@ package geolocation
 import (
 	"context"
 	"encoding/csv"
+	"fmt"
 	"io"
 	"os"
 	"path"
 	"strconv"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/driver/sqlite"
@@ -15,12 +17,12 @@ import (
 )
 
 const (
-	geoLiteCityTarGZURL     = "https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City/download?suffix=tar.gz"
-	geoLiteCityZipURL       = "https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City-CSV/download?suffix=zip"
-	geoLiteCitySha256TarURL = "https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City/download?suffix=tar.gz.sha256"
-	geoLiteCitySha256ZipURL = "https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City-CSV/download?suffix=zip.sha256"
-	geoLiteCityMMDB         = "GeoLite2-City.mmdb"
-	geoLiteCityCSV          = "GeoLite2-City-Locations-en.csv"
+	geoLiteCityTarGZURLEnv     = "ANONBIRD_GEOLITE_CITY_TAR_URL"
+	geoLiteCityZipURLEnv       = "ANONBIRD_GEOLITE_CITY_CSV_ZIP_URL"
+	geoLiteCitySha256TarURLEnv = "ANONBIRD_GEOLITE_CITY_TAR_SHA256_URL"
+	geoLiteCitySha256ZipURLEnv = "ANONBIRD_GEOLITE_CITY_CSV_ZIP_SHA256_URL"
+	geoLiteCityMMDB            = "GeoLite2-City.mmdb"
+	geoLiteCityCSV             = "GeoLite2-City-Locations-en.csv"
 )
 
 // loadGeolocationDatabases loads the MaxMind databases.
@@ -35,6 +37,10 @@ func loadGeolocationDatabases(ctx context.Context, dataDir string, mmdbFile stri
 
 		switch file {
 		case mmdbFile:
+			fileURL, checksumURL, err := geoliteDownloadURLs(geoLiteCityTarGZURLEnv, geoLiteCitySha256TarURLEnv)
+			if err != nil {
+				return err
+			}
 			extractFunc := func(src string, dst string) error {
 				if err := decompressTarGzFile(src, dst); err != nil {
 					return err
@@ -42,14 +48,18 @@ func loadGeolocationDatabases(ctx context.Context, dataDir string, mmdbFile stri
 				return copyFile(path.Join(dst, geoLiteCityMMDB), path.Join(dataDir, mmdbFile))
 			}
 			if err := loadDatabase(
-				geoLiteCitySha256TarURL,
-				geoLiteCityTarGZURL,
+				checksumURL,
+				fileURL,
 				extractFunc,
 			); err != nil {
 				return err
 			}
 
 		case geonamesdbFile:
+			fileURL, checksumURL, err := geoliteDownloadURLs(geoLiteCityZipURLEnv, geoLiteCitySha256ZipURLEnv)
+			if err != nil {
+				return err
+			}
 			extractFunc := func(src string, dst string) error {
 				if err := decompressZipFile(src, dst); err != nil {
 					return err
@@ -59,8 +69,8 @@ func loadGeolocationDatabases(ctx context.Context, dataDir string, mmdbFile stri
 			}
 
 			if err := loadDatabase(
-				geoLiteCitySha256ZipURL,
-				geoLiteCityZipURL,
+				checksumURL,
+				fileURL,
 				extractFunc,
 			); err != nil {
 				return err
@@ -68,6 +78,15 @@ func loadGeolocationDatabases(ctx context.Context, dataDir string, mmdbFile stri
 		}
 	}
 	return nil
+}
+
+func geoliteDownloadURLs(fileEnv string, checksumEnv string) (string, string, error) {
+	fileURL := strings.TrimSpace(os.Getenv(fileEnv))
+	checksumURL := strings.TrimSpace(os.Getenv(checksumEnv))
+	if fileURL == "" || checksumURL == "" {
+		return "", "", fmt.Errorf("geolocation database is not present and download URLs are not configured; set %s and %s or pre-seed the database files", fileEnv, checksumEnv)
+	}
+	return fileURL, checksumURL, nil
 }
 
 // loadDatabase downloads a file from the specified URL and verifies its checksum.

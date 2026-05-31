@@ -69,13 +69,13 @@ const (
 
 func NewGeolocation(ctx context.Context, dataDir string, autoUpdate bool) (Geolocation, error) {
 	mmdbGlobPattern := filepath.Join(dataDir, mmdbPattern)
-	mmdbFile, err := getDatabaseFilename(ctx, geoLiteCityTarGZURL, mmdbGlobPattern, autoUpdate)
+	mmdbFile, err := getDatabaseFilename(ctx, strings.TrimSpace(os.Getenv(geoLiteCityTarGZURLEnv)), mmdbGlobPattern, autoUpdate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database filename: %v", err)
 	}
 
 	geonamesDbGlobPattern := filepath.Join(dataDir, geonamesdbPattern)
-	geonamesDbFile, err := getDatabaseFilename(ctx, geoLiteCityZipURL, geonamesDbGlobPattern, autoUpdate)
+	geonamesDbFile, err := getDatabaseFilename(ctx, strings.TrimSpace(os.Getenv(geoLiteCityZipURLEnv)), geonamesDbGlobPattern, autoUpdate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database filename: %v", err)
 	}
@@ -219,6 +219,9 @@ func getDatabaseFilename(ctx context.Context, databaseURL string, filenamePatter
 	)
 
 	if autoUpdate {
+		if databaseURL == "" {
+			return "", fmt.Errorf("geolocation database URL is not configured for %s", filenamePattern)
+		}
 		filename, err = getFilenameFromURL(databaseURL)
 		if err != nil {
 			log.WithContext(ctx).Debugf("Failed to update database from url: %s", databaseURL)
@@ -227,6 +230,9 @@ func getDatabaseFilename(ctx context.Context, databaseURL string, filenamePatter
 	} else {
 		files := getExistingDatabases(filenamePattern)
 		if len(files) < 1 {
+			if databaseURL == "" {
+				return "", fmt.Errorf("geolocation database file not found for %s and download URL is not configured", filenamePattern)
+			}
 			filename, err = getFilenameFromURL(databaseURL)
 			if err != nil {
 				log.WithContext(ctx).Debugf("Failed to get database from url: %s", databaseURL)

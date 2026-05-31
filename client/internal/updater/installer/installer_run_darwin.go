@@ -22,7 +22,7 @@ const (
 
 	defaultTempDir = "/var/lib/netbird/tmp-install"
 
-	pkgDownloadURL = "https://github.com/netbirdio/netbird/releases/download/v%version/netbird_%version_darwin_%arch.pkg"
+	pkgDownloadURL = "%base/v%version/netbird_%version_darwin_%arch.pkg"
 )
 
 var (
@@ -163,19 +163,31 @@ func (u *Installer) installPkgFile(ctx context.Context, path string) error {
 func (u *Installer) updateHomeBrew(ctx context.Context) error {
 	log.Infof("updating homebrew")
 
+	formula, err := configuredHomebrewFormula()
+	if err != nil {
+		return err
+	}
+	uiFormula := configuredHomebrewUIFormula()
+
 	// Kill any existing UI processes before upgrade
 	// This ensures the new version will be started after upgrade
 	u.killUI()
 
 	// Homebrew must be run as a non-root user
-	// To find out which user installed NetBird using HomeBrew we can check the owner of our brew tap directory
-	// Check both Apple Silicon and Intel Mac paths
-	brewTapPath := "/opt/homebrew/Library/Taps/netbirdio/homebrew-tap/"
+	// To find out which user installed AnonBird using Homebrew we can check the owner of the configured tap directory.
 	brewBinPath := "/opt/homebrew/bin/brew"
-	if _, err := os.Stat(brewTapPath); os.IsNotExist(err) {
-		// Try Intel Mac path
-		brewTapPath = "/usr/local/Homebrew/Library/Taps/netbirdio/homebrew-tap/"
-		brewBinPath = "/usr/local/bin/brew"
+	var brewTapPath string
+	for _, candidate := range configuredHomebrewTapPaths() {
+		if _, err := os.Stat(candidate); err == nil {
+			brewTapPath = candidate
+			if strings.HasPrefix(candidate, "/usr/local/") {
+				brewBinPath = "/usr/local/bin/brew"
+			}
+			break
+		}
+	}
+	if brewTapPath == "" {
+		return fmt.Errorf("AnonBird Homebrew tap path not found; set %s", HomebrewTapPathEnv)
 	}
 
 	fileInfo, err := os.Stat(brewTapPath)
@@ -198,16 +210,19 @@ func (u *Installer) updateHomeBrew(ctx context.Context) error {
 	// https://github.com/Homebrew/brew/issues/15833
 	homeDir := brewUser.HomeDir
 
-	// Check if netbird-ui is installed (must run as the brew user, not root)
-	checkUICmd := exec.CommandContext(ctx, "sudo", "-u", userName, brewBinPath, "list", "--formula", "netbirdio/tap/netbird-ui")
-	checkUICmd.Env = append(os.Environ(), "HOME="+homeDir)
-	uiInstalled := checkUICmd.Run() == nil
+	uiInstalled := false
+	if uiFormula != "" {
+		// Check if UI formula is installed (must run as the brew user, not root)
+		checkUICmd := exec.CommandContext(ctx, "sudo", "-u", userName, brewBinPath, "list", "--formula", uiFormula)
+		checkUICmd.Env = append(os.Environ(), "HOME="+homeDir)
+		uiInstalled = checkUICmd.Run() == nil
+	}
 
 	// Homebrew does not support installing specific versions
 	// Thus it will always update to latest and ignore targetVersion
-	upgradeArgs := []string{"-u", userName, brewBinPath, "upgrade", "netbirdio/tap/netbird"}
+	upgradeArgs := []string{"-u", userName, brewBinPath, "upgrade", formula}
 	if uiInstalled {
-		upgradeArgs = append(upgradeArgs, "netbirdio/tap/netbird-ui")
+		upgradeArgs = append(upgradeArgs, uiFormula)
 	}
 
 	cmd := exec.CommandContext(ctx, "sudo", upgradeArgs...)
@@ -233,6 +248,7 @@ func (u *Installer) killUI() {
 }
 
 func urlWithVersionArch(_ Type, version string) string {
-	url := strings.ReplaceAll(pkgDownloadURL, "%version", version)
+	url := strings.ReplaceAll(pkgDownloadURL, "%base", releaseBaseURL())
+	url = strings.ReplaceAll(url, "%version", version)
 	return strings.ReplaceAll(url, "%arch", runtime.GOARCH)
 }

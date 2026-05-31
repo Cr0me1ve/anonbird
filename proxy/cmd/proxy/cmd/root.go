@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,7 +32,7 @@ const (
 	envMaxBatchSize = "NB_PROXY_MAX_BATCH_SIZE"
 )
 
-const DefaultManagementURL = "https://api.netbird.io:443"
+const DefaultManagementURL = ""
 
 // envProxyToken is the environment variable name for the proxy access token.
 //
@@ -202,6 +203,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 	case "auto", "http", "https":
 	default:
 		return fmt.Errorf("invalid --forwarded-proto value %q: must be auto, http, or https", forwardedProto)
+	}
+
+	if strings.TrimSpace(mgmtAddr) == "" {
+		return fmt.Errorf("--mgmt or NB_PROXY_MANAGEMENT_ADDRESS must be set")
 	}
 
 	_, err := domain.ValidateDomains([]string{proxyDomain})

@@ -27,10 +27,10 @@ func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	m.callCount.Add(1)
 
 	var body string
-	if strings.Contains(req.URL.String(), "pkgs.netbird.io") {
+	if strings.Contains(req.URL.String(), "management-version") {
 		// Plain text response for management version
 		body = m.managementVersion
-	} else if strings.Contains(req.URL.String(), "github.com") {
+	} else if strings.Contains(req.URL.String(), "dashboard-release") {
 		// JSON response for dashboard version
 		jsonResp, _ := json.Marshal(githubRelease{TagName: "v" + m.dashboardVersion})
 		body = string(jsonResp)
@@ -44,6 +44,9 @@ func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func TestDefaultManager_GetVersionInfo_ReturnsCurrentVersion(t *testing.T) {
+	t.Setenv(managementVersionURLEnv, "https://releases.anonbird.test/management-version")
+	t.Setenv(dashboardReleasesURLEnv, "https://releases.anonbird.test/dashboard-release")
+
 	mockTransport := &mockRoundTripper{
 		managementVersion: "0.65.0",
 		dashboardVersion:  "2.10.0",
@@ -66,6 +69,9 @@ func TestDefaultManager_GetVersionInfo_ReturnsCurrentVersion(t *testing.T) {
 }
 
 func TestDefaultManager_GetVersionInfo_CachesResults(t *testing.T) {
+	t.Setenv(managementVersionURLEnv, "https://releases.anonbird.test/management-version")
+	t.Setenv(dashboardReleasesURLEnv, "https://releases.anonbird.test/dashboard-release")
+
 	mockTransport := &mockRoundTripper{
 		managementVersion: "0.65.0",
 		dashboardVersion:  "2.10.0",
@@ -94,6 +100,24 @@ func TestDefaultManager_GetVersionInfo_CachesResults(t *testing.T) {
 
 	// Verify no additional HTTP calls were made (cache was used)
 	assert.Equal(t, initialCallCount, mockTransport.callCount.Load())
+}
+
+func TestDefaultManager_GetVersionInfo_RemoteChecksDisabledByDefault(t *testing.T) {
+	mockTransport := &mockRoundTripper{
+		managementVersion: "0.65.0",
+		dashboardVersion:  "2.10.0",
+	}
+
+	m := &DefaultManager{
+		httpClient: &http.Client{Transport: mockTransport},
+	}
+
+	info, err := m.GetVersionInfo(context.Background())
+	require.NoError(t, err)
+	assert.NotEmpty(t, info.CurrentVersion)
+	assert.Empty(t, info.ManagementVersion)
+	assert.Empty(t, info.DashboardVersion)
+	assert.Equal(t, int32(0), mockTransport.callCount.Load())
 }
 
 func TestDefaultManager_FetchGitHubRelease_ParsesTagName(t *testing.T) {

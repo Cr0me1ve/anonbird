@@ -102,6 +102,9 @@ func debugBundle(cmd *cobra.Command, _ []string) error {
 		LogFileCount: logFileCount,
 	}
 	if uploadBundleFlag {
+		if strings.TrimSpace(uploadBundleURLFlag) == "" {
+			return fmt.Errorf("--upload-bundle-url or %s must be set when --upload-bundle is enabled", types.DefaultBundleURLEnv)
+		}
 		request.UploadURL = uploadBundleURLFlag
 	}
 	resp, err := client.DebugBundle(cmd.Context(), request)

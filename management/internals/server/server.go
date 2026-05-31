@@ -238,7 +238,7 @@ func (s *BaseServer) Start(ctx context.Context) error {
 		s.update = version.NewUpdateAndStart("nb/management")
 		s.update.SetDaemonVersion(version.NetbirdVersion())
 		s.update.SetOnUpdateListener(func() {
-			log.WithContext(ctx).Infof("your management version, \"%s\", is outdated, a new management version is available. Learn more here: https://github.com/netbirdio/netbird/releases", version.NetbirdVersion())
+			log.WithContext(ctx).Infof("your management version, \"%s\", is outdated, a new management version is available. Learn more here: %s", version.NetbirdVersion(), version.ReleasePageURL())
 		})
 	}
 

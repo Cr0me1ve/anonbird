@@ -19,16 +19,16 @@ import (
 )
 
 const (
-	mmdbTarGZURL  = "https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City/download?suffix=tar.gz"
-	mmdbSha256URL = "https://pkgs.netbird.io/geolocation-dbs/GeoLite2-City/download?suffix=tar.gz.sha256"
-	mmdbInnerName = "GeoLite2-City.mmdb"
+	mmdbTarGZURLEnv  = "ANONBIRD_PROXY_GEOLITE_MMDB_URL"
+	mmdbSha256URLEnv = "ANONBIRD_PROXY_GEOLITE_MMDB_SHA256_URL"
+	mmdbInnerName    = "GeoLite2-City.mmdb"
 
 	downloadTimeout = 2 * time.Minute
 	maxMMDBSize     = 256 << 20 // 256 MB
 )
 
 // ensureMMDB checks for an existing MMDB file in dataDir. If none is found,
-// it downloads from pkgs.netbird.io with SHA256 verification.
+// it downloads from explicitly configured AnonBird URLs with SHA256 verification.
 func ensureMMDB(logger *log.Logger, dataDir string) (string, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return "", fmt.Errorf("create geo data directory %s: %w", dataDir, err)
@@ -41,14 +41,28 @@ func ensureMMDB(logger *log.Logger, dataDir string) (string, error) {
 		return mmdbPath, nil
 	}
 
-	logger.Info("geolocation database not found, downloading from pkgs.netbird.io")
-	return downloadMMDB(logger, dataDir)
+	mmdbURL, checksumURL, err := configuredMMDBURLs()
+	if err != nil {
+		return "", err
+	}
+
+	logger.Info("geolocation database not found, downloading from configured AnonBird geolocation URL")
+	return downloadMMDB(logger, dataDir, mmdbURL, checksumURL)
 }
 
-func downloadMMDB(logger *log.Logger, dataDir string) (string, error) {
+func configuredMMDBURLs() (string, string, error) {
+	mmdbURL := strings.TrimSpace(os.Getenv(mmdbTarGZURLEnv))
+	checksumURL := strings.TrimSpace(os.Getenv(mmdbSha256URLEnv))
+	if mmdbURL == "" || checksumURL == "" {
+		return "", "", fmt.Errorf("geolocation database is not present and download URLs are not configured; set %s and %s or pre-seed the MMDB file", mmdbTarGZURLEnv, mmdbSha256URLEnv)
+	}
+	return mmdbURL, checksumURL, nil
+}
+
+func downloadMMDB(logger *log.Logger, dataDir string, mmdbURL string, checksumURL string) (string, error) {
 	client := &http.Client{Timeout: downloadTimeout}
 
-	datedName, err := fetchRemoteFilename(client, mmdbTarGZURL)
+	datedName, err := fetchRemoteFilename(client, mmdbURL)
 	if err != nil {
 		return "", fmt.Errorf("get remote filename: %w", err)
 	}
@@ -63,7 +77,7 @@ func downloadMMDB(logger *log.Logger, dataDir string) (string, error) {
 	defer os.RemoveAll(tmp)
 
 	checksumFile := filepath.Join(tmp, "checksum.sha256")
-	if err := downloadToFile(client, mmdbSha256URL, checksumFile); err != nil {
+	if err := downloadToFile(client, checksumURL, checksumFile); err != nil {
 		return "", fmt.Errorf("download checksum: %w", err)
 	}
 
@@ -74,7 +88,7 @@ func downloadMMDB(logger *log.Logger, dataDir string) (string, error) {
 
 	tarFile := filepath.Join(tmp, datedName)
 	logger.Debugf("downloading geolocation database (%s)", datedName)
-	if err := downloadToFile(client, mmdbTarGZURL, tarFile); err != nil {
+	if err := downloadToFile(client, mmdbURL, tarFile); err != nil {
 		return "", fmt.Errorf("download database: %w", err)
 	}
 

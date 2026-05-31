@@ -22,8 +22,8 @@ const (
 
 	msiLogFile = "msi.log"
 
-	msiDownloadURL = "https://github.com/netbirdio/netbird/releases/download/v%version/netbird_installer_%version_windows_%arch.msi"
-	exeDownloadURL = "https://github.com/netbirdio/netbird/releases/download/v%version/netbird_installer_%version_windows_%arch.exe"
+	msiDownloadURL = "%base/v%version/netbird_installer_%version_windows_%arch.msi"
+	exeDownloadURL = "%base/v%version/netbird_installer_%version_windows_%arch.exe"
 )
 
 var (
@@ -208,6 +208,7 @@ func urlWithVersionArch(it Type, version string) string {
 	} else {
 		url = msiDownloadURL
 	}
+	url = strings.ReplaceAll(url, "%base", releaseBaseURL())
 	url = strings.ReplaceAll(url, "%version", version)
 	return strings.ReplaceAll(url, "%arch", runtime.GOARCH)
 }

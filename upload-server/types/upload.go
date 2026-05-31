@@ -1,5 +1,10 @@
 package types
 
+import (
+	"os"
+	"strings"
+)
+
 const (
 	// ClientHeader is the header used to identify the client
 	ClientHeader = "x-nb-client"
@@ -8,8 +13,10 @@ const (
 	// GetURLPath is the path for the GetURL request
 	GetURLPath = "/upload-url"
 
-	DefaultBundleURL = "https://upload.debug.netbird.io" + GetURLPath
+	DefaultBundleURLEnv = "ANONBIRD_DEBUG_UPLOAD_URL"
 )
+
+var DefaultBundleURL = strings.TrimSpace(os.Getenv(DefaultBundleURLEnv))
 
 // GetURLResponse is the response for the GetURL request
 type GetURLResponse struct {

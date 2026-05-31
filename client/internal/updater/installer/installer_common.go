@@ -62,15 +62,19 @@ func (u *Installer) RunInstallation(ctx context.Context, targetVersion string) (
 	var installerFile string
 	// Download files only when not using any third-party store
 	if installerType := TypeOfInstaller(ctx); installerType.Downloadable() {
+		signingKeysURL, err := signingKeysBaseURL()
+		if err != nil {
+			return err
+		}
+
 		log.Infof("download installer")
-		var err error
 		installerFile, err = u.downloadInstaller(ctx, installerType, targetVersion)
 		if err != nil {
 			log.Errorf("failed to download installer: %v", err)
 			return err
 		}
 
-		artifactVerify, err := reposign.NewArtifactVerify(DefaultSigningKeysBaseURL)
+		artifactVerify, err := reposign.NewArtifactVerify(signingKeysURL)
 		if err != nil {
 			log.Errorf("failed to create artifact verify: %v", err)
 			return err

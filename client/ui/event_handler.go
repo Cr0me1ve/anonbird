@@ -204,7 +204,7 @@ func (h *eventHandler) handleQuitClick() {
 }
 
 func (h *eventHandler) handleGitHubClick() {
-	if err := openURL("https://github.com/netbirdio/netbird"); err != nil {
+	if err := openURL(version.ProjectURL()); err != nil {
 		log.Errorf("failed to open GitHub URL: %v", err)
 	}
 }

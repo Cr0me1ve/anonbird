@@ -1,4 +1,4 @@
-// Package installer provides functionality for managing NetBird application
+// Package installer provides functionality for managing AnonBird application
 // updates and installations across Windows, macOS. It handles
 // the complete update lifecycle including artifact download, cryptographic verification,
 // installation execution, process management, and result reporting.
@@ -7,7 +7,7 @@
 //
 // The installer package uses a two-process architecture to enable self-updates:
 //
-//  1. Service Process: The main NetBird daemon process that initiates updates
+//  1. Service Process: The main AnonBird daemon process that initiates updates
 //  2. Updater Process: A detached child process that performs the actual installation
 //
 // This separation is critical because:
@@ -22,7 +22,7 @@
 //
 //  1. Validates target version format (semver)
 //  2. Determines installer type (EXE, MSI, PKG, or Homebrew)
-//  3. Downloads installer file from GitHub releases (if applicable)
+//  3. Downloads installer file from the configured AnonBird release base URL (if applicable)
 //  4. Verifies installer signature using reposign package (cryptographic verification in service process before
 //     launching updater)
 //  5. Copies service binary to tempDir as "updater" (or "updater.exe" on Windows)
@@ -41,7 +41,7 @@
 //     - Windows EXE: installer.exe /S
 //     - Windows MSI: msiexec.exe /i installer.msi /quiet /qn /l*v msi.log
 //     - macOS PKG: installer -pkg installer.pkg -target /
-//     - macOS Homebrew: brew upgrade netbirdio/tap/netbird
+//     - macOS Homebrew: brew upgrade $ANONBIRD_HOMEBREW_FORMULA
 //  3. Installer terminates daemon and UI processes
 //  4. Installer replaces binaries with new version
 //  5. Updater waits for installer to complete
