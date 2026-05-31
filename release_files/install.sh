@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # AnonBird installer for release artifacts published by the fork.
 set -e
 
@@ -74,6 +74,23 @@ set_default_install_dir() {
     if [ -z "$INSTALL_DIR" ]; then
         INSTALL_DIR="$1"
     fi
+}
+
+normalize_installed_binary() {
+    installed_path="$1"
+    if [ ! -e "$installed_path" ]; then
+        return 0
+    fi
+
+    ${SUDO} chmod 0755 "$installed_path"
+    case "$OS_TYPE" in
+        linux)
+            ${SUDO} chown root:root "$installed_path" 2>/dev/null || true
+        ;;
+        darwin)
+            ${SUDO} chown root:wheel "$installed_path" 2>/dev/null || true
+        ;;
+    esac
 }
 
 UPDATE_FLAG=""
@@ -178,6 +195,7 @@ download_release_binary() {
         ${SUDO} mkdir -p "$INSTALL_DIR"
         tar -xzvf "$BINARY_NAME"
         ${SUDO} mv "${1%_"${BINARY_BASE_NAME}"}" "$INSTALL_DIR/"
+        normalize_installed_binary "${INSTALL_DIR%/}/$1"
     fi
 }
 
@@ -419,7 +437,7 @@ install_anonbird() {
 }
 
 version_greater_equal() {
-    printf '%s\n%s\n' "$2" "$1" | sort -V -c
+    printf '%s\n%s\n' "$2" "$1" | sort -V -c >/dev/null 2>&1
 }
 
 is_bin_package_manager() {
@@ -440,7 +458,7 @@ stop_running_anonbird_ui() {
 
 update_anonbird() {
   if is_bin_package_manager "$CONFIG_FILE"; then
-    latest_release=$(get_release "latest")
+    latest_release=$(get_release "$ANONBIRD_RELEASE")
     latest_version=${latest_release#v}
     installed_version=$(anonbird version)
 

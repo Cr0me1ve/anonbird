@@ -1290,13 +1290,24 @@ Release-readiness gate нельзя закрывать только по лок�
 - [x] Добавить временный compatibility option для тестовой миграции старых скриптов:
   - optional symlink `netbird -> anonbird`;
   - optional service alias или явное предупреждение, что canonical service name теперь `anonbird.service`.
-- [ ] Проверить clean install на Debian/Ubuntu/RHEL-like Linux:
+- [x] Проверить clean install на Debian/Ubuntu-like Linux:
   - `anonbird service install --service anonbird`;
   - `systemctl enable --now anonbird`;
   - `anonbird status`;
   - `anonbird debug anonymous-check`.
+- [ ] Проверить clean install на RHEL-like Linux с теми же критериями.
 
 Статус 2026-05-31: Linux install/package surface приведён к canonical AnonBird naming. `release_files/install.sh` ставит release binaries из `Cr0me1ve/anonbird` по умолчанию, поддерживает `--no-service`, `--no-start`, `--compat-symlink`, `--force-compat-symlink` и env overrides для RC до фактического repo rename. DEB/RPM postinstall/preremove умеют безопасно создавать/удалять временный `/usr/bin/netbird -> /usr/bin/anonbird` только по явному `ANONBIRD_COMPAT_SYMLINK=true`. Release metadata, updater artifact URLs, Windows/macOS installer naming, README install commands и GitHub release workflow artifact names переключены на `anonbird*`. Проверено локально: `sh -n`, `shellcheck -S error`, YAML parse, WiX XML parse, targeted `go test` по updater/cmd. Открыто: реальный clean install/upgrade из RC artifacts на testbed.
+
+Статус 2026-05-31: Debian-like remote clean install закрыт на `45.138.103.224` из локального RC tarball artifact через `release_files/install.sh` и `file://` release base. Прогон:
+
+- artifact `v0.0.0/anonbird_0.0.0_linux_amd64.tar.gz`, SHA256 `ebd4def1bcb44dd7e0b8c1f50d197e11e23fda6ef4f451fa4667259f98047ae`;
+- backup перед destructive clean install: `/root/anonbird-rc-cleaninstall-backup-20260531-144614`;
+- installer command использовал `ANONBIRD_RELEASE=v0.0.0`, `ANONBIRD_RELEASE_BASE_URL=file:///tmp/anonbird-rc`, `SKIP_UI_APP=true`, `ANONBIRD_COMPAT_SYMLINK=true`, `--no-start`;
+- проверено: `/usr/bin/anonbird`, version `0.0.0-rc-local`, owner/mode `root:root 755`, `/usr/bin/netbird -> /usr/bin/anonbird`, `systemctl enable --now anonbird.service`, service `active`;
+- enrollment через I2P management URL с redacted setup key OK, `anonbird debug anonymous-check` OK: management/signal/relay `i2p`, STUN/ICE/direct UDP/fallback disabled, published endpoints none.
+
+Заметка из ручного теста: первый RC tarball с macOS owner сохранил `501:staff` при распаковке; `install.sh` исправлен так, чтобы после установки бинарника нормализовать `0755` и `root:root` на Linux (`root:wheel` на macOS). Также `--update` теперь уважает `ANONBIRD_RELEASE`, а version compare больше не шумит `sort -V` для `*-rc-local` strings.
 
 ### 22.2. Anonymous-by-default UX
 
@@ -1451,6 +1462,15 @@ anonbird migrate rollback
   - uninstall/reinstall;
   - rollback;
   - повторный join после rollback/upgrade.
+
+Статус 2026-05-31: client-side RC artifact clean install + upgrade smoke частично закрыт на testbed:
+
+- clean install: `45.138.103.224` из local release-style tarball `v0.0.0`, service active, I2P anonymous-check OK;
+- upgrade: `ANONBIRD_RELEASE=v0.0.1 ANONBIRD_RELEASE_BASE_URL=file:///tmp/anonbird-rc-upgrade bash install.sh --update` обновил client до `0.0.1-rc-local`, переустановил и запустил `anonbird.service`, сохранил config/profile, binary owner `root:root 755`, compatibility symlink сохранился;
+- после I2P reconnect `45.138.103.224` снова `Management/Signal Connected`, relay `.b32.i2p` available, `anonymous-check` OK;
+- overlay validation после upgrade: `185.246.220.249` (`100.119.42.220`) -> `45.138.103.224` (`100.119.114.3`) ping `6/6`, avg `383.326 ms`; reverse `45 -> 185` ping `6/6`, avg `425.199 ms`; both sides show `i2p-datagram/i2p-datagram`, no STUN/ICE/direct UDP.
+
+Открыто: clean install server/dashboard artifacts, RHEL-like client install, uninstall/reinstall, rollback, NetBird baseline migration, Marton service test.
 - [ ] Перед публичным релизом создать release report:
   - commit/tag;
   - artifact checksums;
