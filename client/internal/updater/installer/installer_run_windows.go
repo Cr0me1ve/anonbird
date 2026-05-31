@@ -16,18 +16,18 @@ import (
 )
 
 const (
-	daemonName    = "netbird.exe"
-	uiName        = "netbird-ui.exe"
+	daemonName    = "anonbird.exe"
+	uiName        = "anonbird-ui.exe"
 	updaterBinary = "updater.exe"
 
 	msiLogFile = "msi.log"
 
-	msiDownloadURL = "%base/v%version/netbird_installer_%version_windows_%arch.msi"
-	exeDownloadURL = "%base/v%version/netbird_installer_%version_windows_%arch.exe"
+	msiDownloadURL = "%base/v%version/anonbird_installer_%version_windows_%arch.msi"
+	exeDownloadURL = "%base/v%version/anonbird_installer_%version_windows_%arch.exe"
 )
 
 var (
-	defaultTempDir = filepath.Join(os.Getenv("ProgramData"), "Netbird", "tmp-install")
+	defaultTempDir = filepath.Join(os.Getenv("ProgramData"), "AnonBird", "tmp-install")
 
 	// for the cleanup
 	binaryExtensions = []string{"msi", "exe"}
@@ -119,7 +119,7 @@ func (u *Installer) startDaemon(daemonFolder string) error {
 
 func (u *Installer) startUIAsUser(daemonFolder string) error {
 	uiPath := filepath.Join(daemonFolder, uiName)
-	log.Infof("starting netbird-ui: %s", uiPath)
+	log.Infof("starting anonbird-ui: %s", uiPath)
 
 	// Get the active console session ID
 	sessionID := windows.WTSGetActiveConsoleSessionId()
@@ -197,7 +197,7 @@ func (u *Installer) startUIAsUser(daemonFolder string) error {
 		log.Warnf("failed to close thread handle: %v", err)
 	}
 
-	log.Infof("netbird-ui started successfully in session %d", sessionID)
+	log.Infof("anonbird-ui started successfully in session %d", sessionID)
 	return nil
 }
 

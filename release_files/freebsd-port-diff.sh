@@ -13,7 +13,7 @@
 
 set -e
 
-GITHUB_REPO="${ANONBIRD_GITHUB_REPO:-Cr0me1ve/netbird}"
+GITHUB_REPO="${ANONBIRD_GITHUB_REPO:-Cr0me1ve/anonbird}"
 PORT_NAME="${ANONBIRD_FREEBSD_PORT_NAME:-anonbird}"
 PORTS_CGIT_BASE="${ANONBIRD_FREEBSD_PORTS_CGIT_BASE:-https://cgit.freebsd.org/ports/plain/security/${PORT_NAME}}"
 GO_PROXY="${ANONBIRD_GO_PROXY_URL:-}"

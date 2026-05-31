@@ -16,13 +16,13 @@ import (
 )
 
 const (
-	daemonName    = "netbird"
+	daemonName    = "anonbird"
 	updaterBinary = "updater"
-	uiBinary      = "/Applications/NetBird.app"
+	uiBinary      = "/Applications/AnonBird.app"
 
 	defaultTempDir = "/var/lib/anonbird/tmp-install"
 
-	pkgDownloadURL = "%base/v%version/netbird_%version_darwin_%arch.pkg"
+	pkgDownloadURL = "%base/v%version/anonbird_%version_darwin_%arch.pkg"
 )
 
 var (
@@ -96,7 +96,7 @@ func (u *Installer) startDaemon(daemonFolder string) error {
 }
 
 func (u *Installer) startUIAsUser() error {
-	log.Infof("starting netbird-ui: %s", uiBinary)
+	log.Infof("starting anonbird-ui: %s", uiBinary)
 
 	// Get the current console user
 	cmd := exec.Command("stat", "-f", "%Su", "/dev/console")
@@ -135,7 +135,7 @@ func (u *Installer) startUIAsUser() error {
 		log.Warnf("failed to release UI process: %v", err)
 	}
 
-	log.Infof("netbird-ui started successfully for user %s", username)
+	log.Infof("anonbird-ui started successfully for user %s", username)
 	return nil
 }
 
@@ -237,13 +237,13 @@ func (u *Installer) updateHomeBrew(ctx context.Context) error {
 }
 
 func (u *Installer) killUI() {
-	log.Infof("killing existing netbird-ui processes")
-	cmd := exec.Command("pkill", "-x", "netbird-ui")
+	log.Infof("killing existing anonbird-ui processes")
+	cmd := exec.Command("pkill", "-x", "anonbird-ui")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		// pkill returns exit code 1 if no processes matched, which is fine
-		log.Debugf("pkill netbird-ui result: %v, output: %s", err, string(output))
+		log.Debugf("pkill anonbird-ui result: %v, output: %s", err, string(output))
 	} else {
-		log.Infof("netbird-ui processes killed")
+		log.Infof("anonbird-ui processes killed")
 	}
 }
 

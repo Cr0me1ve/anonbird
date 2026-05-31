@@ -12,8 +12,8 @@ const (
 	HomebrewFormulaEnv      = "ANONBIRD_HOMEBREW_FORMULA"
 	HomebrewUIFormulaEnv    = "ANONBIRD_HOMEBREW_UI_FORMULA"
 	HomebrewTapPathEnv      = "ANONBIRD_HOMEBREW_TAP_PATH"
-	defaultReleaseBaseURL   = "https://github.com/Cr0me1ve/netbird/releases/download"
-	defaultHomebrewTapOwner = "anonbird/homebrew-tap"
+	defaultReleaseBaseURL   = "https://github.com/Cr0me1ve/anonbird/releases/download"
+	defaultHomebrewTapOwner = "Cr0me1ve/homebrew-anonbird"
 )
 
 func releaseBaseURL() string {

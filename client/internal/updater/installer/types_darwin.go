@@ -11,12 +11,13 @@ var (
 )
 
 func TypeOfInstaller(ctx context.Context) Type {
-	cmd := exec.CommandContext(ctx, "pkgutil", "--pkg-info", "io.netbird.client")
-	_, err := cmd.Output()
-	if err != nil && cmd.ProcessState.ExitCode() == 1 {
-		// Not installed using pkg file, thus installed using Homebrew
-
-		return TypeHomebrew
+	for _, packageID := range []string{"io.anonbird.client", "io.netbird.client"} {
+		cmd := exec.CommandContext(ctx, "pkgutil", "--pkg-info", packageID)
+		if _, err := cmd.Output(); err == nil {
+			return TypePKG
+		}
 	}
-	return TypePKG
+
+	// Not installed using pkg file, thus installed using Homebrew.
+	return TypeHomebrew
 }

@@ -1,5 +1,5 @@
 // Package reposign implements a cryptographic signing and verification system
-// for NetBird software update artifacts. It provides a hierarchical key
+// for AnonBird software update artifacts. It provides a hierarchical key
 // management system with support for key rotation, revocation, and secure
 // artifact distribution.
 //
@@ -60,10 +60,10 @@
 //
 //	releases/
 //	  v0.28.0/
-//	    netbird-linux-amd64
-//	    netbird-linux-amd64.sig   # Artifact signature
-//	    netbird-darwin-amd64
-//	    netbird-darwin-amd64.sig
+//	    anonbird-linux-amd64
+//	    anonbird-linux-amd64.sig   # Artifact signature
+//	    anonbird-darwin-amd64
+//	    anonbird-darwin-amd64.sig
 //	    ...
 //
 // # Embedded Root Keys

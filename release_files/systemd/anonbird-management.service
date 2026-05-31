@@ -1,6 +1,6 @@
 [Unit]
 Description=AnonBird Management
-Documentation=https://github.com/Cr0me1ve/netbird/tree/main/docs
+Documentation=https://github.com/Cr0me1ve/anonbird/tree/main/docs
 After=network-online.target syslog.target
 Wants=network-online.target
 

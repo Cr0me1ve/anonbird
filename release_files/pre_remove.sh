@@ -23,11 +23,22 @@ remove() {
   fi
   printf "\033[32m Uninstalling the service\033[0m\n"
   /usr/bin/anonbird service uninstall || true
+  removeCompatSymlink
 
 
   if [ "${use_systemctl}" = "True" ]; then
      printf "\n\033[32m running daemon reload\033[0m\n"
      systemctl daemon-reload || true
+  fi
+}
+
+removeCompatSymlink() {
+  link="/usr/bin/netbird"
+  target="/usr/bin/anonbird"
+
+  if [ -L "$link" ] && [ "$(readlink "$link" 2>/dev/null || true)" = "$target" ]; then
+    printf "\033[32m Removing compatibility symlink %s\033[0m\n" "$link"
+    rm -f "$link"
   fi
 }
 

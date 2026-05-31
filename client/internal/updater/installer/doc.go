@@ -46,11 +46,11 @@
 //  4. Installer replaces binaries with new version
 //  5. Updater waits for installer to complete
 //  6. Updater restarts daemon:
-//     - Windows: netbird.exe service start
+//     - Windows: anonbird.exe service start
 //     - macOS/Linux: anonbird service start
 //  7. Updater restarts UI:
-//     - Windows: Launches netbird-ui.exe as active console user using CreateProcessAsUser
-//     - macOS: Uses launchctl asuser to launch NetBird.app for console user
+//     - Windows: Launches anonbird-ui.exe as active console user using CreateProcessAsUser
+//     - macOS: Uses launchctl asuser to launch AnonBird.app for console user
 //     - Linux: Not implemented (UI typically auto-starts)
 //  8. Updater writes result.json with success/error status
 //  9. Updater process exits
@@ -74,8 +74,8 @@
 // Temporary Directory (platform-specific):
 //
 // Windows:
-//   - Path: %ProgramData%\Netbird\tmp-install
-//   - Example: C:\ProgramData\Netbird\tmp-install
+//   - Path: %ProgramData%\AnonBird\tmp-install
+//   - Example: C:\ProgramData\AnonBird\tmp-install
 //
 // macOS:
 //   - Path: /var/lib/anonbird/tmp-install
@@ -86,7 +86,7 @@
 //		tmp-install/
 //	   installer.log
 //		  updater[.exe]                    # Copy of service binary
-//		  netbird_installer_*.[exe|msi|pkg] # Downloaded installer
+//		  anonbird_installer_*.[exe|msi|pkg] # Downloaded installer
 //		  result.json                       # Installation result
 //		  msi.log                           # MSI verbose log (Windows MSI only)
 //

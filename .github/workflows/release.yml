@@ -26,6 +26,7 @@ jobs:
   release_freebsd_port:
     name: "FreeBSD Port / Build & Test"
     runs-on: ubuntu-22.04
+    if: vars.ANONBIRD_FREEBSD_PORT_ENABLED == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -41,7 +42,7 @@ jobs:
       - name: Check if diff was generated
         id: check_diff
         run: |
-          if ls netbird-*.diff 1> /dev/null 2>&1; then
+          if ls anonbird-*.diff 1> /dev/null 2>&1; then
             echo "diff_exists=true" >> $GITHUB_OUTPUT
           else
             echo "diff_exists=false" >> $GITHUB_OUTPUT
@@ -52,10 +53,10 @@ jobs:
         if: steps.check_diff.outputs.diff_exists == 'true'
         id: version
         run: |
-          VERSION=$(ls netbird-*.diff | sed 's/netbird-\(.*\)\.diff/\1/')
+          VERSION=$(ls anonbird-*.diff | sed 's/anonbird-\(.*\)\.diff/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Generated files for version: $VERSION"
-          cat netbird-*.diff
+          cat anonbird-*.diff
 
       - name: Read Go version from go.mod
         id: goversion
@@ -91,7 +92,7 @@ jobs:
 
             # Find the diff file
             echo "Finding diff file..."
-            DIFF_FILE=$(find $PWD -name "netbird-*.diff" -type f 2>/dev/null | head -1)
+            DIFF_FILE=$(find $PWD -name "anonbird-*.diff" -type f 2>/dev/null | head -1)
             echo "Found: $DIFF_FILE"
 
             if [[ -z "$DIFF_FILE" ]]; then
@@ -100,19 +101,19 @@ jobs:
               exit 1
             fi
 
-            # Apply the generated diff from /usr/ports (diff has a/security/netbird/... paths)
+            # Apply the generated diff from /usr/ports (diff has a/security/anonbird/... paths)
             cd /usr/ports
             patch -p1 -V none < "$DIFF_FILE"
 
             # Show patched Makefile
-            version=$(cat security/netbird/Makefile | grep -E '^DISTVERSION=' | awk '{print $NF}')
+            version=$(cat security/anonbird/Makefile | grep -E '^DISTVERSION=' | awk '{print $NF}')
 
-            cd /usr/ports/security/netbird
+            cd /usr/ports/security/anonbird
             export BATCH=yes
             make package
-            pkg add ./work/pkg/netbird-*.pkg
+            pkg add ./work/pkg/anonbird-*.pkg
 
-            netbird version | grep "$version"
+            anonbird version | grep "$version"
 
             echo "FreeBSD port test completed successfully!"
 
@@ -122,8 +123,8 @@ jobs:
         with:
           name: freebsd-port-files
           path: |
-            ./netbird-*-issue.txt
-            ./netbird-*.diff
+            ./anonbird-*-issue.txt
+            ./anonbird-*.diff
           retention-days: 30
 
   release:
@@ -273,7 +274,7 @@ jobs:
             package="${package#*/}"
             package="${package%%:*}"
             encoded_package="${package//\//%2F}"
-            echo "https://github.com/orgs/netbirdio/packages/container/package/${encoded_package}"
+            echo "https://github.com/${GITHUB_REPOSITORY_OWNER}?tab=packages&repo_name=${GITHUB_REPOSITORY#*/}#${encoded_package}"
           }
 
           image_refs=()
@@ -325,21 +326,21 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: linux-packages
-          path: dist/netbird_linux**
+          path: dist/anonbird_linux**
           retention-days: 7
       - name: upload windows packages
         id: upload_windows_packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: windows-packages
-          path: dist/netbird_windows**
+          path: dist/anonbird_windows**
           retention-days: 7
       - name: upload macos packages
         id: upload_macos_packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: macos-packages
-          path: dist/netbird_darwin**
+          path: dist/anonbird_darwin**
           retention-days: 7
 
   release_ui:
@@ -525,7 +526,7 @@ jobs:
       run:
         shell: powershell
     env:
-      PackageWorkdir: netbird_windows_${{ matrix.arch }}
+      PackageWorkdir: anonbird_windows_${{ matrix.arch }}
       downloadPath: '${{ github.workspace }}\temp'
     steps:
       - name: Checkout
@@ -575,8 +576,8 @@ jobs:
         run: |
           $workdir = "dist\${{ env.PackageWorkdir }}"
           New-Item -ItemType Directory -Force -Path $workdir | Out-Null
-          $client = Get-ChildItem -Recurse -Path release -Filter "netbird_*_windows_${{ matrix.arch }}.tar.gz" | Select-Object -First 1
-          $ui = Get-ChildItem -Recurse -Path release-ui -Filter "netbird-ui-windows_*_windows_${{ matrix.arch }}.tar.gz" | Select-Object -First 1
+          $client = Get-ChildItem -Recurse -Path release -Filter "anonbird_*_windows_${{ matrix.arch }}.tar.gz" | Select-Object -First 1
+          $ui = Get-ChildItem -Recurse -Path release-ui -Filter "anonbird-ui-windows_*_windows_${{ matrix.arch }}.tar.gz" | Select-Object -First 1
           if (-not $client) { Write-Host "::error::client tarball not found for ${{ matrix.arch }}"; exit 1 }
           if (-not $ui) { Write-Host "::error::ui tarball not found for ${{ matrix.arch }}"; exit 1 }
           Write-Host "Client: $($client.FullName)"
@@ -671,7 +672,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "makensis failed with exit code $LASTEXITCODE" }
 
       - name: Rename NSIS installer
-        run: mv netbird-installer.exe netbird_installer_test_windows_${{ matrix.arch }}.exe
+        run: mv anonbird-installer.exe anonbird_installer_test_windows_${{ matrix.arch }}.exe
 
       - name: Install WiX
         run: |
@@ -680,8 +681,8 @@ jobs:
 
       - name: Build MSI installer
         env:
-          NETBIRD_VERSION: "${{ steps.semver_parser.outputs.fullversion }}"
-        run: wix build -arch ${{ matrix.arch == 'amd64' && 'x64' || 'arm64' }} -ext WixToolset.Util.wixext -o netbird_installer_test_windows_${{ matrix.arch }}.msi .\client\netbird.wxs -d ProcessorArchitecture=${{ matrix.arch == 'amd64' && 'x64' || 'arm64' }} -d ArchSuffix=${{ matrix.arch }}
+          ANONBIRD_VERSION: "${{ steps.semver_parser.outputs.fullversion }}"
+        run: wix build -arch ${{ matrix.arch == 'amd64' && 'x64' || 'arm64' }} -ext WixToolset.Util.wixext -o anonbird_installer_test_windows_${{ matrix.arch }}.msi .\client\netbird.wxs -d ProcessorArchitecture=${{ matrix.arch == 'amd64' && 'x64' || 'arm64' }} -d ArchSuffix=${{ matrix.arch }}
 
       - name: Upload installer artifacts
         if: always()
@@ -689,8 +690,8 @@ jobs:
         with:
           name: windows-installer-test-${{ matrix.arch }}
           path: |
-            netbird_installer_test_windows_${{ matrix.arch }}.exe
-            netbird_installer_test_windows_${{ matrix.arch }}.msi
+            anonbird_installer_test_windows_${{ matrix.arch }}.exe
+            anonbird_installer_test_windows_${{ matrix.arch }}.msi
           retention-days: 3
 
   comment_release_artifacts:
@@ -719,7 +720,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const marker = '<!-- netbird-release-artifacts -->';
+            const marker = '<!-- anonbird-release-artifacts -->';
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
@@ -799,7 +800,7 @@ jobs:
         uses: benc-uk/workflow-dispatch@31e2b3319479a63f0ab15bf800eff9e913504e26 # v1.3.2
         with:
           workflow: Sign bin and installer
-          repo: netbirdio/sign-pipelines
+          repo: ${{ vars.ANONBIRD_SIGN_PIPELINES_REPO || 'Cr0me1ve/anonbird-sign-pipelines' }}
           ref: ${{ env.SIGN_PIPE_VER }}
           token: ${{ secrets.SIGN_GITHUB_TOKEN }}
           inputs: '{ "tag": "${{ github.ref }}", "skipRelease": false }'

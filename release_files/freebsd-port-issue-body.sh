@@ -14,7 +14,7 @@
 
 set -e
 
-GITHUB_REPO="${ANONBIRD_GITHUB_REPO:-Cr0me1ve/netbird}"
+GITHUB_REPO="${ANONBIRD_GITHUB_REPO:-Cr0me1ve/anonbird}"
 PORT_NAME="${ANONBIRD_FREEBSD_PORT_NAME:-anonbird}"
 PORTS_CGIT_URL="${ANONBIRD_FREEBSD_PORTS_CGIT_URL:-https://cgit.freebsd.org/ports/plain/security/${PORT_NAME}/Makefile}"
 

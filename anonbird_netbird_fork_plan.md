@@ -1255,14 +1255,23 @@ MVP считается успешным, если:
 
 ### 22.0. Release testbed
 
-Для release-readiness и migration testing использовать те же disposable серверы, на которых выполнялись Tor/I2P smoke tests:
+Для release-readiness и migration testing использовать четыре disposable сервера пользователя, на которых уже выполнялись Tor/I2P smoke tests:
 
 - `93.177.116.58`
 - `213.108.3.228`
 - `185.246.220.249`
 - `45.138.103.224`
 
-Примечание: на этих серверах нет важных данных; перед destructive migration/rollback тестами всё равно делать snapshot/backup, чтобы проверять rollback path честно.
+Роли по умолчанию для следующих прогонов:
+
+- `93.177.116.58`: baseline/self-host management server для Tor/onion и NetBird->AnonBird server migration;
+- `213.108.3.228`: baseline/self-host management server для I2P или отдельного clean-install/upgrade прогона;
+- `185.246.220.249`: client peer, Marton-server host или NetBird client migration source;
+- `45.138.103.224`: client peer, Marton client или NetBird client migration source.
+
+Примечание: на этих серверах нет важных данных; перед destructive migration/rollback тестами всё равно делать backup/snapshot, чтобы проверять rollback path честно и не маскировать ошибки миграции.
+
+Release-readiness gate нельзя закрывать только по локальным unit tests: финальная отметка требует реального release-candidate install/upgrade, NetBird->AnonBird migration server+clients, Marton через overlay и leak/log sweep на этих четырёх серверах.
 
 ### 22.1. Linux command/package parity
 
@@ -1271,14 +1280,14 @@ MVP считается успешным, если:
   - default stack: dashboard + embedded IdP + combined management/signal/relay server + Traefik TLS;
   - `--render-only` для dry-run генерации `docker-compose.yml`, `dashboard.env`, `config.yaml`;
   - README quickstart показывает одну команду для open-source установки.
-- [ ] Подготовить полноценную Linux install surface по аналогии с обычным `netbird`, но под AnonBird:
+- [x] Подготовить полноценную Linux install surface по аналогии с обычным `netbird`, но под AnonBird:
   - binary в `PATH`: `/usr/bin/anonbird` или `/usr/local/bin/anonbird`;
   - systemd unit: `anonbird.service`;
   - daemon socket: `/var/run/anonbird.sock`;
   - config/data/log paths: `/etc/anonbird`, `/var/lib/anonbird`, `/var/log/anonbird`;
   - package postinstall/postremove/upgrade scripts;
   - shell completion/man/help docs, если нужны для релиза.
-- [ ] Добавить временный compatibility option для тестовой миграции старых скриптов:
+- [x] Добавить временный compatibility option для тестовой миграции старых скриптов:
   - optional symlink `netbird -> anonbird`;
   - optional service alias или явное предупреждение, что canonical service name теперь `anonbird.service`.
 - [ ] Проверить clean install на Debian/Ubuntu/RHEL-like Linux:
@@ -1286,6 +1295,8 @@ MVP считается успешным, если:
   - `systemctl enable --now anonbird`;
   - `anonbird status`;
   - `anonbird debug anonymous-check`.
+
+Статус 2026-05-31: Linux install/package surface приведён к canonical AnonBird naming. `release_files/install.sh` ставит release binaries из `Cr0me1ve/anonbird` по умолчанию, поддерживает `--no-service`, `--no-start`, `--compat-symlink`, `--force-compat-symlink` и env overrides для RC до фактического repo rename. DEB/RPM postinstall/preremove умеют безопасно создавать/удалять временный `/usr/bin/netbird -> /usr/bin/anonbird` только по явному `ANONBIRD_COMPAT_SYMLINK=true`. Release metadata, updater artifact URLs, Windows/macOS installer naming, README install commands и GitHub release workflow artifact names переключены на `anonbird*`. Проверено локально: `sh -n`, `shellcheck -S error`, YAML parse, WiX XML parse, targeted `go test` по updater/cmd. Открыто: реальный clean install/upgrade из RC artifacts на testbed.
 
 ### 22.2. Anonymous-by-default UX
 
@@ -1402,7 +1413,8 @@ anonbird migrate rollback
   - выполнить `anonbird migrate server --dry-run`, затем `--apply`;
   - выполнить `anonbird migrate client --dry-run`, затем `--apply` или `--apply --rejoin "anonbird://join?..."`;
   - проверить после миграции management/dashboard login, setup-key enrollment, peer connectivity, DNS/ACL, anonymous-check;
-  - выполнить rollback test хотя бы один раз и подтвердить восстановление старого NetBird baseline.
+  - выполнить rollback test хотя бы один раз и подтвердить восстановление старого NetBird baseline;
+  - сохранить migration report без setup keys/private keys/secrets и с точным списком изменённых путей/services.
 
 ### 22.6. Release/open-source readiness validation
 
@@ -1414,6 +1426,7 @@ anonbird migrate rollback
   - dashboard repository/image names/release docs обновлены;
   - secrets, setup keys, private I2P destinations, onion private keys и тестовые credentials отсутствуют в git history/artifacts;
   - issue/PR templates, workflows, release signing, package signing и container publishing работают на fork infrastructure.
+  - release verdict должен явно ответить, можно ли заменить обычный NetBird на AnonBird/anonbird на тестовом проекте без ручных патчей.
 - [ ] Прогнать расширенный test suite:
   - targeted Go tests по anonymous/auth/management/relay/client/debug/release surfaces;
   - dashboard `npm run build`;
@@ -1422,12 +1435,15 @@ anonbird migrate rollback
   - compose config validation;
   - focused rg leak sweep по old upstream hosts/secrets/private keys;
   - remote smoke на testbed после установки release artifacts, а не dev binaries.
+
+Статус 2026-05-31: package/install локальный preflight после AnonBird naming pass закрыт (`sh -n`, `shellcheck -S error`, YAML parse, WiX XML parse, targeted updater/cmd Go tests). Это не заменяет полный release suite: remote artifact install, dashboard/proxy build, compose validation, migration E2E и Marton overlay test остаются обязательными.
 - [ ] Поднять реальный тестовый проект через AnonBird virtual network:
   - развернуть Marton-server на одном testbed peer;
   - подключить другой peer как клиент к Marton-server только по overlay IP/DNS имени AnonBird;
   - проверить TCP/HTTP/WebSocket или другой фактический protocol Marton-server;
   - зафиксировать latency/throughput/errors через Tor relay-only и, отдельно, I2P datagram;
-  - подтвердить, что service не доступен через real public IP и что логи AnonBird не раскрывают real peer IPs.
+  - подтвердить, что service не доступен через real public IP и что логи AnonBird не раскрывают real peer IPs;
+  - зафиксировать, какие ports/protocols Marton использовал, команды запуска и команды проверки с обеих сторон.
 - [ ] Выполнить release-candidate install/upgrade flow:
   - clean install server/dashboard/client из release packages/images;
   - upgrade с предыдущего AnonBird dev build;

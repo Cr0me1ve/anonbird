@@ -1,14 +1,14 @@
 <Wix
 	xmlns="http://wixtoolset.org/schemas/v4/wxs"
 	xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-	<Package Name="NetBird" Version="$(env.NETBIRD_VERSION)" Manufacturer="NetBird GmbH" Language="1033" UpgradeCode="6456ec4e-3ad6-4b9b-a2be-98e81cb21ccf"
+	<Package Name="AnonBird" Version="$(env.ANONBIRD_VERSION)" Manufacturer="AnonBird contributors" Language="1033" UpgradeCode="8b790d9d-b3f4-4bf7-83de-a34b191d9502"
         InstallerVersion="500" Compressed="yes"  Codepage="utf-8" >
 
 
 		<MediaTemplate EmbedCab="yes" />
 
-		<Feature Id="NetbirdFeature" Title="Netbird" Level="1">
-			<ComponentGroupRef Id="NetbirdFilesComponent" />
+		<Feature Id="AnonBirdFeature" Title="AnonBird" Level="1">
+			<ComponentGroupRef Id="AnonBirdFilesComponent" />
 		</Feature>
 
 		<MajorUpgrade AllowSameVersionUpgrades='yes' DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit."/>
@@ -17,79 +17,79 @@
 		<Property Id="AUTOSTART" Value="1" />
 
 		<StandardDirectory Id="ProgramFiles64Folder">
-			<Directory Id="NetbirdInstallDir" Name="Netbird">
-				<Component Id="NetbirdFiles" Guid="db3165de-cc6e-4922-8396-9d892950e23e" Bitness="always64">
-					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\netbird_windows_$(var.ArchSuffix)\netbird.exe" KeyPath="yes" />
-					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\netbird_windows_$(var.ArchSuffix)\netbird-ui.exe">
-						<Shortcut Id="NetbirdDesktopShortcut" Directory="DesktopFolder" Name="NetBird" WorkingDirectory="NetbirdInstallDir" Icon="NetbirdIcon">
-							<ShortcutProperty Key="System.AppUserModel.ID" Value="NetBird" />
+			<Directory Id="AnonBirdInstallDir" Name="AnonBird">
+				<Component Id="AnonBirdFiles" Guid="db3165de-cc6e-4922-8396-9d892950e23e" Bitness="always64">
+					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\anonbird_windows_$(var.ArchSuffix)\anonbird.exe" KeyPath="yes" />
+					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\anonbird_windows_$(var.ArchSuffix)\anonbird-ui.exe">
+						<Shortcut Id="AnonBirdDesktopShortcut" Directory="DesktopFolder" Name="AnonBird" WorkingDirectory="AnonBirdInstallDir" Icon="AnonBirdIcon">
+							<ShortcutProperty Key="System.AppUserModel.ID" Value="AnonBird" />
 							<ShortcutProperty Key="System.AppUserModel.ToastActivatorCLSID" Value="{0E1B4DE7-E148-432B-9814-544F941826EC}" />
 						</Shortcut>
-						<Shortcut Id="NetbirdStartMenuShortcut" Directory="StartMenuFolder" Name="NetBird" WorkingDirectory="NetbirdInstallDir" Icon="NetbirdIcon">
-							<ShortcutProperty Key="System.AppUserModel.ID" Value="NetBird" />
+						<Shortcut Id="AnonBirdStartMenuShortcut" Directory="StartMenuFolder" Name="AnonBird" WorkingDirectory="AnonBirdInstallDir" Icon="AnonBirdIcon">
+							<ShortcutProperty Key="System.AppUserModel.ID" Value="AnonBird" />
 							<ShortcutProperty Key="System.AppUserModel.ToastActivatorCLSID" Value="{0E1B4DE7-E148-432B-9814-544F941826EC}" />
 						</Shortcut>
 					</File>
-					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\netbird_windows_$(var.ArchSuffix)\wintun.dll" />
-					<File Id="NetbirdToastIcon" Name="netbird.png" Source=".\client\ui\assets\netbird.png" />
+					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\anonbird_windows_$(var.ArchSuffix)\wintun.dll" />
+					<File Id="AnonBirdToastIcon" Name="netbird.png" Source=".\client\ui\assets\netbird.png" />
 					<?if $(var.ArchSuffix) = "amd64" ?>
-					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\netbird_windows_$(var.ArchSuffix)\opengl32.dll" />
+					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\anonbird_windows_$(var.ArchSuffix)\opengl32.dll" />
 					<?endif ?>
 
 					<ServiceInstall
-                                     Id="NetBirdService"
-                                     Name="NetBird"
-                                     DisplayName="NetBird"
-                                     Description="Connect your devices into a secure WireGuard-based overlay network with SSO, MFA and granular access controls."
+                                     Id="AnonBirdService"
+                                     Name="AnonBird"
+                                     DisplayName="AnonBird"
+                                     Description="Connect your devices into an anonymous WireGuard-based overlay network."
                                      Start="auto" Type="ownProcess"
                                      ErrorControl="normal"
                                      Account="LocalSystem"
                                      Vital="yes"
                                      Interactive="no"
-                                     Arguments='service run config [CommonAppDataFolder]Netbird\config.json log-level info'
+                                     Arguments='service run --config [CommonAppDataFolder]AnonBird\config.json --log-level info --daemon-addr tcp://127.0.0.1:41731'
                         />
-					<ServiceControl Id="NetBirdService" Name="NetBird" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+					<ServiceControl Id="AnonBirdService" Name="AnonBird" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
 
-					<Environment Id="UpdatePath" Name="PATH" Value="[NetbirdInstallDir]" Part="last" Action="set" System="yes" />
+					<Environment Id="UpdatePath" Name="PATH" Value="[AnonBirdInstallDir]" Part="last" Action="set" System="yes" />
 
 				</Component>
 			</Directory>
 		</StandardDirectory>
 
 		<!-- Per-user component: HKCU keypath (auto GUID via "*"), separate from
-		     the per-machine NetbirdFiles component to satisfy ICE57. -->
+		     the per-machine AnonBirdFiles component to satisfy ICE57. -->
 		<StandardDirectory Id="ProgramMenuFolder">
-			<Component Id="NetbirdAumidRegistry" Guid="*">
-				<RegistryKey Root="HKCU" Key="Software\Classes\AppUserModelId\NetBird" ForceDeleteOnUninstall="yes">
+			<Component Id="AnonBirdAumidRegistry" Guid="*">
+				<RegistryKey Root="HKCU" Key="Software\Classes\AppUserModelId\AnonBird" ForceDeleteOnUninstall="yes">
 					<RegistryValue Name="InstalledByMSI" Type="integer" Value="1" KeyPath="yes" />
 				</RegistryKey>
 			</Component>
 		</StandardDirectory>
 
 		<StandardDirectory Id="CommonAppDataFolder">
-			<Directory Id="NetbirdAutoStartDir" Name="Netbird">
-				<Component Id="NetbirdAutoStart" Guid="b199eaca-b0dd-4032-af19-679cfad48eb3" Bitness="always64" Condition='AUTOSTART = "1"'>
+			<Directory Id="AnonBirdAutoStartDir" Name="AnonBird">
+				<Component Id="AnonBirdAutoStart" Guid="b199eaca-b0dd-4032-af19-679cfad48eb3" Bitness="always64" Condition='AUTOSTART = "1"'>
 					<RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run"
-						Name="Netbird" Value="&quot;[NetbirdInstallDir]netbird-ui.exe&quot;"
+						Name="AnonBird" Value="&quot;[AnonBirdInstallDir]anonbird-ui.exe&quot;"
 						Type="string" KeyPath="yes" />
 				</Component>
 			</Directory>
 		</StandardDirectory>
 
-		<ComponentGroup Id="NetbirdFilesComponent">
-			<ComponentRef Id="NetbirdFiles" />
-			<ComponentRef Id="NetbirdAumidRegistry" />
-			<ComponentRef Id="NetbirdAutoStart" />
+		<ComponentGroup Id="AnonBirdFilesComponent">
+			<ComponentRef Id="AnonBirdFiles" />
+			<ComponentRef Id="AnonBirdAumidRegistry" />
+			<ComponentRef Id="AnonBirdAutoStart" />
 		</ComponentGroup>
 
-		<util:CloseApplication Id="CloseNetBird" CloseMessage="no" Target="netbird.exe" RebootPrompt="no" />
-		<util:CloseApplication Id="CloseNetBirdUI" CloseMessage="no" Target="netbird-ui.exe" RebootPrompt="no" TerminateProcess="0" />
+		<util:CloseApplication Id="CloseAnonBird" CloseMessage="no" Target="anonbird.exe" RebootPrompt="no" />
+		<util:CloseApplication Id="CloseAnonBirdUI" CloseMessage="no" Target="anonbird-ui.exe" RebootPrompt="no" TerminateProcess="0" />
 
 
 
 		<!-- Icons -->
-		<Icon Id="NetbirdIcon" SourceFile=".\client\ui\assets\netbird.ico" />
-		<Property Id="ARPPRODUCTICON" Value="NetbirdIcon" />
+		<Icon Id="AnonBirdIcon" SourceFile=".\client\ui\assets\netbird.ico" />
+		<Property Id="ARPPRODUCTICON" Value="AnonBirdIcon" />
 
 	</Package>
 </Wix>

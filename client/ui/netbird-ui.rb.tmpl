@@ -8,14 +8,14 @@ cask "{{ $projectName }}" do
   if Hardware::CPU.intel?
       url "{{ $amdURL }}"
       sha256 "{{ crypto.SHA256 $amdFileBytes }}"
-      app "netbird_ui_darwin", target: "AnonBird UI.app"
+      app "anonbird_ui_darwin", target: "AnonBird UI.app"
   else
       url "{{ $armURL }}"
       sha256 "{{ crypto.SHA256 $armFileBytes }}"
-      app "netbird_ui_darwin", target: "AnonBird UI.app"
+      app "anonbird_ui_darwin", target: "AnonBird UI.app"
   end
 
-  depends_on formula: "netbird"
+  depends_on formula: "anonbird"
 
   postflight do
     set_permissions "/Applications/AnonBird UI.app/installer.sh", '0755'
@@ -35,5 +35,5 @@ cask "{{ $projectName }}" do
 
   name "AnonBird UI"
   desc "AnonBird UI Client"
-  homepage "https://www.netbird.io/"
+  homepage "https://github.com/Cr0me1ve/anonbird"
 end

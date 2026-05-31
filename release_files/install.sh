@@ -1,3 +1,4 @@
+#!/usr/bin/env sh
 # AnonBird installer for release artifacts published by the fork.
 set -e
 
@@ -5,19 +6,23 @@ CONFIG_FOLDER="${ANONBIRD_CONFIG_FOLDER:-/etc/anonbird}"
 CONFIG_FILE="$CONFIG_FOLDER/install.conf"
 
 OWNER="${ANONBIRD_GITHUB_OWNER:-Cr0me1ve}"
-REPO="${ANONBIRD_GITHUB_REPO:-netbird}"
+REPO="${ANONBIRD_GITHUB_REPO:-anonbird}"
 CLI_APP="anonbird"
 UI_APP="anonbird-ui"
 PROJECT_URL="${ANONBIRD_PROJECT_URL:-https://github.com/${OWNER}/${REPO}}"
 RELEASE_API_URL="${ANONBIRD_RELEASE_API_URL:-https://api.github.com/repos/${OWNER}/${REPO}/releases/latest}"
 RELEASE_BASE_URL="${ANONBIRD_RELEASE_BASE_URL:-${PROJECT_URL}/releases/download}"
+COMPAT_SYMLINK="${ANONBIRD_COMPAT_SYMLINK:-false}"
+FORCE_COMPAT_SYMLINK="${ANONBIRD_COMPAT_SYMLINK_FORCE:-false}"
+SKIP_SERVICE_INSTALL="${ANONBIRD_SKIP_SERVICE:-false}"
+SKIP_SERVICE_START="${ANONBIRD_SKIP_SERVICE_START:-false}"
 
 # Set default variable
 OS_NAME=""
 OS_TYPE=""
 ARCH="$(uname -m)"
 PACKAGE_MANAGER="bin"
-INSTALL_DIR=""
+INSTALL_DIR="${ANONBIRD_INSTALL_DIR:-}"
 SUDO=""
 
 
@@ -32,6 +37,77 @@ if [ -z ${ANONBIRD_RELEASE+x} ]; then
 fi
 
 TAG_NAME=""
+
+usage() {
+    cat <<EOF
+AnonBird installer
+
+Usage:
+  install.sh [--update] [--compat-symlink] [--no-service] [--no-start]
+
+Environment:
+  ANONBIRD_RELEASE=<latest|vX.Y.Z>       Release to install (default: latest)
+  ANONBIRD_GITHUB_OWNER=<owner>          GitHub owner (default: Cr0me1ve)
+  ANONBIRD_GITHUB_REPO=<repo>            GitHub repo (default: anonbird)
+  ANONBIRD_RELEASE_BASE_URL=<url>        Release artifact base URL
+  ANONBIRD_INSTALL_DIR=<path>            Binary install directory
+  ANONBIRD_COMPAT_SYMLINK=true           Add netbird -> anonbird compatibility symlink
+  ANONBIRD_COMPAT_SYMLINK_FORCE=true     Replace an existing compatibility symlink/path
+  ANONBIRD_SKIP_SERVICE=true             Install binaries only, do not install/start service
+  ANONBIRD_SKIP_SERVICE_START=true       Install service but do not start it
+  SKIP_UI_APP=true                       Skip desktop UI binary
+EOF
+}
+
+is_true() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|y|on)
+            return 0
+        ;;
+        *)
+            return 1
+        ;;
+    esac
+}
+
+set_default_install_dir() {
+    if [ -z "$INSTALL_DIR" ]; then
+        INSTALL_DIR="$1"
+    fi
+}
+
+UPDATE_FLAG=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --update)
+            UPDATE_FLAG="--update"
+        ;;
+        --compat-symlink)
+            COMPAT_SYMLINK=true
+        ;;
+        --force-compat-symlink)
+            COMPAT_SYMLINK=true
+            FORCE_COMPAT_SYMLINK=true
+        ;;
+        --no-service)
+            SKIP_SERVICE_INSTALL=true
+            SKIP_SERVICE_START=true
+        ;;
+        --no-start)
+            SKIP_SERVICE_START=true
+        ;;
+        -h|--help)
+            usage
+            exit 0
+        ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 2
+        ;;
+    esac
+    shift
+done
 
 get_release() {
     local RELEASE=$1
@@ -156,6 +232,41 @@ install_native_binaries() {
     if ! $SKIP_UI_APP; then
         download_release_binary "$UI_APP"
     fi
+}
+
+create_compat_symlink() {
+    if ! is_true "$COMPAT_SYMLINK"; then
+        return 0
+    fi
+
+    if [ "$OS_TYPE" != "linux" ]; then
+        echo "Compatibility symlink is only supported on Linux; skipping netbird -> anonbird"
+        return 0
+    fi
+
+    target="${INSTALL_DIR%/}/$CLI_APP"
+    link="${INSTALL_DIR%/}/netbird"
+
+    if [ ! -x "$target" ]; then
+        echo "AnonBird binary not found at $target; cannot create compatibility symlink" >&2
+        return 1
+    fi
+
+    if [ -e "$link" ] || [ -L "$link" ]; then
+        current_target="$(readlink "$link" 2>/dev/null || true)"
+        if [ "$current_target" = "$target" ]; then
+            echo "Compatibility symlink already exists: $link -> $target"
+            return 0
+        fi
+        if ! is_true "$FORCE_COMPAT_SYMLINK"; then
+            echo "Not overwriting existing $link. Set ANONBIRD_COMPAT_SYMLINK_FORCE=true or pass --force-compat-symlink to replace it." >&2
+            return 0
+        fi
+        ${SUDO} rm -f "$link"
+    fi
+
+    ${SUDO} ln -s "$target" "$link"
+    echo "Created temporary compatibility symlink: $link -> $target"
 }
 
 # Handle macOS .pkg installer
@@ -283,15 +394,22 @@ install_anonbird() {
     # Add package manager to config
     ${SUDO} mkdir -p "$CONFIG_FOLDER"
     echo "package_manager=$PACKAGE_MANAGER" | ${SUDO} tee "$CONFIG_FILE" > /dev/null
+    create_compat_symlink
 
     # Load and start anonbird service
-    if [ "$PACKAGE_MANAGER" != "rpm-ostree" ] && [ "$PACKAGE_MANAGER" != "pkg" ]; then
+    if ! is_true "$SKIP_SERVICE_INSTALL" && [ "$PACKAGE_MANAGER" != "rpm-ostree" ] && [ "$PACKAGE_MANAGER" != "pkg" ]; then
         if ! ${SUDO} anonbird service install 2>&1; then
             echo "AnonBird service has already been loaded"
         fi
-        if ! ${SUDO} anonbird service start 2>&1; then
-            echo "AnonBird service has already been started"
+        if is_true "$SKIP_SERVICE_START"; then
+            echo "AnonBird service installed but not started because ANONBIRD_SKIP_SERVICE_START is enabled"
+        else
+            if ! ${SUDO} anonbird service start 2>&1; then
+                echo "AnonBird service has already been started"
+            fi
         fi
+    elif is_true "$SKIP_SERVICE_INSTALL"; then
+        echo "AnonBird service install/start skipped because ANONBIRD_SKIP_SERVICE is enabled"
     fi
 
 
@@ -340,9 +458,14 @@ update_anonbird() {
       ${SUDO} anonbird service uninstall || true
       stop_running_anonbird_ui
       install_native_binaries
+      create_compat_symlink
 
       ${SUDO} anonbird service install
-      ${SUDO} anonbird service start
+      if is_true "$SKIP_SERVICE_START"; then
+        echo "AnonBird service update completed; start skipped because ANONBIRD_SKIP_SERVICE_START is enabled"
+      else
+        ${SUDO} anonbird service start
+      fi
     fi
   else
      echo "AnonBird installation was done using a package manager. Please use your system's package manager to update"
@@ -367,13 +490,13 @@ if type uname >/dev/null 2>&1; then
           UNAME_OUTPUT="$(uname -a)"
           if echo "$UNAME_OUTPUT" | grep -qi "synology"; then
             OS_NAME="synology"
-            INSTALL_DIR="/usr/local/bin"
+            set_default_install_dir "/usr/local/bin"
             PACKAGE_MANAGER="bin"
             SKIP_UI_APP=true
           else
             if [ -f /etc/os-release ]; then
               OS_NAME="$(. /etc/os-release && echo "$ID")"
-              INSTALL_DIR="/usr/bin"
+              set_default_install_dir "/usr/bin"
 
               # Allow AnonBird UI installation for compatible CPU architectures only
               if [ "$ARCH" != "amd64" ] && [ "$ARCH" != "arm64" ] \
@@ -415,7 +538,7 @@ if type uname >/dev/null 2>&1; then
 		Darwin)
             OS_NAME="macos"
 			OS_TYPE="darwin"
-            INSTALL_DIR="/usr/local/bin"
+            set_default_install_dir "/usr/local/bin"
 
             # Check the availability of a compatible package manager
             if check_use_bin_variable; then
@@ -426,8 +549,6 @@ if type uname >/dev/null 2>&1; then
 		;;
 	esac
 fi
-
-UPDATE_FLAG=$1
 
 if [ "${UPDATE_ANONBIRD}-x" = "true-x" ]; then
   UPDATE_FLAG="--update"

@@ -4,7 +4,7 @@
     <img width="234" src="docs/media/logo-full.png" alt="AnonBird logo"/>
   </p>
   <p align="center">
-    <a href="https://github.com/Cr0me1ve/netbird/blob/main/LICENSE">
+    <a href="https://github.com/Cr0me1ve/anonbird/blob/main/LICENSE">
       <img src="https://img.shields.io/badge/license-BSD--3-blue" alt="BSD-3 License"/>
     </a>
     <a href="docs/leak-map.md">
@@ -52,7 +52,7 @@ relay combined server, and Traefik TLS routing.
 - Tor and/or i2pd available on clients for anonymous transports.
 
 ```bash
-curl -fsSL https://github.com/Cr0me1ve/netbird/releases/latest/download/getting-started.sh \
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
   | bash -s -- --domain anonbird.example.com --email admin@example.com --yes
 ```
 
@@ -67,13 +67,32 @@ The one-command installer uses the built-in Traefik mode by default. For a dry
 configuration render without starting containers:
 
 ```bash
-curl -fsSL https://github.com/Cr0me1ve/netbird/releases/latest/download/getting-started.sh \
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
   | bash -s -- --domain anonbird.example.com --email admin@example.com --yes --render-only
 ```
 
 The `NETBIRD_*` environment names are still accepted in deployment scripts for
 compatibility with the inherited configuration contract. New generated artifacts
 use AnonBird images, commands and filesystem paths.
+
+### Linux client install
+
+The release installer places the `anonbird` command in `PATH`, installs
+`anonbird.service`, and uses `/etc/anonbird`, `/var/lib/anonbird`,
+`/var/log/anonbird` and `/var/run/anonbird.sock`.
+
+```bash
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/install.sh \
+  | sudo bash -s --
+```
+
+For migration dry-runs where old scripts still call `netbird`, add a temporary
+compatibility symlink without making it the canonical command:
+
+```bash
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/install.sh \
+  | sudo bash -s -- --compat-symlink --no-start
+```
 
 ### Dashboard and anonymous peer URLs
 

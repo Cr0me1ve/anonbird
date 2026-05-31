@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	uninstallKeyPath64 = `SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Netbird`
-	uninstallKeyPath32 = `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Netbird`
+	uninstallKeyPath64       = `SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\AnonBird`
+	uninstallKeyPath32       = `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AnonBird`
+	legacyUninstallKeyPath64 = `SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Netbird`
+	legacyUninstallKeyPath32 = `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Netbird`
 )
 
 var (
@@ -20,7 +22,7 @@ var (
 )
 
 func TypeOfInstaller(_ context.Context) Type {
-	paths := []string{uninstallKeyPath64, uninstallKeyPath32}
+	paths := []string{uninstallKeyPath64, uninstallKeyPath32, legacyUninstallKeyPath64, legacyUninstallKeyPath32}
 
 	for _, path := range paths {
 		k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
@@ -35,7 +37,7 @@ func TypeOfInstaller(_ context.Context) Type {
 
 	}
 
-	log.Debug("No registry entry found for Netbird, assuming MSI installation")
+	log.Debug("No registry entry found for AnonBird or legacy NetBird, assuming MSI installation")
 	return TypeMSI
 }
 

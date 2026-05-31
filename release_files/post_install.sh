@@ -14,6 +14,7 @@ cleanInstall() {
     # Step 3 (clean install), enable the service in the proper way for this platform
     /usr/bin/anonbird service install
     /usr/bin/anonbird service start
+    installCompatSymlink
 }
 
 upgrade() {
@@ -30,6 +31,48 @@ upgrade() {
     /usr/bin/anonbird service uninstall 2> /dev/null || true
     /usr/bin/anonbird service install
     /usr/bin/anonbird service start
+    installCompatSymlink
+}
+
+isTrue() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|y|on)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+installCompatSymlink() {
+  if ! isTrue "${ANONBIRD_COMPAT_SYMLINK:-false}"; then
+    return 0
+  fi
+
+  link="/usr/bin/netbird"
+  target="/usr/bin/anonbird"
+
+  if [ ! -x "$target" ]; then
+    printf "\033[33m Cannot create compatibility symlink; %s is missing\033[0m\n" "$target"
+    return 1
+  fi
+
+  if [ -e "$link" ] || [ -L "$link" ]; then
+    current_target="$(readlink "$link" 2>/dev/null || true)"
+    if [ "$current_target" = "$target" ]; then
+      printf "\033[32m Compatibility symlink already exists: %s -> %s\033[0m\n" "$link" "$target"
+      return 0
+    fi
+    if ! isTrue "${ANONBIRD_COMPAT_SYMLINK_FORCE:-false}"; then
+      printf "\033[33m Not overwriting existing %s. Set ANONBIRD_COMPAT_SYMLINK_FORCE=true to replace it.\033[0m\n" "$link"
+      return 0
+    fi
+    rm -f "$link"
+  fi
+
+  ln -s "$target" "$link"
+  printf "\033[32m Created temporary compatibility symlink: %s -> %s\033[0m\n" "$link" "$target"
 }
 
 # Check if this is a clean install or an upgrade

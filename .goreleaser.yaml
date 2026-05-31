@@ -194,7 +194,7 @@ archives:
 nfpms:
   - maintainer: AnonBird <dev@anonbird.local>
     description: AnonBird client.
-    homepage: https://github.com/Cr0me1ve/netbird
+    homepage: https://github.com/Cr0me1ve/anonbird
     license: BSD-3-Clause
     id: anonbird_deb
     package_name: anonbird
@@ -209,7 +209,7 @@ nfpms:
 
   - maintainer: AnonBird <dev@anonbird.local>
     description: AnonBird client.
-    homepage: https://github.com/Cr0me1ve/netbird
+    homepage: https://github.com/Cr0me1ve/anonbird
     license: BSD-3-Clause
     id: anonbird_rpm
     package_name: anonbird
@@ -241,7 +241,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird:{{ .Version }}-arm64v8
@@ -259,7 +259,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird:{{ .Version }}-arm
@@ -278,7 +278,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
 
   - image_templates:
@@ -297,7 +297,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird:{{ .Version }}-rootless-arm64v8
@@ -315,7 +315,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird:{{ .Version }}-rootless-arm
@@ -334,7 +334,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
 
   - image_templates:
@@ -351,7 +351,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-relay:{{ .Version }}-arm64v8
@@ -367,7 +367,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-relay:{{ .Version }}-arm
@@ -384,7 +384,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-signal:{{ .Version }}-amd64
@@ -400,7 +400,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-signal:{{ .Version }}-arm64v8
@@ -416,7 +416,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-signal:{{ .Version }}-arm
@@ -433,7 +433,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-management:{{ .Version }}-amd64
@@ -449,7 +449,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-management:{{ .Version }}-arm64v8
@@ -465,7 +465,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-management:{{ .Version }}-arm
@@ -482,7 +482,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-management:{{ .Version }}-debug-amd64
@@ -498,7 +498,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-management:{{ .Version }}-debug-arm64v8
@@ -514,7 +514,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
 
   - image_templates:
@@ -532,7 +532,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-upload:{{ .Version }}-amd64
@@ -548,7 +548,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-upload:{{ .Version }}-arm64v8
@@ -564,7 +564,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-upload:{{ .Version }}-arm
@@ -581,7 +581,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-server:{{ .Version }}-amd64
@@ -597,7 +597,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-server:{{ .Version }}-arm64v8
@@ -613,7 +613,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-server:{{ .Version }}-arm
@@ -630,7 +630,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-amd64
@@ -646,7 +646,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm64v8
@@ -662,7 +662,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
   - image_templates:
       - cr0me1ve/anonbird-reverse-proxy:{{ .Version }}-arm
@@ -679,7 +679,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/netbird"
+      - "--label=org.opencontainers.image.source=https://github.com/Cr0me1ve/anonbird"
       - "--label=maintainer=dev@anonbird.local"
 docker_manifests:
   - name_template: cr0me1ve/anonbird:{{ .Version }}
@@ -897,7 +897,7 @@ brews:
       email: dev@anonbird.local
     description: AnonBird anonymous mesh client.
     download_strategy: CurlDownloadStrategy
-    homepage: https://github.com/Cr0me1ve/netbird
+    homepage: https://github.com/Cr0me1ve/anonbird
     license: "BSD3"
     test: |
       system "#{bin}/{{ .ProjectName	}} version"
