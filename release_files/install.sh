@@ -456,6 +456,15 @@ is_bin_package_manager() {
   fi
 }
 
+is_release_binary_install() {
+  if ! ${SUDO} test -f "$1"; then
+    return 1
+  fi
+  # AnonBird fork installs GitHub release binaries on Linux package-manager
+  # distros too; the package-manager value records platform detection only.
+  ${SUDO} grep -Eq "package_manager=(bin|apt|dnf|yum)" "$1"
+}
+
 stop_running_anonbird_ui() {
   NB_UI_PROC=$(ps -ef | grep "[a]nonbird-ui" | awk '{print $2}')
   if [ -n "$NB_UI_PROC" ]; then
@@ -465,7 +474,7 @@ stop_running_anonbird_ui() {
 }
 
 update_anonbird() {
-  if is_bin_package_manager "$CONFIG_FILE"; then
+  if is_release_binary_install "$CONFIG_FILE"; then
     latest_release=$(get_release "$ANONBIRD_RELEASE")
     latest_version=${latest_release#v}
     installed_version=$(anonbird version)
