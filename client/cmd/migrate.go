@@ -528,13 +528,21 @@ func hasClientManagementURL(raw map[string]any) bool {
 func hardenMigratedClientConfigs(out io.Writer, plan migrationPlan, opts migrationOptions, token joinToken) error {
 	var updated []string
 	for _, action := range plan.Actions {
-		if action.Kind != "copy" || action.Target != "/etc/anonbird" {
+		if action.Kind != "copy" {
+			continue
+		}
+		hardenHelpers := false
+		switch action.Target {
+		case "/etc/anonbird":
+			hardenHelpers = true
+		case "/var/lib/anonbird":
+		default:
 			continue
 		}
 		root := opts.mapPath(action.Target)
 		if _, err := os.Lstat(root); err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
-				return nil
+				continue
 			}
 			return fmt.Errorf("inspect migrated config dir: %w", err)
 		}
@@ -557,12 +565,14 @@ func hardenMigratedClientConfigs(out io.Writer, plan migrationPlan, opts migrati
 		if err != nil {
 			return err
 		}
-		helperUpdates, err := hardenMigratedClientHelperFiles(root, token)
-		if err != nil {
-			return err
-		}
-		for _, path := range helperUpdates {
-			updated = append(updated, opts.logicalPath(path))
+		if hardenHelpers {
+			helperUpdates, err := hardenMigratedClientHelperFiles(root, token)
+			if err != nil {
+				return err
+			}
+			for _, path := range helperUpdates {
+				updated = append(updated, opts.logicalPath(path))
+			}
 		}
 	}
 	for _, path := range updated {

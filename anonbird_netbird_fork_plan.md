@@ -6,7 +6,7 @@
 
 - Статус: MVP anonymous mesh реализован и прошёл requirement-by-requirement audit 2026-05-31; post-MVP production/open-source release gate остаётся открытым до полного release-candidate прогона.
 - Текущий фокус: Phase 1-4, Phase 5 Tor relay stream multipath/per-channel health и Phase 6 direct-I2P MVP закрыты на code/unit + стендовом уровне; leak-map audit закрывает найденные clearnet side channels, reconnect/failure soak прошёл, dashboard/runtime/release packaging/proxy web/docs/infrastructure surface hardened. Сейчас идёт production-readiness слой: published artifacts/images, full release test suite, Marton Tor repeat/release-artifact repeat, NetBird->AnonBird migration server+clients, rollback/uninstall/reinstall и итоговый open-source release report.
-- Оценка остатка на 2026-06-01 после open-source hygiene, GitHub/local rename, public repo switch, зелёного RC2 tag/release workflow, public GHCR manifests, clean one-command self-host из опубликованных образов и полностью зелёного public-main CI после hardening: примерно 97.2% от ТЗ закрыто; главный незакрытый блок — двухклиентная миграция NetBird->AnonBird, Tor-repeat/release-artifact Marton flow и финальный release report.
+- Оценка остатка на 2026-06-01 после open-source hygiene, GitHub/local rename, public repo switch, зелёного RC2 tag/release workflow, public GHCR manifests, clean one-command self-host из опубликованных образов, зелёного public-main CI и двухклиентной NetBird->AnonBird client migration с rollback/reapply: примерно 98.3% от ТЗ закрыто; главный незакрытый блок — новый RC/release artifact с последним migration hardening, Tor-repeat/release-artifact Marton flow и финальный release report/verdict.
 - Open-source hygiene checkpoint 2026-05-31: добавлен воспроизводимый `gitleaks` config для основного repo и dashboard; current tree и git history scans проходят clean после точечного allowlist только для deterministic test fixtures/public test certs/historical upstream examples.
 - Правило выполнения: каждая реализованная часть отмечается здесь или в соответствующем чеклисте ниже; если в ходе сверки с ТЗ появляются ограничения или риски, они фиксируются в заметках.
 - Сверка с новым ТЗ: четыре сервера пользователя для финального testbed зафиксированы в разделе 22.0; release/open-source readiness нельзя закрывать без полного remote прогона, Marton через виртуальную сеть, server/client migration с обычного NetBird и финального verdict, можно ли заменить NetBird на AnonBird без ручных исправлений.
@@ -1442,11 +1442,15 @@ anonbird migrate rollback
 
 Статус 2026-05-31: CLI surface реализован без заглушек. `client` path выполняет dry-run/apply/backup/rollback нативно; `server` path запускает существующий полноценный self-host migration script и поддерживает dry-run/apply. Открыты packaging/e2e пункты ниже.
 
-Статус 2026-05-31: client migration теперь безопаснее для anonymous-by-default: apply отказывается копировать non-anonymous NetBird config без `--rejoin` или явного unsafe confirmation; `--rejoin` переписывает migrated config/helper files в anonymous mode до service start. Live-root migration + rollback закрыт на `93.177.116.58` с настоящим legacy NetBird client profile и installed AnonBird binary. Открыто: двухклиентный upstream NetBird baseline на testbed, apply через release package artifact и post-migration peer/DNS/ACL connectivity.
+Статус 2026-05-31: client migration теперь безопаснее для anonymous-by-default: apply отказывается копировать non-anonymous NetBird config без `--rejoin` или явного unsafe confirmation; `--rejoin` переписывает migrated config/helper files в anonymous mode до service start. Live-root migration + rollback закрыт на `93.177.116.58` с настоящим legacy NetBird client profile и installed AnonBird binary.
 
-Статус 2026-05-31: server migration script hardened для release/RC tests: target images можно переопределять env/flags, apply делает image preflight до stop/backup/start, dry-run показывает target images, `--skip-image-preflight` оставлен только для controlled local tests. Portable domain parsing исправлен и проверен fake embedded-IdP dry-run. Реальный server-side NetBird baseline migration E2E закрыт на `93.177.116.58`: upstream NetBird `v0.64.6` 5-container stack поднят, dry-run/apply миграции на RC-local AnonBird images прошли, post-migration dashboard/OIDC/API/setup-key/leak-grep проверены, rollback после AnonBird DB write восстановил старый NetBird stack и management volume snapshot. Открыто: baseline clients + `anonbird migrate client` E2E, DNS/ACL/routes с реальными peers и replace-in-place тест на прикладном проекте.
+Статус 2026-05-31: server migration script hardened для release/RC tests: target images можно переопределять env/flags, apply делает image preflight до stop/backup/start, dry-run показывает target images, `--skip-image-preflight` оставлен только для controlled local tests. Portable domain parsing исправлен и проверен fake embedded-IdP dry-run. Реальный server-side NetBird baseline migration E2E закрыт на `93.177.116.58`: upstream NetBird `v0.64.6` 5-container stack поднят, dry-run/apply миграции на RC-local AnonBird images прошли, post-migration dashboard/OIDC/API/setup-key/leak-grep проверены, rollback после AnonBird DB write восстановил старый NetBird stack и management volume snapshot.
 
-- [ ] `anonbird migrate server` должен покрывать happy-path self-host Linux install:
+Статус 2026-06-01: двухклиентный upstream NetBird baseline migration закрыт на testbed без заглушек. На `93.177.116.58` поднят обычный NetBird baseline `v0.64.6`; `185.246.220.249` (`netbird 0.70.5`) и `45.138.103.224` (`netbird 0.71.4`) были зачислены как обычные NetBird clients, получили `100.64.231.200/16` и `100.64.126.107/16`; baseline DNS/FQDN и peer ping до миграции прошли `4/4`, avg `25.799 ms` и `25.565 ms`, status ожидаемо показывал STUN/relay/direct public endpoints. RC2 release `install.sh` выявил packaging blocker для prerelease: script из RC2 срезал `-rc.2` и пытался скачать `v0.72.0`; для продолжения E2E использован опубликованный RC2 tarball напрямую, а tag `v0.72.0-rc.3` пересоздан на commit с installer fix. Обе ноды мигрированы через `anonbird migrate client --apply --force --rejoin` на Tor onion server; `anonymous-check` OK, management/signal/relay идут через Tor, STUN/ICE/direct UDP/fallback disabled, published endpoints none, connection type only `Relayed` через `rel://...onion:80`; overlay ping после миграции `185 -> 45` `6/6`, avg `816.761 ms`, `45 -> 185` `6/6`, avg `830.583 ms`. DNS/FQDN после миграции тоже работает: peer `.anonbird.local` резолвится в overlay IPv6, ping по FQDN `3/3` с avg `819.650 ms` и `773.242 ms`. Rollback test выполнен на `45.138.103.224`: `migrate rollback --dry-run` показал restore plan, `--apply` восстановил `netbird.service`, и через warmup обычный NetBird снова подключился к `https://netbird.93.177.116.58.nip.io:443`. Затем reapply с локально собранным бинарём после hardening fix снова поднял `anonbird.service`, `netbird.service` inactive, config grep по старым NetBird/STUN/clearnet patterns пустой, journal grep после migration marker пустой.
+
+Заметка 2026-06-01: live reapply обнаружил production hardening gap, не покрытый RC2/RC3: при `--rejoin` старый `/var/lib/netbird/default.json` мог быть скопирован в `/var/lib/anonbird/default.json` и коротко стартовать как clearnet profile до `anonbird join`. Исправлено в `client/cmd/migrate.go`: hardening теперь проходит по `/var/lib/anonbird` так же, как по `/etc/anonbird`, до `systemctl start anonbird.service`; `TestApplyClientMigrationWithRejoinHardensConfig` расширен на state profile. Проверено: `go test ./client/cmd -run 'Test.*Migration|TestInitCommands' -count=1`, `git diff --check`, live rollback/reapply на `45.138.103.224`. Открыто: выпустить следующий RC/tag, чтобы release artifact включал этот fix, затем повторить install/migration smoke из нового artifact.
+
+- [x] `anonbird migrate server` должен покрывать happy-path self-host Linux install:
   - detect existing NetBird services/processes;
   - stop old services;
   - backup `/etc/netbird`, `/var/lib/netbird`, `/var/log/netbird`, systemd units и DB;
@@ -1454,18 +1458,18 @@ anonbird migrate rollback
   - rewrite service/socket/path references;
   - install/start `anonbird.service`;
   - run management/dashboard/setup-key/peer-list sanity checks.
-- [ ] `anonbird migrate client` должен покрывать Linux client migration:
+- [x] `anonbird migrate client` должен покрывать Linux client migration:
   - backup old client config/profile/logs;
   - migrate compatible profile fields;
   - switch service/socket/path to AnonBird;
   - optionally create temporary `netbird` compatibility symlink;
   - support `--rejoin` for clean anonymous Tor/I2P enrollment.
-- [ ] `anonbird migrate rollback` должен восстанавливать backup:
+- [x] `anonbird migrate rollback` должен восстанавливать backup:
   - stop AnonBird services;
   - restore previous NetBird config/data/unit files;
   - restart old service;
   - print exact manual recovery steps if rollback cannot be fully automatic.
-- [ ] Safety requirements:
+- [x] Safety requirements:
   - default mode is `--dry-run`;
   - refuse to run without backup unless `--no-backup --force`;
   - print all planned file/service changes before applying;

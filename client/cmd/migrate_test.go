@@ -104,6 +104,10 @@ func TestApplyClientMigrationWithRejoinHardensConfig(t *testing.T) {
   "ManagementURL": "https://netbird.example",
   "PrivateKey": "legacy-private"
 }`)
+	writeTestFile(t, filepath.Join(root, "var/lib/netbird/default.json"), `{
+  "ManagementURL": "https://netbird.example",
+  "PrivateKey": "legacy-state-private"
+}`)
 	writeTestFile(t, filepath.Join(root, "etc/netbird/management-url"), "https://api.netbird.io\n")
 	writeTestFile(t, filepath.Join(root, "etc/netbird/setup-key"), "OLD-SETUP-KEY\n")
 
@@ -118,7 +122,21 @@ func TestApplyClientMigrationWithRejoinHardensConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, applyClientMigrationPlan(noopWriter{}, plan, opts))
 
-	data, err := os.ReadFile(filepath.Join(root, "etc/anonbird/config.json"))
+	assertHardenedMigratedConfig(t, filepath.Join(root, "etc/anonbird/config.json"), "legacy-private")
+	assertHardenedMigratedConfig(t, filepath.Join(root, "var/lib/anonbird/default.json"), "legacy-state-private")
+
+	require.Equal(t, "http://managementexampleabcdefghijklmnop.onion\n", readTestFile(t, filepath.Join(root, "etc/anonbird/management-url")))
+	require.Equal(t, "NB-SETUP-xxxx\n", readTestFile(t, filepath.Join(root, "etc/anonbird/setup-key")))
+	setupKeyInfo, err := os.Stat(filepath.Join(root, "etc/anonbird/setup-key"))
+	require.NoError(t, err)
+	if runtime.GOOS != "windows" {
+		require.Equal(t, os.FileMode(0o600), setupKeyInfo.Mode().Perm())
+	}
+}
+
+func assertHardenedMigratedConfig(t *testing.T, path, expectedPrivateKey string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	var migrated map[string]any
 	require.NoError(t, json.Unmarshal(data, &migrated))
@@ -137,21 +155,13 @@ func TestApplyClientMigrationWithRejoinHardensConfig(t *testing.T) {
 	require.Equal(t, "tor-relay-only", transport["type"])
 	require.Equal(t, "127.0.0.1:9051", transport["tor_socks5"])
 	require.Equal(t, true, transport["require_anonymous"])
-	require.Equal(t, "legacy-private", migrated["PrivateKey"])
+	require.Equal(t, expectedPrivateKey, migrated["PrivateKey"])
 
 	var config profilemanager.Config
 	require.NoError(t, json.Unmarshal(data, &config))
 	require.Equal(t, "http://managementexampleabcdefghijklmnop.onion", config.ManagementURL.String())
 	require.True(t, config.AnonymousMode)
 	require.True(t, config.DisableAutoConnect)
-
-	require.Equal(t, "http://managementexampleabcdefghijklmnop.onion\n", readTestFile(t, filepath.Join(root, "etc/anonbird/management-url")))
-	require.Equal(t, "NB-SETUP-xxxx\n", readTestFile(t, filepath.Join(root, "etc/anonbird/setup-key")))
-	setupKeyInfo, err := os.Stat(filepath.Join(root, "etc/anonbird/setup-key"))
-	require.NoError(t, err)
-	if runtime.GOOS != "windows" {
-		require.Equal(t, os.FileMode(0o600), setupKeyInfo.Mode().Perm())
-	}
 }
 
 func TestApplyClientMigrationAllowsUnsafeClearnetWithExplicitAck(t *testing.T) {
