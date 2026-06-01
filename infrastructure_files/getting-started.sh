@@ -26,7 +26,10 @@ AnonBird one-command self-host installer
 Usage:
   getting-started.sh [options]
 
-Recommended production quickstart:
+Interactive production quickstart:
+  curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh | bash
+
+Unattended production quickstart:
   curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
     | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes
 
@@ -61,6 +64,21 @@ Environment aliases:
                                 Same as --enable-clearnet-stun.
   ANONBIRD_SKIP_IMAGE_PREFLIGHT=true
                                 Same as --skip-image-preflight.
+EOF
+}
+
+print_interactive_intro() {
+  cat > /dev/stderr <<'EOF'
+AnonBird one-command self-host installer
+
+The installer will ask for:
+  - public dashboard/management domain;
+  - reverse proxy mode;
+  - Let's Encrypt email when built-in Traefik is used;
+  - optional AnonBird Proxy and CrowdSec settings.
+
+For automation, run with --domain, --email and --yes.
+
 EOF
 }
 
@@ -892,6 +910,9 @@ start_services_and_show_instructions() {
 init_environment() {
   initialize_default_values
   parse_args "$@"
+  if [[ "$NONINTERACTIVE" != "true" ]]; then
+    print_interactive_intro
+  fi
   configure_domain
   configure_reverse_proxy
 

@@ -68,12 +68,12 @@ Let's Encrypt, gRPC and WebSocket relay paths can work directly. Open
 legacy clearnet STUN, and open `51820/udp` only when using AnonBird Proxy.
 
 ```bash
-curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
-  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh | bash
 ```
 
-This renders `docker-compose.yml`, `dashboard.env` and `config.yaml`, then starts
-the stack. When it finishes, open:
+The script asks for the domain, reverse proxy mode, Let's Encrypt email and
+optional AnonBird Proxy settings, then renders `docker-compose.yml`,
+`dashboard.env` and `config.yaml` and starts the stack. When it finishes, open:
 
 ```text
 https://anonbird.your-domain.com
@@ -94,6 +94,13 @@ curl -ksS -o /dev/null -w '%{http_code}\n' https://anonbird.your-domain.com/api/
 ```
 
 The unauthenticated API check should return `401`.
+
+For unattended installs, pass the same values as flags:
+
+```bash
+curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
+  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes
+```
 
 To bootstrap an unattended setup key for anonymous clients:
 
