@@ -445,12 +445,71 @@ install_anonbird() {
     echo "anonbird up"
 }
 
-version_greater_equal() {
+is_semver_like() {
+    echo "$1" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+}
+
+semver_core() {
+    echo "$1" | sed 's/^v//' | sed 's/+.*//' | cut -d- -f1
+}
+
+semver_prerelease() {
+    version="$(echo "$1" | sed 's/^v//' | sed 's/+.*//')"
+    case "$version" in
+        *-*) echo "${version#*-}" ;;
+        *) echo "" ;;
+    esac
+}
+
+compare_semver_core() {
+    left="$(semver_core "$1")"
+    right="$(semver_core "$2")"
+    IFS=. read -r left_major left_minor left_patch <<EOF
+$left
+EOF
+    IFS=. read -r right_major right_minor right_patch <<EOF
+$right
+EOF
+    for part in major minor patch; do
+        eval "left_value=\${left_${part}}"
+        eval "right_value=\${right_${part}}"
+        if [ "$left_value" -gt "$right_value" ]; then
+            echo 1
+            return 0
+        fi
+        if [ "$left_value" -lt "$right_value" ]; then
+            echo -1
+            return 0
+        fi
+    done
+    echo 0
+}
+
+prerelease_greater_equal() {
     printf '%s\n%s\n' "$2" "$1" | sort -V -c >/dev/null 2>&1
 }
 
-is_semver_like() {
-    echo "$1" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+version_greater_equal() {
+    core_compare="$(compare_semver_core "$1" "$2")"
+    if [ "$core_compare" -gt 0 ]; then
+        return 0
+    fi
+    if [ "$core_compare" -lt 0 ]; then
+        return 1
+    fi
+
+    left_pre="$(semver_prerelease "$1")"
+    right_pre="$(semver_prerelease "$2")"
+    if [ -z "$left_pre" ] && [ -n "$right_pre" ]; then
+        return 0
+    fi
+    if [ -n "$left_pre" ] && [ -z "$right_pre" ]; then
+        return 1
+    fi
+    if [ -z "$left_pre" ] && [ -z "$right_pre" ]; then
+        return 0
+    fi
+    prerelease_greater_equal "$left_pre" "$right_pre"
 }
 
 should_update_version() {
