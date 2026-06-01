@@ -10,6 +10,7 @@
 - Open-source hygiene checkpoint 2026-05-31: добавлен воспроизводимый `gitleaks` config для основного repo и dashboard; current tree и git history scans проходят clean после точечного allowlist только для deterministic test fixtures/public test certs/historical upstream examples.
 - Правило выполнения: каждая реализованная часть отмечается здесь или в соответствующем чеклисте ниже; если в ходе сверки с ТЗ появляются ограничения или риски, они фиксируются в заметках.
 - Сверка с новым ТЗ: четыре сервера пользователя для финального testbed зафиксированы в разделе 22.0; release/open-source readiness нельзя закрывать без полного remote прогона, Marton через виртуальную сеть, server/client migration с обычного NetBird и финального verdict, можно ли заменить NetBird на AnonBird без ручных исправлений.
+- Реализовано: README self-host quickstart получил явную DNS/Cloudflare таблицу: single `A` для management/dashboard, optional `AAAA`, wildcard `CNAME` только для AnonBird Proxy, Cloudflare `DNS only`, порты `80/tcp`/`443/tcp`, без `3478/udp` по умолчанию.
 - Заметка: проектное имя клиента и пользовательских команд — AnonBird; CLI должен использовать `anonbird`.
 - Реализовано: Phase 0 документы `docs/leak-map.md` и `docs/netbird-transport-analysis.md` добавлены с конкретными code paths, runtime запретами и тестовыми целями.
 - Реализовано: клиентский `anonymous_mode` с transport config `tor-relay-only`, CLI flags, daemon proto/config persistence и runtime validation.

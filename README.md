@@ -53,6 +53,20 @@ relay combined server, and Traefik TLS routing.
 - Open inbound `80/tcp` and `443/tcp`.
 - Tor and/or i2pd available on clients for anonymous transports.
 
+Recommended DNS records:
+
+| Type | Name | Content | Cloudflare proxy status |
+|---|---|---|---|
+| `A` | `anonbird` | `YOUR.SERVER.IP.ADDRESS` | DNS only |
+| `AAAA` | `anonbird` | `YOUR.SERVER.IPV6.ADDRESS` | DNS only, optional |
+| `CNAME` | `*.anonbird` | `anonbird.example.com` | DNS only, only when AnonBird Proxy wildcard services are enabled |
+
+For a standard management/dashboard deployment, the single `A` record is enough.
+Do not enable Cloudflare proxying for the AnonBird domain: use **DNS only** so
+Let's Encrypt, gRPC and WebSocket relay paths can work directly. Open
+`80/tcp` and `443/tcp`; keep `3478/udp` closed unless you explicitly enable
+legacy clearnet STUN, and open `51820/udp` only when using AnonBird Proxy.
+
 ```bash
 curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
   | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes
