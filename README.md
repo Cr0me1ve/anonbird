@@ -266,9 +266,10 @@ sudo anonbird migrate client --apply \
   --yes-i-understand-this-may-leak-my-ip
 ```
 
-With `--rejoin`, migrated config files are rewritten to anonymous mode and
-`DisableAutoConnect=true` before the service starts, so the old clearnet profile
-does not connect during migration.
+With `--rejoin`, migrated config files are rewritten to anonymous mode before
+the service starts, so the old clearnet profile does not connect during
+migration. After a successful anonymous join, auto-connect is enabled again so
+future service restarts reconnect through the anonymous transport.
 
 Self-hosted server migration uses the packaged AnonBird migration script for the
 legacy Docker Compose stack:
@@ -284,14 +285,16 @@ Rollback for client filesystem migration:
 sudo anonbird migrate rollback --backup-dir /var/backups/anonbird/migration-YYYYMMDD-HHMMSS --apply
 ```
 
-### Release-readiness status
+### Production-readiness status
 
-The current branch contains a working anonymous MVP plus post-MVP production
-hardening tasks. Treat it as a release candidate, not a final production tag,
-until the release-readiness plan in `anonbird_netbird_fork_plan.md` is fully
-green.
+The current release line has passed the production-readiness gates tracked in
+`anonbird_netbird_fork_plan.md`: one-command self-host, published release
+artifacts, NetBird migration, anonymous client update/install flows, Tor/I2P
+remote smoke, Marton overlay traffic, and focused leak sweeps. Review the
+release report in `docs/` for the exact tag, checksums, test matrix, known
+limitations and verdict.
 
-Before a public production release, the final manual run must prove:
+The release gate covers:
 
 - one-command server/dashboard install from published images;
 - Linux package install, upgrade, uninstall/reinstall and rollback from release
