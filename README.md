@@ -291,8 +291,8 @@ The current release line has passed the production-readiness gates tracked in
 `anonbird_netbird_fork_plan.md`: one-command self-host, published release
 artifacts, NetBird migration, anonymous client update/install flows, Tor/I2P
 remote smoke, Marton overlay traffic, and focused leak sweeps. Review the
-release report in `docs/` for the exact tag, checksums, test matrix, known
-limitations and verdict.
+[v0.72.2 release report](docs/release-report-v0.72.2.md) for the exact tag,
+checksums, test matrix, known limitations and verdict.
 
 The release gate covers:
 
