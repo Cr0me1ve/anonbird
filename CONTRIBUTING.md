@@ -206,7 +206,7 @@ CGO_ENABLED=0 go build .
 
 > Windows clients have a Wireguard driver requirement. You can download the wintun driver from https://www.wintun.net/builds/wintun-0.14.1.zip, after decompressing, you can copy the file `windtun\bin\ARCH\wintun.dll` to the same path as your binary file or to `C:\Windows\System32\wintun.dll`.
 
-> To test the client GUI application on Windows machines with RDP or vituralized environments (e.g. virtualbox or cloud), you need to download and extract the opengl32.dll from https://fdossena.com/?p=mesa/index.frag next to the built application.
+> To test the client GUI application on Windows machines with RDP or virtualized environments (e.g. VirtualBox or cloud), download the pinned Mesa3D MSVC release used by CI from https://github.com/pal1000/mesa-dist-win/releases and place `x64\opengl32.dll` plus `x64\libgallium_wgl.dll` next to the built application.
 
 To start AnonBird the client in the foreground:
 

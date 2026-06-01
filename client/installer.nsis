@@ -328,6 +328,7 @@ Delete "$INSTDIR\${MAIN_APP_EXE}"
 Delete "$INSTDIR\wintun.dll"
 !if ${ARCH} == "amd64"
 Delete "$INSTDIR\opengl32.dll"
+Delete "$INSTDIR\libgallium_wgl.dll"
 !endif
 DetailPrint "Removing application directory..."
 RmDir /r "$INSTDIR"

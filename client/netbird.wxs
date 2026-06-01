@@ -34,6 +34,7 @@
 					<File Id="AnonBirdToastIcon" Name="netbird.png" Source=".\client\ui\assets\netbird.png" />
 					<?if $(var.ArchSuffix) = "amd64" ?>
 					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\anonbird_windows_$(var.ArchSuffix)\opengl32.dll" />
+					<File ProcessorArchitecture="$(var.ProcessorArchitecture)" Source=".\dist\anonbird_windows_$(var.ArchSuffix)\libgallium_wgl.dll" />
 					<?endif ?>
 
 					<ServiceInstall

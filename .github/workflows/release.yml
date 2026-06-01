@@ -18,8 +18,7 @@ env:
   PRODUCT_NAME: "AnonBird"
   COPYRIGHT: "AnonBird contributors"
   WINTUN_URL: "https://www.wintun.net/builds/wintun-0.14.1.zip"
-  MESA3D_WINDOWS_URL: "https://downloads.fdossena.com/Projects/Mesa3D/Builds/MesaForWindows-x64-20.1.8.7z"
-  MESA3D_WINDOWS_FALLBACK_URL: "https://downloads.fdossena.com/geth.php?r=mesa64-latest"
+  MESA3D_WINDOWS_URL: "https://github.com/pal1000/mesa-dist-win/releases/download/26.1.1/mesa3d-26.1.1-release-msvc.7z"
   NSIS_ENVAR_PLUGIN_URL: "https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip"
   NSIS_SHELL_EXEC_AS_USER_AMD64_PLUGIN_URL: "https://nsis.sourceforge.io/mediawiki/images/6/68/ShellExecAsUser_amd64-Unicode.7z"
 
@@ -623,17 +622,27 @@ jobs:
         shell: pwsh
         run: |
           & "${{ github.workspace }}\.github\scripts\download-with-checksum.ps1" `
-            -Url @('${{ env.MESA3D_WINDOWS_URL }}', '${{ env.MESA3D_WINDOWS_FALLBACK_URL }}') `
+            -Url @('${{ env.MESA3D_WINDOWS_URL }}') `
             -Destination '${{ env.downloadPath }}\mesa3d.7z' `
-            -Sha256 '71c7cb64ec229a1d6b8d62fa08e1889ed2bd17c0eeede8689daf0f25cb31d6b9'
+            -Sha256 'd5e90e9ae4d620313b61fbbf8e9a55761454e38b6501c39be6d93449c88780e1'
 
       - name: Extract Mesa3D driver (amd64 only)
         if: matrix.arch == 'amd64'
         run: 7z x -o"${{ env.downloadPath }}" "${{ env.downloadPath }}/mesa3d.7z"
 
-      - name: Move opengl32.dll into dist (amd64 only)
+      - name: Move Mesa3D OpenGL files into dist (amd64 only)
         if: matrix.arch == 'amd64'
-        run: mv ${{ env.downloadPath }}\opengl32.dll ${{ github.workspace }}\dist\${{ env.PackageWorkdir }}\
+        run: |
+          $mesaSource = "${{ env.downloadPath }}\x64"
+          $packageDir = "${{ github.workspace }}\dist\${{ env.PackageWorkdir }}"
+          foreach ($file in @("opengl32.dll", "libgallium_wgl.dll")) {
+            $source = Join-Path $mesaSource $file
+            if (-not (Test-Path $source)) {
+              Write-Host "::error::Mesa3D file not found: $source"
+              exit 1
+            }
+            Copy-Item -Force $source $packageDir
+          }
 
       - name: Download EnVar plugin for NSIS
         shell: pwsh
