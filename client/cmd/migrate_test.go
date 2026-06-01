@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -162,6 +163,35 @@ func assertHardenedMigratedConfig(t *testing.T, path, expectedPrivateKey string)
 	require.Equal(t, "http://managementexampleabcdefghijklmnop.onion", config.ManagementURL.String())
 	require.True(t, config.AnonymousMode)
 	require.True(t, config.DisableAutoConnect)
+}
+
+func TestEnableAutoConnectAfterRejoin(t *testing.T) {
+	root := t.TempDir()
+	configJSON := `{
+  "ManagementURL": "http://managementexampleabcdefghijklmnop.onion",
+  "anonymous_mode": true,
+  "DisableAutoConnect": true
+}`
+	writeTestFile(t, filepath.Join(root, "etc/anonbird/config.json"), configJSON)
+	writeTestFile(t, filepath.Join(root, "var/lib/anonbird/default.json"), configJSON)
+	writeTestFile(t, filepath.Join(root, "var/lib/anonbird/service.json"), `{"service":"anonbird"}`)
+
+	var out bytes.Buffer
+	require.NoError(t, enableAutoConnectAfterRejoin(&out, migrationOptions{Root: root}))
+	require.Contains(t, out.String(), "/etc/anonbird/config.json")
+	require.Contains(t, out.String(), "/var/lib/anonbird/default.json")
+
+	for _, path := range []string{
+		filepath.Join(root, "etc/anonbird/config.json"),
+		filepath.Join(root, "var/lib/anonbird/default.json"),
+	} {
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		var migrated map[string]any
+		require.NoError(t, json.Unmarshal(data, &migrated))
+		require.Equal(t, false, migrated["DisableAutoConnect"])
+		require.Equal(t, true, migrated["anonymous_mode"])
+	}
 }
 
 func TestApplyClientMigrationAllowsUnsafeClearnetWithExplicitAck(t *testing.T) {

@@ -420,17 +420,18 @@ install_anonbird() {
     # Add package manager to config
     ${SUDO} mkdir -p "$CONFIG_FOLDER"
     echo "package_manager=$PACKAGE_MANAGER" | ${SUDO} tee "$CONFIG_FILE" > /dev/null
+    remove_shadowing_legacy_binary
     create_compat_symlink
 
     # Load and start anonbird service
     if ! is_true "$SKIP_SERVICE_INSTALL" && [ "$PACKAGE_MANAGER" != "rpm-ostree" ] && [ "$PACKAGE_MANAGER" != "pkg" ]; then
-        if ! ${SUDO} anonbird service install 2>&1; then
+        if ! run_installed_anonbird service install 2>&1; then
             echo "AnonBird service has already been loaded"
         fi
         if is_true "$SKIP_SERVICE_START"; then
             echo "AnonBird service installed but not started because ANONBIRD_SKIP_SERVICE_START is enabled"
         else
-            if ! ${SUDO} anonbird service start 2>&1; then
+            if ! run_installed_anonbird service start 2>&1; then
                 echo "AnonBird service has already been started"
             fi
         fi
@@ -448,6 +449,64 @@ version_greater_equal() {
     printf '%s\n%s\n' "$2" "$1" | sort -V -c >/dev/null 2>&1
 }
 
+is_semver_like() {
+    echo "$1" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+}
+
+should_update_version() {
+  latest_version="$1"
+  installed_version="$2"
+
+  if [ "$latest_version" = "$installed_version" ]; then
+    return 1
+  fi
+  if ! is_semver_like "$installed_version"; then
+    return 0
+  fi
+  version_greater_equal "$latest_version" "$installed_version"
+}
+
+anonbird_binary_path() {
+  if [ -n "$INSTALL_DIR" ]; then
+    echo "${INSTALL_DIR%/}/${CLI_APP}"
+  else
+    command -v "$CLI_APP" 2>/dev/null || echo "/usr/bin/${CLI_APP}"
+  fi
+}
+
+run_installed_anonbird() {
+  binary_path="$(anonbird_binary_path)"
+  if ! ${SUDO} test -x "$binary_path"; then
+    binary_path="$(command -v "$CLI_APP" 2>/dev/null || true)"
+  fi
+  if [ -z "$binary_path" ]; then
+    echo "AnonBird binary not found" >&2
+    return 1
+  fi
+  ${SUDO} "$binary_path" "$@"
+}
+
+restore_active_connection_after_update() {
+  was_service_active="$1"
+  if ! is_true "$was_service_active" || is_true "$SKIP_SERVICE_START"; then
+    return 0
+  fi
+
+  binary_path="$(anonbird_binary_path)"
+  if ! ${SUDO} test -x "$binary_path"; then
+    return 0
+  fi
+
+  echo "Restoring active AnonBird connection after update"
+  if command -v timeout >/dev/null 2>&1; then
+    if ! ${SUDO} timeout 120 "$binary_path" up --daemon-addr unix:///var/run/anonbird.sock; then
+      echo "Warning: AnonBird update completed, but automatic reconnect did not finish. Run 'anonbird up' manually if the client stays disconnected." >&2
+    fi
+  elif ! run_installed_anonbird up --daemon-addr unix:///var/run/anonbird.sock; then
+    echo "Warning: AnonBird update completed, but automatic reconnect did not finish. Run 'anonbird up' manually if the client stays disconnected." >&2
+  fi
+}
+
 is_bin_package_manager() {
   if ${SUDO} test -f "$1" && ${SUDO} grep -q "package_manager=bin" "$1" ; then
     return 0
@@ -456,13 +515,57 @@ is_bin_package_manager() {
   fi
 }
 
+package_manager_owns_file() {
+  file_path="$1"
+  case "$PACKAGE_MANAGER" in
+    apt)
+      command -v dpkg-query >/dev/null 2>&1 && dpkg-query -S "$file_path" >/dev/null 2>&1
+    ;;
+    dnf|yum|rpm-ostree)
+      command -v rpm >/dev/null 2>&1 && rpm -qf "$file_path" >/dev/null 2>&1
+    ;;
+    *)
+      return 1
+    ;;
+  esac
+}
+
 is_release_binary_install() {
-  if ! ${SUDO} test -f "$1"; then
-    return 1
+  if ${SUDO} test -f "$1"; then
+    # AnonBird fork installs GitHub release binaries on Linux package-manager
+    # distros too; the package-manager value records platform detection only.
+    ${SUDO} grep -Eq "package_manager=(bin|apt|dnf|yum|rpm-ostree)" "$1"
+    return $?
   fi
-  # AnonBird fork installs GitHub release binaries on Linux package-manager
-  # distros too; the package-manager value records platform detection only.
-  ${SUDO} grep -Eq "package_manager=(bin|apt|dnf|yum)" "$1"
+
+  binary_path="$(anonbird_binary_path)"
+  if ${SUDO} test -x "$binary_path" && ! package_manager_owns_file "$binary_path"; then
+    return 0
+  fi
+  return 1
+}
+
+remove_shadowing_legacy_binary() {
+  if [ "$OS_TYPE" != "linux" ]; then
+    return 0
+  fi
+
+  target_path="$(anonbird_binary_path)"
+  resolved_path="$(command -v "$CLI_APP" 2>/dev/null || true)"
+  if [ -z "$resolved_path" ] || [ "$resolved_path" = "$target_path" ]; then
+    return 0
+  fi
+  if ! ${SUDO} test -f "$resolved_path"; then
+    return 0
+  fi
+  if package_manager_owns_file "$resolved_path"; then
+    return 0
+  fi
+
+  backup_path="${resolved_path}.pre-anonbird-update.$(date +%Y%m%d%H%M%S)"
+  ${SUDO} mv "$resolved_path" "$backup_path"
+  hash -r 2>/dev/null || true
+  echo "Moved shadowing legacy AnonBird binary: $resolved_path -> $backup_path"
 }
 
 stop_running_anonbird_ui() {
@@ -477,30 +580,40 @@ update_anonbird() {
   if is_release_binary_install "$CONFIG_FILE"; then
     latest_release=$(get_release "$ANONBIRD_RELEASE")
     latest_version=${latest_release#v}
-    installed_version=$(anonbird version)
+    installed_version=$(run_installed_anonbird version)
 
     if [ "$latest_version" = "$installed_version" ]; then
       echo "Installed AnonBird version ($installed_version) is up-to-date"
       exit 0
     fi
 
-    if version_greater_equal "$latest_version" "$installed_version"; then
+    if should_update_version "$latest_version" "$installed_version"; then
       echo "AnonBird new version ($latest_version) available. Updating..."
       echo ""
       echo "Initiating AnonBird update. This will stop the anonbird service and restart it after the update"
 
-      ${SUDO} anonbird service stop || true
-      ${SUDO} anonbird service uninstall || true
+      service_was_active=false
+      if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet anonbird.service; then
+        service_was_active=true
+      fi
+      run_installed_anonbird service stop || true
+      run_installed_anonbird service uninstall || true
       stop_running_anonbird_ui
       install_native_binaries
+      remove_shadowing_legacy_binary
+      ${SUDO} mkdir -p "$CONFIG_FOLDER"
+      echo "package_manager=$PACKAGE_MANAGER" | ${SUDO} tee "$CONFIG_FILE" > /dev/null
       create_compat_symlink
 
-      ${SUDO} anonbird service install
+      run_installed_anonbird service install
       if is_true "$SKIP_SERVICE_START"; then
         echo "AnonBird service update completed; start skipped because ANONBIRD_SKIP_SERVICE_START is enabled"
       else
-        ${SUDO} anonbird service start
+        run_installed_anonbird service start
+        restore_active_connection_after_update "$service_was_active"
       fi
+    else
+      echo "Installed AnonBird version ($installed_version) is newer than requested version ($latest_version); skipping update"
     fi
   else
      echo "AnonBird installation was done using a package manager. Please use your system's package manager to update"

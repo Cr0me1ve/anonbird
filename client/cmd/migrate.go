@@ -428,6 +428,9 @@ func applyClientMigrationPlan(out io.Writer, plan migrationPlan, opts migrationO
 			if err := runAnonBirdJoin(out, opts.Rejoin); err != nil {
 				return err
 			}
+			if err := enableAutoConnectAfterRejoin(out, opts); err != nil {
+				return err
+			}
 		}
 	} else if opts.Rejoin != "" {
 		fmt.Fprintln(out, "Skipping --rejoin because --root is not /. Run anonbird join manually on the target host.")
@@ -610,6 +613,70 @@ func hardenMigratedClientConfig(path string, token joinToken) (bool, error) {
 	raw["anonymous_transport"] = transport
 	raw["DisableAutoConnect"] = true
 
+	rewritten, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	rewritten = append(rewritten, '\n')
+	return true, os.WriteFile(path, rewritten, 0o600)
+}
+
+func enableAutoConnectAfterRejoin(out io.Writer, opts migrationOptions) error {
+	var updated []string
+	for _, logicalDir := range []string{"/etc/anonbird", "/var/lib/anonbird"} {
+		root := opts.mapPath(logicalDir)
+		if _, err := os.Lstat(root); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("inspect rejoined config dir: %w", err)
+		}
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				return nil
+			}
+			changed, err := setMigratedClientAutoConnect(path, false)
+			if err != nil {
+				return fmt.Errorf("enable autoconnect after rejoin %s: %w", path, err)
+			}
+			if changed {
+				updated = append(updated, opts.logicalPath(path))
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	for _, path := range updated {
+		fmt.Fprintf(out, "Enabled autoconnect after successful anonymous rejoin: %s\n", path)
+	}
+	return nil
+}
+
+func setMigratedClientAutoConnect(path string, disabled bool) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false, nil
+	}
+	if !hasClientManagementURL(raw) {
+		return false, nil
+	}
+	anonymousMode, _ := raw["anonymous_mode"].(bool)
+	if !anonymousMode {
+		return false, nil
+	}
+	if current, ok := raw["DisableAutoConnect"].(bool); ok && current == disabled {
+		return false, nil
+	}
+	raw["DisableAutoConnect"] = disabled
 	rewritten, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return false, err
