@@ -118,6 +118,7 @@ linters:
       - third_party$
       - builtin$
       - examples$
+      - node_modules
 issues:
   max-same-issues: 5
 formatters:

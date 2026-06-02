@@ -132,6 +132,9 @@ type ExtraSettings struct {
 	// IntegratedValidatorGroups list of group IDs to be used with integrated approval configurations
 	IntegratedValidatorGroups []string `gorm:"serializer:json"`
 
+	// PeerManagementEndpoint is the Tor/I2P management endpoint used in generated peer setup commands.
+	PeerManagementEndpoint string
+
 	FlowEnabled              bool     `gorm:"-"`
 	FlowGroups               []string `gorm:"-"`
 	FlowPacketCounterEnabled bool     `gorm:"-"`
@@ -146,6 +149,7 @@ func (e *ExtraSettings) Copy() *ExtraSettings {
 		UserApprovalRequired:      e.UserApprovalRequired,
 		IntegratedValidatorGroups: slices.Clone(e.IntegratedValidatorGroups),
 		IntegratedValidator:       e.IntegratedValidator,
+		PeerManagementEndpoint:    e.PeerManagementEndpoint,
 		FlowEnabled:               e.FlowEnabled,
 		FlowGroups:                slices.Clone(e.FlowGroups),
 		FlowPacketCounterEnabled:  e.FlowPacketCounterEnabled,

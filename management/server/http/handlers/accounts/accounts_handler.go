@@ -237,6 +237,7 @@ func (h *handler) updateAccountRequestSettings(req api.PutApiAccountsAccountIdJS
 		returnSettings.Extra = &types.ExtraSettings{
 			PeerApprovalEnabled:      req.Settings.Extra.PeerApprovalEnabled,
 			UserApprovalRequired:     req.Settings.Extra.UserApprovalRequired,
+			PeerManagementEndpoint:   req.Settings.Extra.PeerManagementEndpoint,
 			FlowEnabled:              req.Settings.Extra.NetworkTrafficLogsEnabled,
 			FlowGroups:               req.Settings.Extra.NetworkTrafficLogsGroups,
 			FlowPacketCounterEnabled: req.Settings.Extra.NetworkTrafficPacketCounterEnabled,
@@ -436,6 +437,7 @@ func toAccountResponse(accountID string, settings *types.Settings, meta *types.A
 		apiSettings.Extra = &api.AccountExtraSettings{
 			PeerApprovalEnabled:                settings.Extra.PeerApprovalEnabled,
 			UserApprovalRequired:               settings.Extra.UserApprovalRequired,
+			PeerManagementEndpoint:             settings.Extra.PeerManagementEndpoint,
 			NetworkTrafficLogsEnabled:          settings.Extra.FlowEnabled,
 			NetworkTrafficLogsGroups:           settings.Extra.FlowGroups,
 			NetworkTrafficPacketCounterEnabled: settings.Extra.FlowPacketCounterEnabled,

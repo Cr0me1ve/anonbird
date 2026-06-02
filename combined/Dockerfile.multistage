@@ -9,12 +9,15 @@ RUN go mod download
 
 COPY . .
 
-# Build with version info from git (matching goreleaser ldflags)
+# Build with version info from CI/deploy args. Fallbacks keep local docker builds useful.
+ARG ANONBIRD_VERSION
+ARG ANONBIRD_COMMIT
+ARG ANONBIRD_DATE
 RUN CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-s -w \
-    -X github.com/netbirdio/netbird/version.version=$(git describe --tags --always --dirty 2>/dev/null || echo 'dev') \
-    -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown') \
-    -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+    -X github.com/netbirdio/netbird/version.version=${ANONBIRD_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo 'development')} \
+    -X main.commit=${ANONBIRD_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')} \
+    -X main.date=${ANONBIRD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)} \
     -X main.builtBy=docker" \
     -o anonbird-server ./combined
 

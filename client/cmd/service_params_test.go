@@ -114,7 +114,6 @@ func TestAnonymousRuntimeServiceDependencies(t *testing.T) {
 			name:      "tor relay only",
 			enabled:   true,
 			transport: anonymous.TransportConfig{Type: anonymous.TransportTorRelayOnly},
-			want:      []string{"Wants=tor.service", "After=tor.service"},
 		},
 		{
 			name:      "unknown",
@@ -176,7 +175,7 @@ func TestConfiguredAnonymousRuntimeServiceDependenciesExplicitFlagsOverrideProfi
 	require.NoError(t, rootCmd.PersistentFlags().Set(anonymousTransportFlag, anonymous.TransportTorRelayOnly))
 
 	got := configuredAnonymousRuntimeServiceDependencies()
-	assert.Equal(t, []string{"Wants=tor.service", "After=tor.service"}, got)
+	assert.Empty(t, got)
 }
 
 func restoreAnonymousRuntimeTestState(t *testing.T) {

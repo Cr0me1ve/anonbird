@@ -23,7 +23,7 @@ ss -ltnp | grep 7656
 AnonBird client поддерживает три режима:
 
 - `external`: клиент требует уже запущенный SAM bridge и падает без auto-start.
-- `auto`: клиент сначала проверяет SAM bridge, затем пробует запустить `i2pd`, если SAM недоступен.
+- `auto`: клиент сначала проверяет SAM bridge, затем пробует установить пакет `i2pd` и запустить managed `i2pd`, если SAM недоступен.
 - `managed`: клиент всегда владеет запущенным `i2pd` process для текущего profile.
 
 CLI flags:
@@ -46,6 +46,14 @@ anonbird://join?server=http://example.b32.i2p&setup_key=...&transport=i2p-datagr
 ```
 
 ## Managed layout
+
+В `auto`/`managed` режимах чистая клиентская система не требует ручной
+подготовки `i2pd`, если доступен поддерживаемый package manager. AnonBird
+проверяет `i2pd` в `PATH`, а если бинаря нет и `--i2pd-path` не указывает
+кастомный абсолютный путь, пробует установить пакет через `apt-get`, `dnf`,
+`yum`, `zypper`, `apk`, `pacman`, `brew` или `pkg`. Если установка пакета сама
+поднимает системный `i2pd.service` и SAM bridge уже слушает нужный адрес,
+AnonBird использует этот bridge и не стартует второй process.
 
 Если `--i2p-data-dir` не задан:
 
@@ -78,7 +86,7 @@ Linux service installation adds runtime dependencies according to the selected I
 
 - `i2p-datagram` + `external`: `Wants=i2pd.service` and `After=i2pd.service`
 - `i2p-datagram` + `auto`/`managed`: no `i2pd.service` dependency; AnonBird starts and owns a managed `i2pd` process when SAM is unavailable
-- `tor-relay-only`: `Wants=tor.service` and `After=tor.service`
+- `tor-relay-only`: no `tor.service` dependency; AnonBird checks local SOCKS5 and can install/start a managed Tor client runtime when needed
 
 For `external` mode, keep `i2pd.service` enabled:
 

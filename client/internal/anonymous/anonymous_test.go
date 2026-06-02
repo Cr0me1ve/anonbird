@@ -42,6 +42,16 @@ func TestValidateTransportDefaultsTorSOCKS(t *testing.T) {
 	require.NoError(t, ValidateTransport(cfg))
 }
 
+func TestValidateTransportRejectsNonLocalTorSOCKS(t *testing.T) {
+	err := ValidateTransport(TransportConfig{
+		Type:      TransportTorRelayOnly,
+		TorSOCKS5: "10.0.0.5:9050",
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "loopback")
+}
+
 func TestValidateTransportDefaultsI2PSAM(t *testing.T) {
 	cfg := NormalizeTransport(TransportConfig{Type: TransportI2PDatagram})
 

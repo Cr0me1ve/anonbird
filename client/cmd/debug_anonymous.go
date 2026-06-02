@@ -133,11 +133,12 @@ func buildAnonymousCheckReport(cfg *proto.GetConfigResponse, status *proto.Statu
 	}
 
 	preEnrollmentDefault := isPreEnrollmentDefaultConfig(cfg, status)
-	if cfg.GetAnonymousMode() {
+	switch {
+	case cfg.GetAnonymousMode():
 		addLine("Anonymous mode", "enabled")
-	} else if preEnrollmentDefault {
+	case preEnrollmentDefault:
 		addLine("Anonymous mode", "pending enrollment")
-	} else {
+	default:
 		addLine("Anonymous mode", "disabled")
 		addViolation("anonymous_mode is disabled")
 	}
@@ -179,12 +180,13 @@ func buildAnonymousCheckReport(cfg *proto.GetConfigResponse, status *proto.Statu
 
 	managementTransport := classifyAnonymousEndpoint(cfg.GetManagementUrl())
 	addLine("Management transport", managementTransport)
-	if preEnrollmentDefault && managementTransport == "clearnet" {
+	switch {
+	case preEnrollmentDefault && managementTransport == "clearnet":
 		addLine("Enrollment", "required")
 		addLine("Default connection policy", "anonymous tor-relay-only")
-	} else if managementTransport != "tor" && managementTransport != "i2p" {
+	case managementTransport != "tor" && managementTransport != "i2p":
 		addViolation("management URL is not an anonymous .onion or .b32.i2p endpoint")
-	} else if expectedTransport != "" && managementTransport != expectedTransport {
+	case expectedTransport != "" && managementTransport != expectedTransport:
 		addViolation(fmt.Sprintf("management URL uses %s but anonymous transport is %s", managementTransport, transport.Type))
 	}
 

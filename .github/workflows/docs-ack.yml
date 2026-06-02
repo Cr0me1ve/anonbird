@@ -67,11 +67,11 @@ jobs:
           body="$(printf '%s' "$BODY_B64" | base64 -d)"
 
           # Strictly require HTTPS and that it's a PR in the AnonBird fork.
-          # e.g., https://github.com/Cr0me1ve/netbird/pull/1234
-          url="$(printf '%s' "$body" | grep -Eo 'https://github\.com/Cr0me1ve/netbird/pull/[0-9]+' | head -n1 || true)"
+          # e.g., https://github.com/Cr0me1ve/anonbird/pull/1234
+          url="$(printf '%s' "$body" | grep -Eo 'https://github\.com/Cr0me1ve/anonbird/pull/[0-9]+' | head -n1 || true)"
 
           if [ -z "${url:-}" ]; then
-            echo "::error::You checked 'docs added' but didn't include a valid HTTPS PR link to Cr0me1ve/netbird (e.g., https://github.com/Cr0me1ve/netbird/pull/1234)."
+            echo "::error::You checked 'docs added' but didn't include a valid HTTPS PR link to Cr0me1ve/anonbird (e.g., https://github.com/Cr0me1ve/anonbird/pull/1234)."
             exit 1
           fi
 
@@ -91,7 +91,7 @@ jobs:
             const prNumber = parseInt(core.getInput('pr_number'), 10);
             const { data } = await github.rest.pulls.get({
               owner: 'Cr0me1ve',
-              repo: 'netbird',
+              repo: 'anonbird',
               pull_number: prNumber
             });
 

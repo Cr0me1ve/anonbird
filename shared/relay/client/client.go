@@ -387,21 +387,6 @@ func (c *Client) OpenConnChannel(ctx context.Context, dstPeerID string, channelI
 	return container.netConn(), nil
 }
 
-func (c *Client) removeConnLocked(key connKey, container *connContainer) bool {
-	current, ok := c.conns[key]
-	if !ok || current != container {
-		return false
-	}
-	delete(c.conns, key)
-	if c.peerConnRefs[key.peerID] > 0 {
-		c.peerConnRefs[key.peerID]--
-		if c.peerConnRefs[key.peerID] == 0 {
-			delete(c.peerConnRefs, key.peerID)
-		}
-	}
-	return true
-}
-
 // ServerInstanceURL returns the address of the relay server. It could change after the close and reopen the connection.
 func (c *Client) ServerInstanceURL() (string, error) {
 	c.muInstanceURL.Lock()

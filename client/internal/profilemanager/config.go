@@ -876,11 +876,12 @@ func UpdateOldManagementURL(ctx context.Context, config *Config, configPath stri
 	if newURL.Host == "" {
 		return nil, fmt.Errorf("default Management URL host is empty")
 	}
-	if _, _, err := net.SplitHostPort(newURL.Host); err != nil && newURL.Port() == "" {
-		newURL, err = parseURL("Management URL", fmt.Sprintf("%s://%s", newURL.Scheme, net.JoinHostPort(newURL.Hostname(), "443")))
-	}
-	if err != nil {
-		return nil, err
+	if _, _, splitErr := net.SplitHostPort(newURL.Host); splitErr != nil && newURL.Port() == "" {
+		parsedURL, parseErr := parseURL("Management URL", fmt.Sprintf("%s://%s", newURL.Scheme, net.JoinHostPort(newURL.Hostname(), "443")))
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		newURL = parsedURL
 	}
 	// here we check whether we could switch from the legacy 33073 port to the new 443
 	log.Infof("attempting to switch from the legacy Management URL %s to the new one %s",

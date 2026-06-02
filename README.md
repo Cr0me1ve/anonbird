@@ -51,7 +51,10 @@ relay combined server, and Traefik TLS routing.
 - Docker with the Compose plugin.
 - A DNS name pointing to the VM.
 - Open inbound `80/tcp` and `443/tcp`.
-- Tor and/or i2pd available on clients for anonymous transports.
+- Clients can start from a clean OS install. In anonymous mode AnonBird first
+  uses an already-running local Tor SOCKS5 or I2P SAM bridge if present, then
+  tries to install `tor`/`i2pd` with the local package manager and start a
+  managed local runtime when needed.
 
 Recommended DNS records:
 
@@ -71,9 +74,12 @@ legacy clearnet STUN, and open `51820/udp` only when using AnonBird Proxy.
 curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh | bash
 ```
 
-The script asks for the domain, reverse proxy mode, Let's Encrypt email and
-optional AnonBird Proxy settings, then renders `docker-compose.yml`,
-`dashboard.env` and `config.yaml` and starts the stack. When it finishes, open:
+The script asks for the domain, anonymous peer management transport, reverse
+proxy mode, Let's Encrypt email and optional AnonBird Proxy settings. It creates
+`/opt/anonbird`, renders `docker-compose.yml`, `dashboard.env` and `config.yaml`
+there, starts a managed Tor onion service by default, writes the generated
+endpoint back to the dashboard/server environment, and starts the stack from
+that directory. When it finishes, open:
 
 ```text
 https://anonbird.your-domain.com
@@ -85,9 +91,17 @@ stack. Anonymous-safe server defaults are used: management version checks,
 geolocation downloads, anonymous metrics and STUN/UDP are disabled unless you
 explicitly opt in.
 
+Use `--anonymous-transport i2p` to create a managed I2P `.b32.i2p` server
+tunnel instead of Tor, or `--anonymous-transport both` to create both sidecars
+and keep Tor as the default copied peer endpoint. The generated endpoints are
+saved in `/opt/anonbird/anonymous-endpoints.env`. Use
+`--peer-management-endpoint http://...onion` only when you already operate an
+external Tor/I2P service yourself.
+
 After startup, check the deployment from the server:
 
 ```bash
+cd /opt/anonbird
 docker compose ps
 curl -fsS https://anonbird.your-domain.com/oauth2/.well-known/openid-configuration >/dev/null
 curl -ksS -o /dev/null -w '%{http_code}\n' https://anonbird.your-domain.com/api/users
@@ -99,12 +113,14 @@ For unattended installs, pass the same values as flags:
 
 ```bash
 curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
-  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes
+  | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com \
+      --yes
 ```
 
 To bootstrap an unattended setup key for anonymous clients:
 
 ```bash
+cd /opt/anonbird
 docker compose exec -T anonbird-server \
   /go/bin/anonbird-server setup-key bootstrap --config /etc/anonbird/config.yaml
 ```
@@ -118,6 +134,8 @@ For a dry configuration render without starting containers:
 curl -fsSL https://github.com/Cr0me1ve/anonbird/releases/latest/download/getting-started.sh \
   | bash -s -- --domain anonbird.your-domain.com --email admin@your-domain.com --yes --render-only
 ```
+
+The rendered files are written to `/opt/anonbird`.
 
 To check release image availability without writing files or starting
 containers:
@@ -203,18 +221,40 @@ AnonBird peers:
   http://managementxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.onion
 ```
 
-Set the dashboard runtime configuration so browser API calls use the admin API
-origin, while generated peer setup commands use the onion/I2P management origin:
+The one-command installer writes this split automatically after creating the
+managed Tor/I2P sidecar. For manual deployments, set the dashboard runtime
+configuration so browser API calls use the admin API origin, while generated
+peer setup commands use the onion/I2P management origin:
 
 ```text
 NETBIRD_MGMT_API_ENDPOINT=https://admin.example.com
-NETBIRD_MGMT_GRPC_API_ENDPOINT=http://managementxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.onion
+NETBIRD_MGMT_GRPC_API_ENDPOINT=https://admin.example.com
+ANONBIRD_PEER_MANAGEMENT_ENDPOINT=http://managementxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.onion
 ```
 
-With that split, the administrator's browser can use clearnet, while peers still
-join through Tor/I2P and do not publish real endpoint candidates.
+With that split, the administrator's browser and dashboard API can use clearnet,
+while copied peer setup commands still join through Tor/I2P and do not publish
+real endpoint candidates.
+
+After setup, the endpoint can also be changed in **Settings → Anonymous Network**.
+Changing it affects future install commands and can require rejoining peers that
+were configured with the old address.
 
 ### Anonymous Client Examples
+
+The dashboard-generated `anonbird://join?...` link is the recommended client UX.
+It sets anonymous mode, management URL, setup key and transport in one step:
+
+```bash
+anonbird join "anonbird://join?server=http%3A%2F%2Fexamplehiddenservice.onion&setup_key=NB-SETUP-xxxx&transport=tor-relay-only"
+```
+
+On a clean Linux/macOS/FreeBSD system, AnonBird checks the local loopback proxy
+first. If Tor or `i2pd` is missing, it attempts to install the package with a
+supported package manager (`apt-get`, `dnf`, `yum`, `zypper`, `apk`, `pacman`,
+`brew` or `pkg`) and then starts a managed local runtime before dialing
+management. Anonymous management URLs still fail fast unless they are `.onion`
+or `.b32.i2p`, so a pasted clearnet URL will not be used accidentally.
 
 Tor relay-only:
 
@@ -235,6 +275,13 @@ anonbird up \
   --anonymous-transport i2p-datagram \
   --i2p-sam 127.0.0.1:7656
 ```
+
+For Tor, `--tor-socks5` must point to loopback, for example `127.0.0.1:9050`.
+Remote SOCKS5 proxies are rejected in anonymous mode to avoid clearnet proxy
+leaks. For I2P, `--i2p-daemon-mode auto` is the default: AnonBird uses an
+existing SAM bridge when available, otherwise it installs/starts managed
+`i2pd`. Use `--i2p-daemon-mode external` only when you deliberately manage
+`i2pd.service` yourself.
 
 Anonymous mode is enabled by default for new CLI connections. Non-anonymous
 clearnet mode is intentionally hard to invoke: it prints a real-IP leak warning

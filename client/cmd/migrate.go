@@ -499,7 +499,7 @@ func isUnsafeClientConfig(path string) (bool, error) {
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr // malformed JSON is not a migrated client config candidate.
 	}
 	if !hasClientManagementURL(raw) {
 		return false, nil
@@ -591,7 +591,7 @@ func hardenMigratedClientConfig(path string, token joinToken) (bool, error) {
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr // malformed JSON is not a migrated client config candidate.
 	}
 	if !hasClientManagementURL(raw) {
 		return false, nil
@@ -664,7 +664,7 @@ func setMigratedClientAutoConnect(path string, disabled bool) (bool, error) {
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr // malformed JSON is not a migrated client config candidate.
 	}
 	if !hasClientManagementURL(raw) {
 		return false, nil
@@ -689,7 +689,7 @@ func hardenMigratedClientHelperFiles(configDir string, token joinToken) ([]strin
 	var updated []string
 	managementURLPath := filepath.Join(configDir, "management-url")
 	if _, err := os.Lstat(managementURLPath); err == nil {
-		if err := os.WriteFile(managementURLPath, []byte(token.ManagementURL+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(managementURLPath, []byte(token.ManagementURL+"\n"), 0o600); err != nil {
 			return nil, fmt.Errorf("rewrite management-url helper: %w", err)
 		}
 		updated = append(updated, managementURLPath)
@@ -1040,7 +1040,7 @@ func copyRewrittenFile(source, target string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(target, []byte(rewritten), 0o644)
+	return os.WriteFile(target, []byte(rewritten), 0o644) //nolint:gosec // systemd unit files should be readable by systemd and administrators.
 }
 
 func rewriteNetBirdUnit(content string) string {

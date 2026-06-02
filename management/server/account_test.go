@@ -426,6 +426,26 @@ func TestNewAccount(t *testing.T) {
 	verifyNewAccountHasDefaultFields(t, account, userId, domain, []string{userId})
 }
 
+func TestNewAccountUsesPeerManagementEndpointFromEnv(t *testing.T) {
+	const endpoint = "http://abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcd.onion"
+	t.Setenv("ANONBIRD_PEER_MANAGEMENT_ENDPOINT", endpoint)
+
+	account := newAccountWithId(context.Background(), "account_id", "account_creator", "netbird.io", "", "", false)
+
+	require.NotNil(t, account.Settings.Extra)
+	require.Equal(t, endpoint, account.Settings.Extra.PeerManagementEndpoint)
+}
+
+func TestNewAccountFallsBackFromInvalidPeerManagementEndpointEnv(t *testing.T) {
+	t.Setenv("ANONBIRD_PEER_MANAGEMENT_ENDPOINT", "https://clearnet.example.com")
+
+	account := newAccountWithId(context.Background(), "account_id", "account_creator", "netbird.io", "", "", false)
+
+	require.NotNil(t, account.Settings.Extra)
+	require.True(t, isAnonymousPeerManagementEndpoint(account.Settings.Extra.PeerManagementEndpoint))
+	require.NotEqual(t, "https://clearnet.example.com", account.Settings.Extra.PeerManagementEndpoint)
+}
+
 func TestAccountManager_GetOrCreateAccountByUser(t *testing.T) {
 	manager, _, err := createManager(t)
 	if err != nil {

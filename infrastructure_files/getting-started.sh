@@ -14,6 +14,7 @@ readonly MSG_STARTING_SERVICES="\nStarting AnonBird services\n"
 readonly MSG_DONE="\nDone!\n"
 readonly MSG_NEXT_STEPS="Next steps:"
 readonly MSG_SEPARATOR="=========================================="
+readonly DEFAULT_WORKDIR="/opt/anonbird"
 
 ############################################
 # CLI Arguments
@@ -47,6 +48,10 @@ Options:
   --traefik-entrypoint NAME    External Traefik HTTPS entrypoint.
   --traefik-certresolver NAME  External Traefik certificate resolver.
   --external-proxy-network N   Docker network for nginx/npm/caddy reverse proxy.
+  --anonymous-transport MODE   Peer management transport: tor, i2p, both, manual, none (default: tor).
+  --peer-management-endpoint URL
+                              Existing onion/I2P management endpoint for manual mode.
+  --workdir DIR                Deployment working directory (default: /opt/anonbird).
   --render-only                Render files and exit without starting containers.
   --preflight-only             Check required AnonBird Docker images and exit.
   --skip-image-preflight       Start without checking custom AnonBird images first.
@@ -57,6 +62,12 @@ Environment aliases:
   ANONBIRD_DOMAIN              Same as --domain when NETBIRD_DOMAIN is unset.
   ANONBIRD_ADMIN_EMAIL         Same as --email when TRAEFIK_ACME_EMAIL is unset.
   ANONBIRD_NONINTERACTIVE=true Same as --yes.
+  ANONBIRD_WORKDIR             Deployment working directory (default: /opt/anonbird).
+  ANONBIRD_ANONYMOUS_TRANSPORT
+                                Peer management transport: tor, i2p, both, manual, none.
+  ANONBIRD_PEER_MANAGEMENT_ENDPOINT
+                                Existing onion/I2P endpoint for manual mode.
+  ANONBIRD_I2PD_IMAGE          Override managed I2P sidecar image.
   ANONBIRD_DASHBOARD_IMAGE     Override dashboard image.
   ANONBIRD_SERVER_IMAGE        Override combined server image.
   ANONBIRD_PROXY_IMAGE         Override reverse proxy image.
@@ -73,9 +84,12 @@ AnonBird one-command self-host installer
 
 The installer will ask for:
   - public dashboard/management domain;
+  - automatic Tor/I2P peer management endpoint mode;
   - reverse proxy mode;
   - Let's Encrypt email when built-in Traefik is used;
   - optional AnonBird Proxy and CrowdSec settings.
+
+Generated files and Docker Compose state live in /opt/anonbird by default.
 
 For automation, run with --domain, --email and --yes.
 
@@ -92,6 +106,21 @@ proxy_choice_from_name() {
     5|manual|other) echo "5" ;;
     *)
       echo "Unsupported proxy type: $1" > /dev/stderr
+      print_usage > /dev/stderr
+      exit 2
+      ;;
+  esac
+}
+
+anonymous_transport_from_name() {
+  case "$1" in
+    tor|onion|0) echo "tor" ;;
+    i2p|1) echo "i2p" ;;
+    both|2) echo "both" ;;
+    manual|existing|3) echo "manual" ;;
+    none|disabled|off|4) echo "none" ;;
+    *)
+      echo "Unsupported anonymous transport mode: $1" > /dev/stderr
       print_usage > /dev/stderr
       exit 2
       ;;
@@ -143,6 +172,11 @@ parse_args() {
         ENABLE_CLEARNET_STUN="true"
         shift
         ;;
+      --anonymous-transport|--peer-transport)
+        require_arg "$1" "${2:-}"
+        ANONBIRD_ANONYMOUS_TRANSPORT=$(anonymous_transport_from_name "$2")
+        shift 2
+        ;;
       --bind-localhost)
         BIND_LOCALHOST_ONLY="true"
         shift
@@ -170,6 +204,17 @@ parse_args() {
       --external-proxy-network)
         require_arg "$1" "${2:-}"
         EXTERNAL_PROXY_NETWORK="$2"
+        shift 2
+        ;;
+      --peer-management-endpoint|--anonymous-management-endpoint)
+        require_arg "$1" "${2:-}"
+        ANONBIRD_PEER_MANAGEMENT_ENDPOINT="$2"
+        ANONBIRD_ANONYMOUS_TRANSPORT="manual"
+        shift 2
+        ;;
+      --workdir)
+        require_arg "$1" "${2:-}"
+        ANONBIRD_WORKDIR="$2"
         shift 2
         ;;
       --render-only)
@@ -232,6 +277,68 @@ check_jq() {
   return 0
 }
 
+ensure_workdir() {
+  local original_dir
+  original_dir=$(pwd -P)
+
+  if [[ -z "${ANONBIRD_WORKDIR:-}" ]]; then
+    ANONBIRD_WORKDIR="$DEFAULT_WORKDIR"
+  fi
+
+  case "$ANONBIRD_WORKDIR" in
+    /*) ;;
+    *)
+      echo "ANONBIRD_WORKDIR must be an absolute path. Got: $ANONBIRD_WORKDIR" > /dev/stderr
+      exit 1
+      ;;
+  esac
+
+  if [[ -e "$ANONBIRD_WORKDIR" && ! -d "$ANONBIRD_WORKDIR" ]]; then
+    echo "ANONBIRD_WORKDIR exists but is not a directory: $ANONBIRD_WORKDIR" > /dev/stderr
+    exit 1
+  fi
+
+  if ! mkdir -p "$ANONBIRD_WORKDIR" 2>/dev/null; then
+    if [[ "$(id -u)" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
+      echo "Creating $ANONBIRD_WORKDIR requires elevated privileges; sudo may ask for your password."
+      sudo mkdir -p "$ANONBIRD_WORKDIR"
+      sudo chown "$(id -u):$(id -g)" "$ANONBIRD_WORKDIR"
+    else
+      echo "Cannot create $ANONBIRD_WORKDIR. Re-run as root or install sudo." > /dev/stderr
+      exit 1
+    fi
+  fi
+
+  if [[ ! -w "$ANONBIRD_WORKDIR" ]]; then
+    if [[ "$(id -u)" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
+      echo "Making $ANONBIRD_WORKDIR writable by the current user; sudo may ask for your password."
+      sudo chown "$(id -u):$(id -g)" "$ANONBIRD_WORKDIR"
+    fi
+  fi
+
+  if [[ ! -w "$ANONBIRD_WORKDIR" ]]; then
+    echo "Cannot write to $ANONBIRD_WORKDIR." > /dev/stderr
+    exit 1
+  fi
+
+  local target_dir
+  target_dir=$(cd "$ANONBIRD_WORKDIR" && pwd -P)
+  ANONBIRD_WORKDIR="$target_dir"
+
+  if [[ "$original_dir" != "$ANONBIRD_WORKDIR" && -f "$original_dir/config.yaml" && ! -f "$ANONBIRD_WORKDIR/config.yaml" ]]; then
+    echo "Existing AnonBird configuration was found in $original_dir, but new installs use $ANONBIRD_WORKDIR." > /dev/stderr
+    echo "To avoid starting a second stack with the same container names, move the existing files first:" > /dev/stderr
+    echo "  sudo mkdir -p $ANONBIRD_WORKDIR" > /dev/stderr
+    echo "  sudo cp -a $original_dir/docker-compose.yml $original_dir/dashboard.env $original_dir/config.yaml $ANONBIRD_WORKDIR/" > /dev/stderr
+    echo "Then run from $ANONBIRD_WORKDIR, or set ANONBIRD_WORKDIR=$original_dir to keep the existing location." > /dev/stderr
+    exit 1
+  fi
+
+  cd "$ANONBIRD_WORKDIR"
+  echo "Using AnonBird working directory: $ANONBIRD_WORKDIR"
+  return 0
+}
+
 run_with_timeout() {
   local timeout_seconds="$1"
   shift
@@ -283,6 +390,9 @@ preflight_required_images() {
   if [[ "$ENABLE_PROXY" == "true" ]]; then
     images+=("$NETBIRD_PROXY_IMAGE")
   fi
+  if managed_i2p_enabled; then
+    images+=("$ANONBIRD_I2PD_IMAGE")
+  fi
 
   local missing_images=()
   local image
@@ -316,6 +426,18 @@ clearnet_stun_enabled() {
   [[ "${ENABLE_CLEARNET_STUN:-false}" == "true" ]]
 }
 
+managed_tor_enabled() {
+  [[ "${ANONBIRD_ANONYMOUS_TRANSPORT:-tor}" == "tor" || "${ANONBIRD_ANONYMOUS_TRANSPORT:-tor}" == "both" ]]
+}
+
+managed_i2p_enabled() {
+  [[ "${ANONBIRD_ANONYMOUS_TRANSPORT:-tor}" == "i2p" || "${ANONBIRD_ANONYMOUS_TRANSPORT:-tor}" == "both" ]]
+}
+
+managed_anonymous_transport_enabled() {
+  managed_tor_enabled || managed_i2p_enabled
+}
+
 render_stun_ports_section() {
   if clearnet_stun_enabled; then
     cat <<EOF
@@ -339,6 +461,67 @@ render_stun_ports_yaml() {
 EOF
   else
     echo "  stunPorts: []"
+  fi
+}
+
+render_anonymous_services() {
+  local service_networks="$1"
+
+  if managed_tor_enabled; then
+    cat <<EOF
+
+  # Managed Tor onion service for peer management commands
+  tor:
+    build:
+      context: .
+      dockerfile: tor.Dockerfile
+    image: anonbird-tor:local
+    container_name: anonbird-tor
+    restart: unless-stopped
+    networks: $service_networks
+    volumes:
+      - anonbird_tor_data:/var/lib/tor
+      - ./torrc:/etc/tor/torrc:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200m"
+        max-file: "2"
+EOF
+  fi
+
+  if managed_i2p_enabled; then
+    cat <<EOF
+
+  # Managed I2P server tunnel for peer management commands
+  i2pd:
+    image: $ANONBIRD_I2PD_IMAGE
+    container_name: anonbird-i2pd
+    restart: unless-stopped
+    networks: $service_networks
+    volumes:
+      - anonbird_i2pd_data:/home/i2pd/data
+      - ./i2pd.conf:/home/i2pd/data/i2pd.conf:ro
+      - ./i2pd-tunnels.conf:/home/i2pd/data/tunnels.conf:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200m"
+        max-file: "2"
+EOF
+  fi
+}
+
+render_anonymous_volumes() {
+  if managed_tor_enabled; then
+    cat <<EOF
+  anonbird_tor_data:
+EOF
+  fi
+  if managed_i2p_enabled; then
+    cat <<EOF
+  anonbird_i2pd_data:
+EOF
   fi
 }
 
@@ -366,6 +549,70 @@ check_nb_domain() {
     echo "The NETBIRD_DOMAIN cannot be anonbird.example.com" > /dev/stderr
     return 1
   fi
+  return 0
+}
+
+check_peer_management_endpoint() {
+  local endpoint="${1:-}"
+  if [[ -z "$endpoint" ]]; then
+    return 0
+  fi
+
+  case "$endpoint" in
+    http://*.onion|http://*.onion/*|https://*.onion|https://*.onion/*|http://*.i2p|http://*.i2p/*|https://*.i2p|https://*.i2p/*)
+      return 0
+      ;;
+    *)
+      echo "Peer management endpoint must be an http(s) .onion or .i2p URL, or left empty." > /dev/stderr
+      return 1
+      ;;
+  esac
+}
+
+read_peer_management_endpoint() {
+  local endpoint
+  echo "" > /dev/stderr
+  echo "Enter the existing Tor/I2P management endpoint that peers should use." > /dev/stderr
+  echo "The dashboard can stay on clearnet; copied peer setup commands will use this URL." > /dev/stderr
+  echo -n "Peer management endpoint: " > /dev/stderr
+  read -r endpoint < /dev/tty
+  if ! check_peer_management_endpoint "$endpoint"; then
+    read_peer_management_endpoint
+    return
+  fi
+  if [[ -z "$endpoint" ]]; then
+    echo "Peer management endpoint cannot be empty in manual mode." > /dev/stderr
+    read_peer_management_endpoint
+    return
+  fi
+  echo "$endpoint"
+  return 0
+}
+
+read_anonymous_transport() {
+  local choice
+  echo "" > /dev/stderr
+  echo "How should peers reach the management server anonymously?" > /dev/stderr
+  echo "  [0] Tor onion service (recommended - created automatically)" > /dev/stderr
+  echo "  [1] I2P server tunnel (created automatically)" > /dev/stderr
+  echo "  [2] Both Tor and I2P (created automatically, Tor used by default)" > /dev/stderr
+  echo "  [3] I already have an onion/I2P endpoint" > /dev/stderr
+  echo "  [4] Configure later from the dashboard" > /dev/stderr
+  echo "" > /dev/stderr
+  echo -n "Enter choice [0-4] (default: 0): " > /dev/stderr
+  read -r choice < /dev/tty
+
+  if [[ -z "$choice" ]]; then
+    choice="0"
+  fi
+
+  if [[ ! "$choice" =~ ^[0-4]$ ]]; then
+    echo "Invalid choice. Please enter a number between 0 and 4." > /dev/stderr
+    read_anonymous_transport
+    return
+  fi
+
+  anonymous_transport_from_name "$choice"
   return 0
 }
 
@@ -608,6 +855,7 @@ initialize_default_values() {
   RENDER_ONLY="${ANONBIRD_RENDER_ONLY:-false}"
   PREFLIGHT_ONLY="${ANONBIRD_PREFLIGHT_ONLY:-false}"
   SKIP_IMAGE_PREFLIGHT="${ANONBIRD_SKIP_IMAGE_PREFLIGHT:-false}"
+  ANONBIRD_WORKDIR="${ANONBIRD_WORKDIR:-$DEFAULT_WORKDIR}"
 
   NETBIRD_PORT=80
   NETBIRD_HTTP_PROTOCOL="http"
@@ -622,6 +870,7 @@ initialize_default_values() {
   # Combined server replaces separate signal, relay, and management containers
   NETBIRD_SERVER_IMAGE="${NETBIRD_SERVER_IMAGE:-${ANONBIRD_SERVER_IMAGE:-ghcr.io/cr0me1ve/anonbird-server:latest}}"
   NETBIRD_PROXY_IMAGE="${NETBIRD_PROXY_IMAGE:-${ANONBIRD_PROXY_IMAGE:-ghcr.io/cr0me1ve/anonbird-reverse-proxy:latest}}"
+  ANONBIRD_I2PD_IMAGE="${ANONBIRD_I2PD_IMAGE:-ghcr.io/purplei2p/i2pd:release-2.60.0}"
 
   # Reverse proxy configuration
   REVERSE_PROXY_TYPE="${ANONBIRD_REVERSE_PROXY_TYPE:-0}"
@@ -634,6 +883,9 @@ initialize_default_values() {
   MANAGEMENT_HOST_PORT="${MANAGEMENT_HOST_PORT:-8081}"  # Combined server port (management + signal + relay)
   BIND_LOCALHOST_ONLY="${BIND_LOCALHOST_ONLY:-true}"
   EXTERNAL_PROXY_NETWORK="${EXTERNAL_PROXY_NETWORK:-}"
+  ANONBIRD_PEER_MANAGEMENT_ENDPOINT="${ANONBIRD_PEER_MANAGEMENT_ENDPOINT:-}"
+  ANONBIRD_ANONYMOUS_TRANSPORT="${ANONBIRD_ANONYMOUS_TRANSPORT:-tor}"
+  ANONBIRD_ANONYMOUS_TRANSPORT=$(anonymous_transport_from_name "$ANONBIRD_ANONYMOUS_TRANSPORT")
 
   # Traefik static IP within the internal bridge network
   TRAEFIK_IP="172.30.0.10"
@@ -713,12 +965,42 @@ configure_reverse_proxy() {
   return 0
 }
 
+configure_anonymous_transport() {
+  if [[ -n "$ANONBIRD_PEER_MANAGEMENT_ENDPOINT" ]]; then
+    if ! check_peer_management_endpoint "$ANONBIRD_PEER_MANAGEMENT_ENDPOINT"; then
+      exit 1
+    fi
+    ANONBIRD_ANONYMOUS_TRANSPORT="manual"
+    return 0
+  fi
+
+  if [[ "$NONINTERACTIVE" != "true" ]]; then
+    ANONBIRD_ANONYMOUS_TRANSPORT=$(read_anonymous_transport)
+  fi
+
+  if [[ "$ANONBIRD_ANONYMOUS_TRANSPORT" == "manual" ]]; then
+    if [[ "$NONINTERACTIVE" == "true" ]]; then
+      echo "Manual anonymous transport needs --peer-management-endpoint." > /dev/stderr
+      exit 1
+    fi
+    ANONBIRD_PEER_MANAGEMENT_ENDPOINT=$(read_peer_management_endpoint)
+    return 0
+  fi
+
+  if [[ "$ANONBIRD_ANONYMOUS_TRANSPORT" == "none" ]]; then
+    ANONBIRD_PEER_MANAGEMENT_ENDPOINT=""
+  fi
+  return 0
+}
+
 check_existing_installation() {
   if [[ -f config.yaml ]]; then
-    echo "Generated files already exist, if you want to reinitialize the environment, please remove them first."
+    echo "Generated files already exist in $ANONBIRD_WORKDIR."
+    echo "If you want to reinitialize the environment, please remove them first."
     echo "You can use the following commands:"
+    echo "  cd $ANONBIRD_WORKDIR"
     echo "  $DOCKER_COMPOSE_COMMAND down --volumes # to remove all containers and volumes"
-    echo "  rm -f docker-compose.yml dashboard.env config.yaml proxy.env traefik-dynamic.yaml nginx-anonbird.conf caddyfile-anonbird.txt npm-advanced-config.txt && rm -rf crowdsec/"
+    echo "  rm -f docker-compose.yml dashboard.env config.yaml anonymous-endpoints.env tor.Dockerfile torrc i2pd.conf i2pd-tunnels.conf proxy.env traefik-dynamic.yaml nginx-anonbird.conf caddyfile-anonbird.txt npm-advanced-config.txt && rm -rf crowdsec/"
     echo "Be aware that this will remove all data from the database, and you will have to reconfigure the dashboard."
     exit 1
   fi
@@ -771,6 +1053,14 @@ generate_configuration_files() {
   # Common files for all configurations
   render_dashboard_env > dashboard.env
   render_combined_yaml > config.yaml
+  if managed_tor_enabled; then
+    render_tor_dockerfile > tor.Dockerfile
+    render_torrc > torrc
+  fi
+  if managed_i2p_enabled; then
+    render_i2pd_conf > i2pd.conf
+    render_i2pd_tunnels_conf > i2pd-tunnels.conf
+  fi
   return 0
 }
 
@@ -907,6 +1197,117 @@ start_services_and_show_instructions() {
   return 0
 }
 
+wait_for_tor_endpoint() {
+  local endpoint=""
+  local counter=0
+  echo -n "Waiting for managed Tor onion address" > /dev/stderr
+  while [[ "$counter" -lt 90 ]]; do
+    endpoint=$($DOCKER_COMPOSE_COMMAND exec -T tor sh -lc 'cat /var/lib/tor/anonbird-management/hostname 2>/dev/null' 2>/dev/null | tr -d '\r\n' || true)
+    if check_peer_management_endpoint "http://$endpoint" >/dev/null 2>&1; then
+      echo " done" > /dev/stderr
+      echo "http://$endpoint"
+      return 0
+    fi
+    echo -n " ." > /dev/stderr
+    sleep 2
+    counter=$((counter + 1))
+  done
+  echo "" > /dev/stderr
+  echo "ERROR: Timed out waiting for Tor onion address. Check logs with:" > /dev/stderr
+  echo "  $DOCKER_COMPOSE_COMMAND logs tor" > /dev/stderr
+  return 1
+}
+
+wait_for_i2p_endpoint() {
+  local endpoint=""
+  local counter=0
+  echo -n "Waiting for managed I2P b32 address" > /dev/stderr
+  while [[ "$counter" -lt 120 ]]; do
+    endpoint=$($DOCKER_COMPOSE_COMMAND exec -T i2pd sh -lc 'for f in /home/i2pd/data/destinations/*.dat; do b=$(basename "$f" 2>/dev/null); b=${b%%.*}; if echo "$b" | grep -Eq "^[a-z2-7]{52}$"; then echo "http://$b.b32.i2p"; exit 0; fi; done' 2>/dev/null | tr -d '\r\n' || true)
+    if check_peer_management_endpoint "$endpoint" >/dev/null 2>&1; then
+      echo " done" > /dev/stderr
+      echo "$endpoint"
+      return 0
+    fi
+    endpoint=$($DOCKER_COMPOSE_COMMAND logs --no-color --tail=200 i2pd 2>/dev/null | grep -Eo '[a-z2-7]{52}\.b32\.i2p' | head -n 1 || true)
+    if check_peer_management_endpoint "http://$endpoint" >/dev/null 2>&1; then
+      echo " done" > /dev/stderr
+      echo "http://$endpoint"
+      return 0
+    fi
+    echo -n " ." > /dev/stderr
+    sleep 2
+    counter=$((counter + 1))
+  done
+  echo "" > /dev/stderr
+  echo "ERROR: Timed out waiting for I2P b32 address. Check logs with:" > /dev/stderr
+  echo "  $DOCKER_COMPOSE_COMMAND logs i2pd" > /dev/stderr
+  return 1
+}
+
+write_anonymous_endpoints_env() {
+  cat > anonymous-endpoints.env <<EOF
+ANONBIRD_ANONYMOUS_TRANSPORT=$ANONBIRD_ANONYMOUS_TRANSPORT
+ANONBIRD_PEER_MANAGEMENT_ENDPOINT=$ANONBIRD_PEER_MANAGEMENT_ENDPOINT
+ANONBIRD_TOR_MANAGEMENT_ENDPOINT=${ANONBIRD_TOR_MANAGEMENT_ENDPOINT:-}
+ANONBIRD_I2P_MANAGEMENT_ENDPOINT=${ANONBIRD_I2P_MANAGEMENT_ENDPOINT:-}
+EOF
+}
+
+prepare_anonymous_management_endpoint() {
+  if [[ "$ANONBIRD_ANONYMOUS_TRANSPORT" == "manual" || "$ANONBIRD_ANONYMOUS_TRANSPORT" == "none" ]]; then
+    render_dashboard_env > dashboard.env
+    return 0
+  fi
+
+  if ! managed_anonymous_transport_enabled; then
+    render_dashboard_env > dashboard.env
+    return 0
+  fi
+
+  local services=""
+  if managed_tor_enabled; then
+    services="$services tor"
+  fi
+  if managed_i2p_enabled; then
+    services="$services i2pd"
+  fi
+
+  echo "Starting managed anonymous peer endpoint service(s)..."
+  $DOCKER_COMPOSE_COMMAND up -d $services
+
+  if managed_tor_enabled; then
+    ANONBIRD_TOR_MANAGEMENT_ENDPOINT=$(wait_for_tor_endpoint)
+  fi
+  if managed_i2p_enabled; then
+    ANONBIRD_I2P_MANAGEMENT_ENDPOINT=$(wait_for_i2p_endpoint)
+  fi
+
+  case "$ANONBIRD_ANONYMOUS_TRANSPORT" in
+    i2p)
+      ANONBIRD_PEER_MANAGEMENT_ENDPOINT="$ANONBIRD_I2P_MANAGEMENT_ENDPOINT"
+      ;;
+    tor|both)
+      ANONBIRD_PEER_MANAGEMENT_ENDPOINT="$ANONBIRD_TOR_MANAGEMENT_ENDPOINT"
+      ;;
+  esac
+
+  if ! check_peer_management_endpoint "$ANONBIRD_PEER_MANAGEMENT_ENDPOINT"; then
+    echo "ERROR: Failed to prepare a valid anonymous peer management endpoint." > /dev/stderr
+    exit 1
+  fi
+
+  render_dashboard_env > dashboard.env
+  write_anonymous_endpoints_env
+  echo "Peer install commands will use:"
+  echo "  $ANONBIRD_PEER_MANAGEMENT_ENDPOINT"
+  if [[ -n "${ANONBIRD_I2P_MANAGEMENT_ENDPOINT:-}" && "$ANONBIRD_I2P_MANAGEMENT_ENDPOINT" != "$ANONBIRD_PEER_MANAGEMENT_ENDPOINT" ]]; then
+    echo "Managed I2P endpoint is also available:"
+    echo "  $ANONBIRD_I2P_MANAGEMENT_ENDPOINT"
+  fi
+  return 0
+}
+
 init_environment() {
   initialize_default_values
   parse_args "$@"
@@ -914,6 +1315,7 @@ init_environment() {
     print_interactive_intro
   fi
   configure_domain
+  configure_anonymous_transport
   configure_reverse_proxy
 
   if [[ "$RENDER_ONLY" == "true" ]]; then
@@ -930,17 +1332,27 @@ init_environment() {
     return 0
   fi
 
+  ensure_workdir
   check_existing_installation
   generate_configuration_files
   if [[ "$RENDER_ONLY" == "true" ]]; then
-    echo "Rendered AnonBird self-host files in $(pwd):"
+    echo "Rendered AnonBird self-host files in $ANONBIRD_WORKDIR:"
     echo "  docker-compose.yml"
     echo "  dashboard.env"
     echo "  config.yaml"
-    echo "Run with the same options without --render-only to start containers."
+    if managed_tor_enabled; then
+      echo "  tor.Dockerfile"
+      echo "  torrc"
+    fi
+    if managed_i2p_enabled; then
+      echo "  i2pd.conf"
+      echo "  i2pd-tunnels.conf"
+    fi
+    echo "Run with the same options without --render-only to start containers from this directory."
     return 0
   fi
   preflight_required_images
+  prepare_anonymous_management_endpoint
   start_services_and_show_instructions
   return 0
 }
@@ -957,6 +1369,10 @@ render_docker_compose_traefik_builtin() {
   local crowdsec_volumes=""
   local traefik_file_provider=""
   local traefik_dynamic_volume=""
+  local anonymous_services
+  local anonymous_volumes
+  anonymous_services=$(render_anonymous_services "[anonbird]")
+  anonymous_volumes=$(render_anonymous_volumes)
   if [[ "$ENABLE_PROXY" == "true" ]]; then
     traefik_file_provider='      - "--providers.file.filename=/etc/traefik/dynamic.yaml"'
     traefik_dynamic_volume="      - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro"
@@ -1114,6 +1530,8 @@ $traefik_dynamic_volume
     container_name: anonbird-server
     restart: unless-stopped
     networks: [anonbird]
+    env_file:
+      - ./dashboard.env
     environment:
       NB_DISABLE_GEOLOCATION: "true"
 $(render_stun_ports_section)
@@ -1146,10 +1564,11 @@ $(render_stun_ports_section)
       options:
         max-size: "500m"
         max-file: "2"
-${proxy_service}${crowdsec_service}
+${anonymous_services}${proxy_service}${crowdsec_service}
 volumes:
   anonbird_data:
-  anonbird_traefik_letsencrypt:${proxy_volumes}${crowdsec_volumes}
+  anonbird_traefik_letsencrypt:
+${anonymous_volumes}${proxy_volumes}${crowdsec_volumes}
 
 networks:
   anonbird:
@@ -1207,9 +1626,11 @@ render_dashboard_env() {
 # Endpoints
 NETBIRD_MGMT_API_ENDPOINT=$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN
 NETBIRD_MGMT_GRPC_API_ENDPOINT=$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN
+ANONBIRD_PEER_MANAGEMENT_ENDPOINT=$ANONBIRD_PEER_MANAGEMENT_ENDPOINT
 # OIDC - using embedded IdP
-AUTH_AUDIENCE=anonbird-dashboard
-AUTH_CLIENT_ID=anonbird-dashboard
+# The embedded IdP keeps the inherited OAuth client ID for compatibility.
+AUTH_AUDIENCE=netbird-dashboard
+AUTH_CLIENT_ID=netbird-dashboard
 AUTH_CLIENT_SECRET=
 AUTH_AUTHORITY=$NETBIRD_HTTP_PROTOCOL://$NETBIRD_DOMAIN/oauth2
 USE_AUTH0=false
@@ -1220,6 +1641,74 @@ AUTH_SILENT_REDIRECT_URI=/nb-silent-auth
 NGINX_SSL_PORT=443
 # Letsencrypt
 LETSENCRYPT_DOMAIN=none
+EOF
+  return 0
+}
+
+render_tor_dockerfile() {
+  cat <<'EOF'
+FROM alpine:3.22
+RUN apk add --no-cache tor \
+    && mkdir -p /var/lib/tor \
+    && chown -R tor:tor /var/lib/tor
+USER tor
+ENTRYPOINT ["tor", "-f", "/etc/tor/torrc"]
+EOF
+  return 0
+}
+
+render_torrc() {
+  cat <<'EOF'
+DataDirectory /var/lib/tor
+SocksPort 0
+Log notice stdout
+
+HiddenServiceDir /var/lib/tor/anonbird-management/
+HiddenServiceVersion 3
+HiddenServicePort 80 anonbird-server:80
+EOF
+  return 0
+}
+
+render_i2pd_conf() {
+  cat <<'EOF'
+log = stdout
+loglevel = info
+notransit = true
+upnp.enabled = false
+
+[http]
+enabled = false
+
+[httpproxy]
+enabled = false
+
+[socksproxy]
+enabled = false
+
+[i2cp]
+enabled = false
+
+[sam]
+enabled = true
+address = 0.0.0.0
+port = 7656
+EOF
+  return 0
+}
+
+render_i2pd_tunnels_conf() {
+  cat <<'EOF'
+[anonbird-management]
+type = http
+host = anonbird-server
+port = 80
+keys = anonbird-management.dat
+signaturetype = 7
+inbound.length = 1
+outbound.length = 1
+inbound.quantity = 3
+outbound.quantity = 3
 EOF
   return 0
 }
@@ -1270,6 +1759,10 @@ EOF
 render_docker_compose_traefik() {
   local network_name="${TRAEFIK_EXTERNAL_NETWORK:-anonbird}"
   local network_config=""
+  local anonymous_services
+  local anonymous_volumes
+  anonymous_services=$(render_anonymous_services "[$network_name]")
+  anonymous_volumes=$(render_anonymous_volumes)
   if [[ -n "$TRAEFIK_EXTERNAL_NETWORK" ]]; then
     network_config="    external: true"
   fi
@@ -1310,6 +1803,8 @@ $(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-da
     container_name: anonbird-server
     restart: unless-stopped
     networks: [$network_name]
+    env_file:
+      - ./dashboard.env
     environment:
       NB_DISABLE_GEOLOCATION: "true"
 $(render_stun_ports_section)
@@ -1340,9 +1835,11 @@ $(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-ba
       options:
         max-size: "500m"
         max-file: "2"
+${anonymous_services}
 
 volumes:
   anonbird_data:
+${anonymous_volumes}
 
 networks:
   $network_name:
@@ -1356,6 +1853,8 @@ render_docker_compose_exposed_ports() {
   local networks="[anonbird]"
   local networks_config="networks:
   anonbird:"
+  local anonymous_services
+  local anonymous_volumes
 
   # If an external network is specified, add it and include in service networks
   if [[ -n "$EXTERNAL_PROXY_NETWORK" ]]; then
@@ -1365,6 +1864,8 @@ render_docker_compose_exposed_ports() {
   $EXTERNAL_PROXY_NETWORK:
     external: true"
   fi
+  anonymous_services=$(render_anonymous_services "[anonbird]")
+  anonymous_volumes=$(render_anonymous_volumes)
 
   cat <<EOF
 services:
@@ -1390,6 +1891,8 @@ services:
     container_name: anonbird-server
     restart: unless-stopped
     networks: ${networks}
+    env_file:
+      - ./dashboard.env
     environment:
       NB_DISABLE_GEOLOCATION: "true"
     ports:
@@ -1404,9 +1907,11 @@ $(render_stun_port_line)
       options:
         max-size: "500m"
         max-file: "2"
+${anonymous_services}
 
 volumes:
   anonbird_data:
+${anonymous_volumes}
 
 ${networks_config}
 EOF
@@ -1860,6 +2365,22 @@ print_manual_instructions() {
 }
 
 print_post_setup_instructions() {
+  echo ""
+  echo "Working directory:"
+  echo "  $ANONBIRD_WORKDIR"
+  echo ""
+  echo "Run Docker Compose commands from that directory:"
+  echo "  cd $ANONBIRD_WORKDIR"
+  if [[ -n "$ANONBIRD_PEER_MANAGEMENT_ENDPOINT" ]]; then
+    echo ""
+    echo "Anonymous peer management endpoint:"
+    echo "  $ANONBIRD_PEER_MANAGEMENT_ENDPOINT"
+    echo "Peer install commands copied from the dashboard will use this URL."
+    if [[ -f anonymous-endpoints.env ]]; then
+      echo "All generated anonymous endpoints were saved to anonymous-endpoints.env."
+    fi
+  fi
+
   case "$REVERSE_PROXY_TYPE" in
     0)
       print_builtin_traefik_instructions
