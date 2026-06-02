@@ -21,7 +21,8 @@ func TestEnsureTorDaemonUsesExistingSOCKS(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Nil(t, daemon)
+	require.NotNil(t, daemon)
+	require.False(t, daemon.Started())
 }
 
 func TestCheckSOCKS5RejectsNonSOCKSListener(t *testing.T) {

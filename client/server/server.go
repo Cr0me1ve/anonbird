@@ -1102,9 +1102,9 @@ func (s *Server) sendLogoutRequestWithConfig(ctx context.Context, config *profil
 	mgmTlsEnabled := config.ManagementURL.Scheme == "https"
 	var mgmClient *mgm.GrpcClient
 	if config.AnonymousMode {
-		anonRuntime, err := anonymous.EnsureRuntime(ctx, config.AnonymousTransport)
-		if err != nil {
-			return err
+		anonRuntime, runtimeErr := anonymous.EnsureRuntime(ctx, config.AnonymousTransport)
+		if runtimeErr != nil {
+			return runtimeErr
 		}
 		defer func() {
 			if err := anonRuntime.Close(); err != nil {
@@ -1122,7 +1122,7 @@ func (s *Server) sendLogoutRequestWithConfig(ctx context.Context, config *profil
 		case anonymous.TransportI2PDatagram:
 			mgmClient, err = mgm.NewClientWithI2P(ctx, config.ManagementURL.Host, key, mgmTlsEnabled, transport.I2PSAM, transport.I2PTunnelLength, transport.I2PTunnelQuantity)
 		default:
-			err = anonymous.ValidateTransport(transport)
+			err = fmt.Errorf("unsupported anonymous transport %q", transport.Type)
 		}
 	} else {
 		mgmClient, err = mgm.NewClient(ctx, config.ManagementURL.Host, key, mgmTlsEnabled)

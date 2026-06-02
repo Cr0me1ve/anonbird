@@ -159,7 +159,9 @@ func (s *DatagramSession) Send(ctx context.Context, destination string, payload 
 
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = s.udp.SetWriteDeadline(deadline)
-		defer s.udp.SetWriteDeadline(time.Time{})
+		defer func() {
+			_ = s.udp.SetWriteDeadline(time.Time{})
+		}()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -175,7 +177,9 @@ func (s *DatagramSession) Receive(ctx context.Context) (Datagram, error) {
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = s.control.SetReadDeadline(deadline)
-		defer s.control.SetReadDeadline(time.Time{})
+		defer func() {
+			_ = s.control.SetReadDeadline(time.Time{})
+		}()
 	}
 	reply, err := readReply(s.reader)
 	if err != nil {

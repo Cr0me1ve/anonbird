@@ -22,7 +22,8 @@ func TestEnsureI2PDaemonExternalUsesExistingSAM(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Nil(t, daemon)
+	require.NotNil(t, daemon)
+	require.False(t, daemon.Started())
 }
 
 func TestEnsureI2PDaemonManagedRequiresBinary(t *testing.T) {

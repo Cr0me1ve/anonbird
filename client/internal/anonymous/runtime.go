@@ -36,9 +36,6 @@ func EnsureRuntime(ctx context.Context, transport TransportConfig) (*Runtime, er
 		return nil, ValidateTransport(transport)
 	}
 
-	if !runtime.Started() {
-		return nil, nil
-	}
 	return runtime, nil
 }
 

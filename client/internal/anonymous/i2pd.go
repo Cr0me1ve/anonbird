@@ -65,7 +65,7 @@ func (d *I2PDaemon) Close() error {
 func EnsureI2PDaemon(ctx context.Context, transport TransportConfig) (*I2PDaemon, error) {
 	transport = NormalizeTransport(transport)
 	if transport.Type != TransportI2PDatagram {
-		return nil, nil
+		return &I2PDaemon{}, nil
 	}
 	if err := ValidateTransport(transport); err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func EnsureI2PDaemon(ctx context.Context, transport TransportConfig) (*I2PDaemon
 	err := i2psam.Check(checkCtx, transport.I2PSAM)
 	cancel()
 	if err == nil {
-		return nil, nil
+		return &I2PDaemon{}, nil
 	}
 	if transport.I2PDaemonMode == I2PDaemonExternal {
 		return nil, fmt.Errorf("check external i2p SAM bridge %s: %w", transport.I2PSAM, err)
@@ -101,7 +101,7 @@ func startI2PDaemon(ctx context.Context, transport TransportConfig) (*I2PDaemon,
 	err = i2psam.Check(checkCtx, transport.I2PSAM)
 	cancel()
 	if err == nil {
-		return nil, nil
+		return &I2PDaemon{}, nil
 	}
 
 	dataDir := transport.I2PDataDir

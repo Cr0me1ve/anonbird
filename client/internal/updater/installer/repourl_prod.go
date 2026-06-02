@@ -1,4 +1,4 @@
-//go:build !devartifactsign
+//go:build !devartifactsign && (windows || darwin)
 
 package installer
 

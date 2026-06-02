@@ -112,15 +112,16 @@ func httpClientNbDialer(serverName string, underlyingOut *net.Conn, socks5Proxy 
 			}
 			var c net.Conn
 			var err error
-			if i2pSAM != "" {
+			switch {
+			case i2pSAM != "":
 				c, err = i2psam.Dialer{
 					SAMAddress:     i2pSAM,
 					TunnelLength:   i2pTunnelLength,
 					TunnelQuantity: i2pTunnelQuantity,
 				}.DialContext(ctx, network, addr)
-			} else if socksDialer != nil {
+			case socksDialer != nil:
 				c, err = socksDialer.DialContext(ctx, network, addr)
-			} else {
+			default:
 				c, err = customDialer.DialContext(ctx, network, addr)
 			}
 			if err == nil && underlyingOut != nil {

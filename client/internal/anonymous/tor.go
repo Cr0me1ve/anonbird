@@ -64,7 +64,7 @@ func (d *TorDaemon) Close() error {
 func EnsureTorDaemon(ctx context.Context, transport TransportConfig) (*TorDaemon, error) {
 	transport = NormalizeTransport(transport)
 	if transport.Type != TransportTorRelayOnly {
-		return nil, nil
+		return &TorDaemon{}, nil
 	}
 	if err := ValidateTransport(transport); err != nil {
 		return nil, err
@@ -74,12 +74,12 @@ func EnsureTorDaemon(ctx context.Context, transport TransportConfig) (*TorDaemon
 	err := CheckSOCKS5(checkCtx, transport.TorSOCKS5)
 	cancel()
 	if err == nil {
-		return nil, nil
+		return &TorDaemon{}, nil
 	}
 
 	daemon, startErr := startTorDaemon(ctx, transport)
 	if startErr != nil {
-		return nil, fmt.Errorf("Tor SOCKS5 proxy %s is unavailable and auto-start failed: %w", transport.TorSOCKS5, startErr)
+		return nil, fmt.Errorf("tor SOCKS5 proxy %s is unavailable and auto-start failed: %w", transport.TorSOCKS5, startErr)
 	}
 	return daemon, nil
 }
@@ -121,7 +121,7 @@ func startTorDaemon(ctx context.Context, transport TransportConfig) (*TorDaemon,
 	err = CheckSOCKS5(checkCtx, transport.TorSOCKS5)
 	cancel()
 	if err == nil {
-		return nil, nil
+		return &TorDaemon{}, nil
 	}
 
 	dataDir, err := defaultTorDataDir()
@@ -129,7 +129,7 @@ func startTorDaemon(ctx context.Context, transport TransportConfig) (*TorDaemon,
 		return nil, err
 	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return nil, fmt.Errorf("create Tor data dir %s: %w", dataDir, err)
+		return nil, fmt.Errorf("create tor data dir %s: %w", dataDir, err)
 	}
 	if err := writeTorConfig(dataDir, transport.TorSOCKS5); err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func startTorDaemon(ctx context.Context, transport TransportConfig) (*TorDaemon,
 	logPath := filepath.Join(dataDir, "tor.log")
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open Tor log %s: %w", logPath, err)
+		return nil, fmt.Errorf("open tor log %s: %w", logPath, err)
 	}
 
 	args := []string{"-f", filepath.Join(dataDir, "torrc")}
@@ -148,7 +148,7 @@ func startTorDaemon(ctx context.Context, transport TransportConfig) (*TorDaemon,
 
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
-		return nil, fmt.Errorf("start Tor %s: %w", binaryPath, err)
+		return nil, fmt.Errorf("start tor %s: %w", binaryPath, err)
 	}
 
 	daemon := &TorDaemon{
@@ -196,12 +196,12 @@ func waitForTor(ctx context.Context, socksAddress string, daemon *TorDaemon) err
 		select {
 		case waitErr, ok := <-daemon.done:
 			if !ok {
-				waitErr = errors.New("Tor exited")
+				waitErr = errors.New("tor exited")
 			}
 			if socksReady {
-				return fmt.Errorf("Tor exited before bootstrap completed (log: %s): %w", daemon.logPath, waitErr)
+				return fmt.Errorf("tor exited before bootstrap completed (log: %s): %w", daemon.logPath, waitErr)
 			}
-			return fmt.Errorf("Tor exited before SOCKS5 proxy became ready (log: %s): %w", daemon.logPath, waitErr)
+			return fmt.Errorf("tor exited before SOCKS5 proxy became ready (log: %s): %w", daemon.logPath, waitErr)
 		case <-timeoutCtx.Done():
 			if socksReady {
 				return fmt.Errorf("timed out waiting for Tor bootstrap at %s (log: %s): %w", socksAddress, daemon.logPath, timeoutCtx.Err())
@@ -246,7 +246,7 @@ func writeTorConfig(dataDir, socksAddress string) error {
 	}, "\n")
 
 	if err := os.WriteFile(filepath.Join(dataDir, "torrc"), []byte(torrc), 0o600); err != nil {
-		return fmt.Errorf("write Tor config: %w", err)
+		return fmt.Errorf("write tor config: %w", err)
 	}
 	return nil
 }
