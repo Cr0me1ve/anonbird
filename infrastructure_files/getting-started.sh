@@ -1534,6 +1534,8 @@ $traefik_dynamic_volume
       - ./dashboard.env
     environment:
       NB_DISABLE_GEOLOCATION: "true"
+      NB_PEER_UPDATE_INTERVAL_MS: "1"
+      NB_PEER_UPDATE_STARTUP_PERIOD_S: "1"
 $(render_stun_ports_section)
     volumes:
       - anonbird_data:/var/lib/anonbird
@@ -1572,6 +1574,7 @@ ${anonymous_volumes}${proxy_volumes}${crowdsec_volumes}
 
 networks:
   anonbird:
+    name: anonbird
     driver: bridge
     ipam:
       config:
@@ -1648,11 +1651,11 @@ EOF
 render_tor_dockerfile() {
   cat <<'EOF'
 FROM alpine:3.22
-RUN apk add --no-cache tor \
+RUN apk add --no-cache tor socat \
     && mkdir -p /var/lib/tor \
     && chown -R tor:tor /var/lib/tor
 USER tor
-ENTRYPOINT ["tor", "-f", "/etc/tor/torrc"]
+ENTRYPOINT ["sh", "-ec", "socat TCP-LISTEN:8080,bind=127.0.0.1,fork,reuseaddr TCP:anonbird-server:80 & exec tor -f /etc/tor/torrc"]
 EOF
   return 0
 }
@@ -1665,7 +1668,9 @@ Log notice stdout
 
 HiddenServiceDir /var/lib/tor/anonbird-management/
 HiddenServiceVersion 3
-HiddenServicePort 80 anonbird-server:80
+# Tor requires a numeric target address here. The container-local proxy resolves
+# anonbird-server through Docker DNS and forwards traffic to the combined server.
+HiddenServicePort 80 127.0.0.1:8080
 EOF
   return 0
 }
@@ -1807,6 +1812,8 @@ $(if [[ -n "$tls_labels" ]]; then echo "      - traefik.http.routers.anonbird-da
       - ./dashboard.env
     environment:
       NB_DISABLE_GEOLOCATION: "true"
+      NB_PEER_UPDATE_INTERVAL_MS: "1"
+      NB_PEER_UPDATE_STARTUP_PERIOD_S: "1"
 $(render_stun_ports_section)
     volumes:
       - anonbird_data:/var/lib/anonbird
@@ -1895,6 +1902,8 @@ services:
       - ./dashboard.env
     environment:
       NB_DISABLE_GEOLOCATION: "true"
+      NB_PEER_UPDATE_INTERVAL_MS: "1"
+      NB_PEER_UPDATE_STARTUP_PERIOD_S: "1"
     ports:
       - '${bind_addr}:${MANAGEMENT_HOST_PORT}:80'
 $(render_stun_port_line)
