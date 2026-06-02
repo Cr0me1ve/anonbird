@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"reflect"
 	"regexp"
@@ -58,6 +60,46 @@ const (
 	emptyUserID                = "empty user ID in claims"
 	errorGettingDomainAccIDFmt = "error getting account ID by private domain: %v"
 )
+
+func randomPeerManagementEndpoint() string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz234567"
+	const onionLength = 56
+	bytes := make([]byte, onionLength)
+	if _, err := crand.Read(bytes); err != nil {
+		for i := range bytes {
+			bytes[i] = alphabet[rand.Intn(len(alphabet))]
+		}
+		return "http://" + string(bytes) + ".onion"
+	}
+	for i, value := range bytes {
+		bytes[i] = alphabet[int(value)%len(alphabet)]
+	}
+	return "http://" + string(bytes) + ".onion"
+}
+
+func defaultPeerManagementEndpoint() string {
+	endpoint := strings.TrimSpace(os.Getenv("ANONBIRD_PEER_MANAGEMENT_ENDPOINT"))
+	if endpoint == "" {
+		return randomPeerManagementEndpoint()
+	}
+	if isAnonymousPeerManagementEndpoint(endpoint) {
+		return endpoint
+	}
+	log.Warnf("ignoring invalid ANONBIRD_PEER_MANAGEMENT_ENDPOINT %q", endpoint)
+	return randomPeerManagementEndpoint()
+}
+
+func isAnonymousPeerManagementEndpoint(endpoint string) bool {
+	if endpoint == "" {
+		return true
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return false
+	}
+	hostname := strings.ToLower(parsed.Hostname())
+	return strings.HasSuffix(hostname, ".onion") || strings.HasSuffix(hostname, ".i2p")
+}
 
 type userLoggedInOnce bool
 
@@ -512,6 +554,10 @@ func (am *DefaultAccountManager) validateSettingsUpdate(ctx context.Context, tra
 
 	if err := validateIPv6EnabledGroups(ctx, transaction, accountID, newSettings.IPv6EnabledGroups); err != nil {
 		return err
+	}
+
+	if newSettings.Extra != nil && !isAnonymousPeerManagementEndpoint(newSettings.Extra.PeerManagementEndpoint) {
+		return status.Errorf(status.InvalidArgument, "peer management endpoint must be an http(s) .onion or .i2p URL")
 	}
 
 	return am.integratedPeerValidator.ValidateExtraSettings(ctx, newSettings.Extra, oldSettings.Extra, userID, accountID)
@@ -2039,7 +2085,8 @@ func newAccountWithId(ctx context.Context, accountID, userID, domain, email, nam
 			PeerInactivityExpiration:        types.DefaultPeerInactivityExpiration,
 			RoutingPeerDNSResolutionEnabled: true,
 			Extra: &types.ExtraSettings{
-				UserApprovalRequired: true,
+				UserApprovalRequired:   true,
+				PeerManagementEndpoint: defaultPeerManagementEndpoint(),
 			},
 		},
 		Onboarding: types.AccountOnboarding{

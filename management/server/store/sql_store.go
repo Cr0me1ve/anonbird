@@ -1612,7 +1612,8 @@ func (s *SqlStore) getAccount(ctx context.Context, accountID string) (*types.Acc
 			settings_local_mfa_enabled,
 			-- Embedded ExtraSettings
 			settings_extra_peer_approval_enabled, settings_extra_user_approval_required,
-			settings_extra_integrated_validator, settings_extra_integrated_validator_groups
+			settings_extra_integrated_validator, settings_extra_integrated_validator_groups,
+			settings_extra_peer_management_endpoint
 		FROM accounts WHERE id = $1`
 
 	var (
@@ -1636,6 +1637,7 @@ func (s *SqlStore) getAccount(ctx context.Context, accountID string) (*types.Acc
 		sExtraUserApprovalRequired       sql.NullBool
 		sExtraIntegratedValidator        sql.NullString
 		sExtraIntegratedValidatorGroups  sql.NullString
+		sExtraPeerManagementEndpoint     sql.NullString
 		networkNet                       sql.NullString
 		networkNetV6                     sql.NullString
 		dnsSettingsDisabledGroups        sql.NullString
@@ -1657,6 +1659,7 @@ func (s *SqlStore) getAccount(ctx context.Context, accountID string) (*types.Acc
 		&sLocalMFAEnabled,
 		&sExtraPeerApprovalEnabled, &sExtraUserApprovalRequired,
 		&sExtraIntegratedValidator, &sExtraIntegratedValidatorGroups,
+		&sExtraPeerManagementEndpoint,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1747,6 +1750,9 @@ func (s *SqlStore) getAccount(ctx context.Context, accountID string) (*types.Acc
 	}
 	if sExtraIntegratedValidatorGroups.Valid {
 		_ = json.Unmarshal([]byte(sExtraIntegratedValidatorGroups.String), &account.Settings.Extra.IntegratedValidatorGroups)
+	}
+	if sExtraPeerManagementEndpoint.Valid {
+		account.Settings.Extra.PeerManagementEndpoint = sExtraPeerManagementEndpoint.String
 	}
 	return &account, nil
 }

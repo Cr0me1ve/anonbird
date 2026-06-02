@@ -76,8 +76,8 @@ type Server struct {
 	clientRunningChan chan struct{}
 	clientGiveUpChan  chan struct{} // closed when connectWithRetryRuns goroutine exits
 
-	connectClient *internal.ConnectClient
-	i2pDaemon     *anonymous.I2PDaemon
+	connectClient    *internal.ConnectClient
+	anonymousRuntime *anonymous.Runtime
 
 	statusRecorder *peer.Status
 	sessionWatcher *internal.SessionWatcher
@@ -918,29 +918,31 @@ func (s *Server) cleanupConnection() error {
 
 func (s *Server) ensureAnonymousRuntime(ctx context.Context, config *profilemanager.Config) error {
 	if config == nil || !config.AnonymousMode {
+		s.closeAnonymousRuntime()
 		return nil
 	}
-	if s.i2pDaemon != nil && s.i2pDaemon.Started() {
+	if s.anonymousRuntime != nil && s.anonymousRuntime.Matches(config.AnonymousTransport) {
 		return nil
 	}
-	daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+	s.closeAnonymousRuntime()
+	anonRuntime, err := anonymous.EnsureRuntime(ctx, config.AnonymousTransport)
 	if err != nil {
 		return err
 	}
-	if daemon != nil && daemon.Started() {
-		s.i2pDaemon = daemon
+	if anonRuntime != nil && anonRuntime.Started() {
+		s.anonymousRuntime = anonRuntime
 	}
 	return nil
 }
 
 func (s *Server) closeAnonymousRuntime() {
-	if s.i2pDaemon == nil {
+	if s.anonymousRuntime == nil {
 		return
 	}
-	if err := s.i2pDaemon.Close(); err != nil {
-		log.Warnf("failed to stop managed i2pd: %v", err)
+	if err := s.anonymousRuntime.Close(); err != nil {
+		log.Warnf("failed to stop anonymous runtime: %v", err)
 	}
-	s.i2pDaemon = nil
+	s.anonymousRuntime = nil
 }
 
 func (s *Server) Logout(ctx context.Context, msg *proto.LogoutRequest) (*proto.LogoutResponse, error) {
@@ -1100,13 +1102,13 @@ func (s *Server) sendLogoutRequestWithConfig(ctx context.Context, config *profil
 	mgmTlsEnabled := config.ManagementURL.Scheme == "https"
 	var mgmClient *mgm.GrpcClient
 	if config.AnonymousMode {
-		daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+		anonRuntime, err := anonymous.EnsureRuntime(ctx, config.AnonymousTransport)
 		if err != nil {
 			return err
 		}
 		defer func() {
-			if err := daemon.Close(); err != nil {
-				log.Warnf("failed to stop managed i2pd: %v", err)
+			if err := anonRuntime.Close(); err != nil {
+				log.Warnf("failed to stop anonymous runtime: %v", err)
 			}
 		}()
 

@@ -254,13 +254,13 @@ func doForegroundLogin(ctx context.Context, cmd *cobra.Command, setupKey string,
 		return fmt.Errorf("read config file %s: %v", configFilePath, err)
 	}
 	if config.AnonymousMode {
-		daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+		anonRuntime, err := anonymous.EnsureRuntime(ctx, config.AnonymousTransport)
 		if err != nil {
 			return fmt.Errorf("prepare anonymous runtime: %v", err)
 		}
 		defer func() {
-			if err := daemon.Close(); err != nil {
-				log.Warnf("failed to stop managed i2pd: %v", err)
+			if err := anonRuntime.Close(); err != nil {
+				log.Warnf("failed to stop anonymous runtime: %v", err)
 			}
 		}()
 		config, _, err = profilemanager.EnsureAnonymousTransportIdentity(ctx, configFilePath, config)
@@ -299,13 +299,13 @@ func handleSSOLogin(ctx context.Context, cmd *cobra.Command, loginResp *proto.Lo
 
 func foregroundLogin(ctx context.Context, cmd *cobra.Command, config *profilemanager.Config, setupKey, profileName string) error {
 	if config.AnonymousMode {
-		daemon, err := anonymous.EnsureI2PDaemon(ctx, config.AnonymousTransport)
+		anonRuntime, err := anonymous.EnsureRuntime(ctx, config.AnonymousTransport)
 		if err != nil {
 			return fmt.Errorf("prepare anonymous runtime: %v", err)
 		}
 		defer func() {
-			if err := daemon.Close(); err != nil {
-				log.Warnf("failed to stop managed i2pd: %v", err)
+			if err := anonRuntime.Close(); err != nil {
+				log.Warnf("failed to stop anonymous runtime: %v", err)
 			}
 		}()
 	}

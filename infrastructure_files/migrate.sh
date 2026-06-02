@@ -57,6 +57,7 @@ IDP_TYPE=""            # embedded | external
 MGMT_VOLUME=""         # detected management volume name
 DOMAIN=""
 LETSENCRYPT_EMAIL=""
+PEER_MANAGEMENT_ENDPOINT="${ANONBIRD_PEER_MANAGEMENT_ENDPOINT:-}"
 STORE_ENGINE="sqlite"
 STORE_DSN=""
 ENCRYPTION_KEY=""
@@ -533,6 +534,10 @@ detect_domain() {
     LETSENCRYPT_EMAIL=$(grep '^NETBIRD_LETSENCRYPT_EMAIL=' "$INSTALL_DIR/setup.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo "")
   fi
 
+  if [[ -z "$PEER_MANAGEMENT_ENDPOINT" && -f "$INSTALL_DIR/dashboard.env" ]]; then
+    PEER_MANAGEMENT_ENDPOINT=$(grep '^ANONBIRD_PEER_MANAGEMENT_ENDPOINT=' "$INSTALL_DIR/dashboard.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo "")
+  fi
+
   log_success "Domain: $DOMAIN"
   if [[ -n "$LETSENCRYPT_EMAIL" ]]; then
     log_success "Let's Encrypt email: $LETSENCRYPT_EMAIL"
@@ -932,9 +937,11 @@ generate_dashboard_env() {
 # Endpoints
 NETBIRD_MGMT_API_ENDPOINT=https://${DOMAIN}
 NETBIRD_MGMT_GRPC_API_ENDPOINT=https://${DOMAIN}
+ANONBIRD_PEER_MANAGEMENT_ENDPOINT=${PEER_MANAGEMENT_ENDPOINT}
 # OIDC - using embedded IdP
-AUTH_AUDIENCE=anonbird-dashboard
-AUTH_CLIENT_ID=anonbird-dashboard
+# The embedded IdP keeps the inherited OAuth client ID for compatibility.
+AUTH_AUDIENCE=netbird-dashboard
+AUTH_CLIENT_ID=netbird-dashboard
 AUTH_CLIENT_SECRET=
 AUTH_AUTHORITY=https://${DOMAIN}/oauth2
 USE_AUTH0=false
@@ -1043,6 +1050,8 @@ services:
     container_name: anonbird-server
     restart: unless-stopped
     networks: [anonbird]
+    env_file:
+      - ./dashboard.env
     environment:
       NB_DISABLE_GEOLOCATION: "true"
     ports:
@@ -1131,6 +1140,8 @@ services:
     container_name: anonbird-server
     restart: unless-stopped
     networks: [anonbird]
+    env_file:
+      - ./dashboard.env
     environment:
       NB_DISABLE_GEOLOCATION: "true"
     ports:

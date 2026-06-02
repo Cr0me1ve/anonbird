@@ -146,7 +146,7 @@ func anonymousRuntimeServiceDependencies(enabled bool, transport anonymous.Trans
 		}
 		return []string{"Wants=i2pd.service", "After=i2pd.service"}
 	case anonymous.TransportTorRelayOnly:
-		return []string{"Wants=tor.service", "After=tor.service"}
+		return nil
 	default:
 		return nil
 	}

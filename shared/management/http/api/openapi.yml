@@ -410,6 +410,10 @@ components:
           description: Enables manual approval for new users joining via domain matching. When enabled, users are blocked with pending approval status until explicitly approved by an admin.
           type: boolean
           example: false
+        peer_management_endpoint:
+          description: Tor or I2P management endpoint used by generated peer setup commands. Dashboard API access can remain clearnet.
+          type: string
+          example: http://managementxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.onion
         network_traffic_logs_enabled:
           description: Enables or disables network traffic logging. If enabled, all network traffic events from peers will be stored.
           type: boolean

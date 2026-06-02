@@ -240,13 +240,13 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 	}
 
 	if c.config.AnonymousMode {
-		daemon, err := anonymous.EnsureI2PDaemon(c.ctx, c.config.AnonymousTransport)
+		anonRuntime, err := anonymous.EnsureRuntime(c.ctx, c.config.AnonymousTransport)
 		if err != nil {
 			return wrapErr(err)
 		}
 		defer func() {
-			if err := daemon.Close(); err != nil {
-				log.Warnf("failed to stop managed i2pd: %v", err)
+			if err := anonRuntime.Close(); err != nil {
+				log.Warnf("failed to stop anonymous runtime: %v", err)
 			}
 		}()
 		if config, _, err := profilemanager.EnsureAnonymousTransportIdentity(c.ctx, "", c.config); err != nil {

@@ -98,6 +98,13 @@ Relay client needs an anonymous option:
 - `NewClientWithServerIP`/foreign relay path must ignore `serverIP` when anonymous transport is active;
 - relay URLs are validated as `.onion`/`.b32.i2p` and must match the selected transport.
 
+When `tor-relay-only` is selected, the client first verifies a local loopback
+SOCKS5 proxy (default `127.0.0.1:9050`). If it is unavailable, AnonBird tries to
+resolve or install the `tor` package and starts a managed Tor client with a
+private `torrc`/data directory. Remote SOCKS5 addresses are rejected in
+anonymous mode, and management/signal/relay dials still fail closed if the URL
+is not an endpoint matching the selected `.onion` transport.
+
 ### I2P datagram data plane
 
 The I2P backend now has both the SAM primitive and a direct peer binding for WireGuard traffic:
@@ -110,7 +117,7 @@ The I2P backend now has both the SAM primitive and a direct peer binding for Wir
 - receives and parses `RAW RECEIVED` / `DATAGRAM RECEIVED` messages from the control socket;
 - enforces SAM size limits and rejects reserved raw datagram protocol numbers.
 
-When `i2p-datagram` is selected, the client can use a system SAM bridge (`external`) or manage an `i2pd` process (`auto`/`managed`). The managed path writes a per-profile `i2pd.conf` with SAM enabled, waits for SAM readiness before login/dial, and stops the owned process when the client shuts down. The public I2P destination is registered through management metadata; the private destination remains in the local profile config.
+When `i2p-datagram` is selected, the client can use a system SAM bridge (`external`) or manage an `i2pd` process (`auto`/`managed`). The managed path checks for a local SAM bridge, installs the `i2pd` package when the default binary is missing and a supported package manager is available, writes a per-profile `i2pd.conf` with SAM enabled, waits for SAM readiness before login/dial, and stops the owned process when the client shuts down. The public I2P destination is registered through management metadata; the private destination remains in the local profile config.
 
 Operational i2pd requirements, version guidance, systemd expectations and recovery commands are tracked in `docs/anonbird-i2p-operations.md`.
 

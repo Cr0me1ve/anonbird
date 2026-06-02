@@ -92,9 +92,16 @@ func EnsureI2PDaemon(ctx context.Context, transport TransportConfig) (*I2PDaemon
 }
 
 func startI2PDaemon(ctx context.Context, transport TransportConfig) (*I2PDaemon, error) {
-	binaryPath, err := resolveI2PDaemonPath(transport.I2PDaemonPath)
+	binaryPath, err := resolveI2PDaemonPath(ctx, transport.I2PDaemonPath)
 	if err != nil {
 		return nil, err
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	err = i2psam.Check(checkCtx, transport.I2PSAM)
+	cancel()
+	if err == nil {
+		return nil, nil
 	}
 
 	dataDir := transport.I2PDataDir
@@ -153,7 +160,7 @@ func startI2PDaemon(ctx context.Context, transport TransportConfig) (*I2PDaemon,
 	return daemon, nil
 }
 
-func resolveI2PDaemonPath(path string) (string, error) {
+func resolveI2PDaemonPath(ctx context.Context, path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		path = DefaultI2PDaemonPath
@@ -164,8 +171,15 @@ func resolveI2PDaemonPath(path string) (string, error) {
 		}
 		return path, nil
 	}
-	resolved, err := exec.LookPath(path)
+	resolved, err := lookPath(path)
 	if err != nil {
+		if canAutoInstallBinary(path, DefaultI2PDaemonPath) {
+			installed, installErr := ensurePackagedBinary(ctx, path, DefaultI2PDaemonPath, "i2pd")
+			if installErr == nil {
+				return installed, nil
+			}
+			return "", fmt.Errorf("i2pd binary %q not found in PATH and automatic install failed: %w", path, installErr)
+		}
 		return "", fmt.Errorf("i2pd binary %q not found in PATH", path)
 	}
 	return resolved, nil

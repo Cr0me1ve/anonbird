@@ -26,6 +26,8 @@ const (
 	DefaultTorSOCKS5 = "127.0.0.1:9050"
 	DefaultI2PSAM    = "127.0.0.1:7656"
 
+	DefaultTorDaemonPath = "tor"
+
 	DefaultI2PTunnelLength   = 1
 	DefaultI2PTunnelQuantity = 3
 
@@ -110,6 +112,9 @@ func ValidateTransport(c TransportConfig) error {
 	switch c.Type {
 	case TransportTorRelayOnly:
 		if err := validateHostPort("tor socks5", c.TorSOCKS5); err != nil {
+			return err
+		}
+		if err := validateLoopbackHostPort("tor socks5", c.TorSOCKS5); err != nil {
 			return err
 		}
 	case TransportI2PDatagram:
@@ -375,6 +380,22 @@ func validateHostPort(name, value string) error {
 	}
 	if strings.TrimSpace(host) == "" || strings.TrimSpace(port) == "" {
 		return Violation(fmt.Sprintf("%s address %q must include host and port", name, value))
+	}
+	return nil
+}
+
+func validateLoopbackHostPort(name, value string) error {
+	host, _, err := net.SplitHostPort(value)
+	if err != nil {
+		return Violation(fmt.Sprintf("%s address %q must be host:port", name, value))
+	}
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+	if host == "" || strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return Violation(fmt.Sprintf("%s address %q must be local loopback to avoid clearnet proxy leaks", name, value))
 	}
 	return nil
 }
