@@ -604,7 +604,7 @@ func (c *YAMLConfig) ToServerConfig(stor storage.Storage, logger *slog.Logger) s
 		MFAProviders:  buildMFAProviders(c.MFA.Authenticators, c.Issuer, logger),
 	}
 
-	// Use embedded NetBird-styled templates if no custom dir specified
+	// Use embedded AnonBird-styled templates if no custom dir specified
 	if c.Frontend.Dir == "" {
 		cfg.Web.WebFS = web.FS()
 	}
