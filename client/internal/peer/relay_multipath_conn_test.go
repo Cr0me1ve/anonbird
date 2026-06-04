@@ -35,6 +35,62 @@ func TestRelayMultipathConnRoutesDataPacketsByFlowHint(t *testing.T) {
 	require.Equal(t, wireGuardDataPacket("flow-b"), <-fakes[channelB].writes)
 }
 
+func TestRelayMultipathConnBalancesNewFlowHintsAcrossLeastLoadedChannels(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(4)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	for i := 0; i < len(channels); i++ {
+		conn.ObservePacket(relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", uint16(40000+i)), true)
+		_, err := conn.Write(wireGuardDataPacket("flow-" + strconv.Itoa(i)))
+		require.NoError(t, err)
+	}
+
+	used := make(map[uint32]bool)
+	for channelID, fake := range fakes {
+		select {
+		case <-fake.writes:
+			used[channelID] = true
+		default:
+		}
+	}
+	require.Len(t, used, len(channels))
+	for _, count := range conn.flowChannelCounts {
+		require.Equal(t, 1, count)
+	}
+}
+
+func TestRelayMultipathConnKeepsExistingFlowHintSticky(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(4)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
+	first := wireGuardDataPacket("first")
+	conn.ObservePacket(packet, true)
+	_, err := conn.Write(first)
+	require.NoError(t, err)
+
+	var assignedChannel uint32
+	assignedCount := 0
+	for channelID, fake := range fakes {
+		select {
+		case got := <-fake.writes:
+			require.Equal(t, first, got)
+			assignedChannel = channelID
+			assignedCount++
+		default:
+		}
+	}
+	require.Equal(t, 1, assignedCount)
+
+	second := wireGuardDataPacket("second")
+	conn.ObservePacket(packet, true)
+	_, err = conn.Write(second)
+	require.NoError(t, err)
+	require.Equal(t, second, <-fakes[assignedChannel].writes)
+}
+
 func TestRelayMultipathConnDoesNotConsumeHintsForWireGuardHandshake(t *testing.T) {
 	channels, fakes := newTestRelayMultipathChannels(4)
 	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)

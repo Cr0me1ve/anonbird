@@ -711,3 +711,90 @@ Conclusion:
   because data arrives in bursts and drains after `iperf3` stops.
 - Remaining work: add backpressure/spillover that accounts for the batcher
   queue and stale channels before data is accepted into the local Tor socket.
+
+## 2026-06-05: flow-level balancing for Tor throughput
+
+Problem found after the dedicated channel cache:
+
+- `iperf3 -P 4` could still underuse the four Tor channels because rendezvous
+  hashing may map several new TCP flows to the same channel.
+- That preserved per-flow order, but left other Tor circuits mostly idle and
+  kept receiver-side throughput around 3.7-4.6 Mbit/s in several directions.
+
+Rejected runtime-only tuning:
+
+| Profile | Result |
+| --- | --- |
+| `PACING_MS=1`, `CHANNEL_MAX_INFLIGHT_BYTES=524288` | `185 -> 45` sender 6.50 Mbit/s, receiver 3.40 Mbit/s, tail 37.81s |
+| `PACING_MS=0`, `CHANNEL_MAX_INFLIGHT_BYTES=524288` | `185 -> 45` sender 5.56 Mbit/s, receiver 2.39 Mbit/s, tail 50.85s |
+
+Both profiles reduced some retransmits, but they made receiver-side throughput
+and tail latency worse than the `0/0` baseline.
+
+Code fix:
+
+- `flow-affine` now tracks recent inner overlay flows for a short TTL.
+- Existing flows remain sticky to their assigned channel.
+- New flows are assigned with rendezvous hashing over the least-loaded healthy
+  channel set instead of over all channels blindly.
+- This keeps per-flow ordering while preventing a small number of bulk flows
+  from landing on only one or two Tor circuits.
+
+Local verification:
+
+```sh
+go test ./client/internal/peer -count=1 -timeout=120s
+git diff --check
+```
+
+Live deployment:
+
+- Locally built Linux amd64 binary:
+  `/tmp/anonbird-build/anonbird-linux-amd64`.
+- Binary SHA256:
+  `f3d9a030a0ed4a093c6a8d52dd0af2f72e8f23c382c74295f00f63fc623a56c4`.
+- Gzip SHA256:
+  `046a0a663daded411acc399bc09e9aa09574d4a4550a8b020216cfb32f52a66b`.
+- Deployed version on `185.246.220.249`, `45.138.103.224`,
+  `213.108.2.95`: `development-local-tor-flow-balance`.
+- Runtime env stayed at the best baseline:
+  `NB_ANON_RELAY_MULTIPATH_STRATEGY=flow-affine`,
+  `NB_ANON_RELAY_MULTIPATH_CHANNELS=4`,
+  `NB_ANON_RELAY_MULTIPATH_PACING_MS=0`,
+  `NB_ANON_RELAY_MULTIPATH_CHANNEL_MAX_INFLIGHT_BYTES=0`.
+
+Live Tor ping results after flow balancing:
+
+| Direction | Result |
+| --- | --- |
+| `185 -> 45` | 6/6 received, 0% loss, avg 372.189 ms |
+| `45 -> 185` | 6/6 received, 0% loss, avg 384.637 ms |
+| `185 -> 213` | 6/6 received, 0% loss, avg 660.777 ms |
+| `213 -> 185` | 6/6 received, 0% loss, avg 631.497 ms |
+| `45 -> 213` | 6/6 received, 0% loss, avg 581.453 ms |
+
+Live Tor bulk results after flow balancing:
+
+| Direction | Test | Result |
+| --- | --- | --- |
+| `185 -> 45` | `iperf3 -P 4 -t 30` | sender 41.6 MiB / 11.6 Mbit/s, receiver 38.5 MiB / 8.16 Mbit/s, 32 retransmits |
+| `45 -> 185` | `iperf3 -P 4 -t 30` | sender 38.4 MiB / 10.7 Mbit/s, receiver 32.2 MiB / 8.62 Mbit/s, 1277 retransmits |
+| `185 -> 213` | `iperf3 -P 4 -t 30` | sender 28.2 MiB / 7.90 Mbit/s, receiver 25.1 MiB / 5.15 Mbit/s, 137 retransmits |
+| `213 -> 185` | `iperf3 -P 4 -t 30` | sender 31.1 MiB / 8.70 Mbit/s, receiver 28.6 MiB / 6.29 Mbit/s, 67 retransmits |
+
+Privacy check:
+
+- `ss -Htnp | grep anonbird` with real peer IPv4 filters was empty on
+  `185`, `45`, and `213`.
+- The only direct public TCP sessions visible in broad `ss` checks were Tor
+  guard connections from the `tor` process and SSH sessions used for testing.
+
+Conclusion:
+
+- Flow-level balancing reached the target stable Tor speed range in the tested
+  directions: receiver-side throughput was 5.15-8.62 Mbit/s, sender-side
+  throughput was 7.90-11.6 Mbit/s.
+- Ping also improved materially after warmup, especially on `185 <-> 45`.
+- Remaining issue: retransmits can still spike on a single TCP stream in some
+  directions, so the next improvement should focus on per-flow health/rotation
+  when one assigned channel degrades during a long-lived flow.

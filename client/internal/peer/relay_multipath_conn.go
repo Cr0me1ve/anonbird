@@ -57,6 +57,10 @@ const (
 	relayMultipathBatchFlushDelay   = 2 * time.Millisecond
 	relayMultipathBatchHeaderSize   = 6
 	relayMultipathBatchPacketHeader = 2
+
+	relayMultipathFlowTTL           = 30 * time.Second
+	relayMultipathFlowPruneInterval = 5 * time.Second
+	relayMultipathMaxTrackedFlows   = 4096
 )
 
 var relayMultipathBatchMagic = [4]byte{0xab, 0x1d, 0xba, 0x7c}
@@ -95,6 +99,11 @@ type relayMultipathWriteCandidate struct {
 	id    uint32
 	conn  net.Conn
 	score int64
+}
+
+type relayMultipathFlowAssignment struct {
+	channelID uint32
+	lastSeen  time.Time
 }
 
 type relayMultipathTelemetryChannel struct {
@@ -156,6 +165,11 @@ type relayMultipathConn struct {
 	batchMu         sync.Mutex
 	batchers        map[uint32]*relayMultipathBatcher
 	writeLocks      map[uint32]*sync.Mutex
+
+	flowMu            sync.Mutex
+	flowAssignments   map[multipath.FlowKey]relayMultipathFlowAssignment
+	flowChannelCounts map[uint32]int
+	lastFlowPrune     time.Time
 }
 
 func newRelayMultipathConn(channels []relayMultipathChannel, allowedIPs []netip.Prefix, unregisterObserver func()) *relayMultipathConn {
@@ -182,6 +196,8 @@ func newRelayMultipathConn(channels []relayMultipathChannel, allowedIPs []netip.
 		batchingEnabled:     relayMultipathBatchingEnabled(),
 		batchers:            make(map[uint32]*relayMultipathBatcher),
 		writeLocks:          make(map[uint32]*sync.Mutex),
+		flowAssignments:     make(map[multipath.FlowKey]relayMultipathFlowAssignment),
+		flowChannelCounts:   make(map[uint32]int),
 	}
 	now := time.Now()
 	for i, channel := range channels {
@@ -212,15 +228,118 @@ func (c *relayMultipathConn) ObservePacket(data []byte, outbound bool) {
 	if err != nil || !c.matchesAllowedDestination(info.Destination) {
 		return
 	}
-	selected, err := multipath.SelectChannel(info.Flow, c.selectorSnapshot())
-	if err != nil {
-		return
-	}
-	channelID, ok := c.selectorIDToChannel[selected.ID]
+	channelID, ok := c.channelForObservedFlow(info.Flow, time.Now())
 	if !ok {
 		return
 	}
 	c.enqueueHint(channelID)
+}
+
+func (c *relayMultipathConn) channelForObservedFlow(flow multipath.FlowKey, now time.Time) (uint32, bool) {
+	c.flowMu.Lock()
+	defer c.flowMu.Unlock()
+
+	c.pruneFlowAssignmentsLocked(now)
+	if assignment, ok := c.flowAssignments[flow]; ok {
+		if c.channelHealthy(assignment.channelID) {
+			assignment.lastSeen = now
+			c.flowAssignments[flow] = assignment
+			return assignment.channelID, true
+		}
+		c.removeFlowAssignmentLocked(flow, assignment.channelID)
+	}
+
+	channelID, ok := c.selectChannelForNewFlow(flow, now)
+	if !ok {
+		return 0, false
+	}
+	c.flowAssignments[flow] = relayMultipathFlowAssignment{
+		channelID: channelID,
+		lastSeen:  now,
+	}
+	c.flowChannelCounts[channelID]++
+	return channelID, true
+}
+
+func (c *relayMultipathConn) pruneFlowAssignmentsLocked(now time.Time) {
+	if now.Sub(c.lastFlowPrune) < relayMultipathFlowPruneInterval && len(c.flowAssignments) <= relayMultipathMaxTrackedFlows {
+		return
+	}
+	c.lastFlowPrune = now
+
+	for flow, assignment := range c.flowAssignments {
+		if now.Sub(assignment.lastSeen) <= relayMultipathFlowTTL && c.channelHealthy(assignment.channelID) {
+			continue
+		}
+		c.removeFlowAssignmentLocked(flow, assignment.channelID)
+	}
+	for len(c.flowAssignments) > relayMultipathMaxTrackedFlows {
+		var (
+			oldestFlow       multipath.FlowKey
+			oldestAssignment relayMultipathFlowAssignment
+			found            bool
+		)
+		for flow, assignment := range c.flowAssignments {
+			if !found || assignment.lastSeen.Before(oldestAssignment.lastSeen) {
+				oldestFlow = flow
+				oldestAssignment = assignment
+				found = true
+			}
+		}
+		if !found {
+			return
+		}
+		c.removeFlowAssignmentLocked(oldestFlow, oldestAssignment.channelID)
+	}
+}
+
+func (c *relayMultipathConn) removeFlowAssignmentLocked(flow multipath.FlowKey, channelID uint32) {
+	delete(c.flowAssignments, flow)
+	if c.flowChannelCounts[channelID] <= 1 {
+		delete(c.flowChannelCounts, channelID)
+		return
+	}
+	c.flowChannelCounts[channelID]--
+}
+
+func (c *relayMultipathConn) selectChannelForNewFlow(flow multipath.FlowKey, now time.Time) (uint32, bool) {
+	c.selectorMu.RLock()
+	defer c.selectorMu.RUnlock()
+
+	candidates := c.writeCandidatesLocked(now, nil, false, false, true)
+	if len(candidates) == 0 {
+		candidates = c.writeCandidatesLocked(now, nil, true, true, true)
+	}
+	if len(candidates) == 0 {
+		return 0, false
+	}
+
+	minFlows := c.flowChannelCounts[candidates[0].id]
+	for _, candidate := range candidates[1:] {
+		if count := c.flowChannelCounts[candidate.id]; count < minFlows {
+			minFlows = count
+		}
+	}
+
+	leastLoaded := make([]multipath.Channel, 0, len(candidates))
+	for _, candidate := range candidates {
+		if c.flowChannelCounts[candidate.id] != minFlows {
+			continue
+		}
+		leastLoaded = append(leastLoaded, multipath.Channel{
+			ID:      strconv.FormatUint(uint64(candidate.id), 10),
+			Healthy: true,
+		})
+	}
+	selected, err := multipath.SelectChannel(flow, leastLoaded)
+	if err != nil {
+		return candidates[0].id, true
+	}
+	channelID, ok := c.selectorIDToChannel[selected.ID]
+	if !ok {
+		return candidates[0].id, true
+	}
+	return channelID, true
 }
 
 func (c *relayMultipathConn) Read(b []byte) (int, error) {
@@ -595,6 +714,12 @@ func (c *relayMultipathConn) channelHealthyLocked(channelID uint32) bool {
 		}
 	}
 	return false
+}
+
+func (c *relayMultipathConn) channelHealthy(channelID uint32) bool {
+	c.selectorMu.RLock()
+	defer c.selectorMu.RUnlock()
+	return c.channelHealthyLocked(channelID)
 }
 
 func newRelayMultipathChannelStats(now time.Time) *relayMultipathChannelStats {
