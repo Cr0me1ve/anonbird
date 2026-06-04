@@ -202,6 +202,97 @@ func TestForeignConn(t *testing.T) {
 	}
 }
 
+func TestDedicatedRelayChannelReusedAcrossPeers(t *testing.T) {
+	ctx := context.Background()
+	srvCfg := server.ListenerConfig{
+		Address: "localhost:52601",
+	}
+	srv, err := server.NewServer(newManagerTestServerConfig(srvCfg.Address))
+	if err != nil {
+		t.Fatalf("failed to create server: %s", err)
+	}
+	errChan := make(chan error, 1)
+	go func() {
+		if err := srv.Listen(srvCfg); err != nil {
+			errChan <- err
+		}
+	}()
+	defer func() {
+		if err := srv.Shutdown(ctx); err != nil {
+			t.Errorf("failed to close server: %s", err)
+		}
+	}()
+	if err := waitForServerToStart(errChan); err != nil {
+		t.Fatalf("failed to start server: %s", err)
+	}
+
+	mCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	relayURL := toURL(srvCfg)[0]
+
+	alice := NewManager(mCtx, []string{relayURL}, "alice", iface.DefaultMTU)
+	if err := alice.Serve(); err != nil {
+		t.Fatalf("failed to serve alice manager: %s", err)
+	}
+	bob := NewManager(mCtx, []string{relayURL}, "bob", iface.DefaultMTU)
+	if err := bob.Serve(); err != nil {
+		t.Fatalf("failed to serve bob manager: %s", err)
+	}
+	carol := NewManager(mCtx, []string{relayURL}, "carol", iface.DefaultMTU)
+	if err := carol.Serve(); err != nil {
+		t.Fatalf("failed to serve carol manager: %s", err)
+	}
+
+	aliceBob, err := alice.openDedicatedConn(ctx, relayURL, "bob", netip.Addr{}, 7)
+	if err != nil {
+		t.Fatalf("failed to open alice->bob dedicated channel: %s", err)
+	}
+	defer aliceBob.Close()
+	bobAlice, err := bob.openDedicatedConn(ctx, relayURL, "alice", netip.Addr{}, 7)
+	if err != nil {
+		t.Fatalf("failed to open bob->alice dedicated channel: %s", err)
+	}
+	defer bobAlice.Close()
+
+	if _, err := aliceBob.Write([]byte("first bob payload")); err != nil {
+		t.Fatalf("failed to write first bob payload: %s", err)
+	}
+	if got := readRelayTestPayload(t, bobAlice); got != "first bob payload" {
+		t.Fatalf("expected first bob payload, got %s", got)
+	}
+
+	aliceCarol, err := alice.openDedicatedConn(ctx, relayURL, "carol", netip.Addr{}, 7)
+	if err != nil {
+		t.Fatalf("failed to open alice->carol dedicated channel: %s", err)
+	}
+	defer aliceCarol.Close()
+	carolAlice, err := carol.openDedicatedConn(ctx, relayURL, "alice", netip.Addr{}, 7)
+	if err != nil {
+		t.Fatalf("failed to open carol->alice dedicated channel: %s", err)
+	}
+	defer carolAlice.Close()
+
+	alice.dedicatedRelayClientsMutex.RLock()
+	dedicatedClients := len(alice.dedicatedRelayClients)
+	alice.dedicatedRelayClientsMutex.RUnlock()
+	if dedicatedClients != 1 {
+		t.Fatalf("expected one cached dedicated relay client, got %d", dedicatedClients)
+	}
+
+	if _, err := aliceBob.Write([]byte("second bob payload")); err != nil {
+		t.Fatalf("failed to write second bob payload: %s", err)
+	}
+	if got := readRelayTestPayload(t, bobAlice); got != "second bob payload" {
+		t.Fatalf("expected second bob payload, got %s", got)
+	}
+	if _, err := aliceCarol.Write([]byte("carol payload")); err != nil {
+		t.Fatalf("failed to write carol payload: %s", err)
+	}
+	if got := readRelayTestPayload(t, carolAlice); got != "carol payload" {
+		t.Fatalf("expected carol payload, got %s", got)
+	}
+}
+
 func TestForeginConnClose(t *testing.T) {
 	ctx := context.Background()
 

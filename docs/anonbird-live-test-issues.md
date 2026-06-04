@@ -620,3 +620,94 @@ Conclusion:
   before adding more control logic. Without seeing pending bytes, active write
   bytes, write EWMA, cooldown, pacing wait, and selected channel IDs from live
   nodes, further tuning is mostly guesswork.
+
+## 2026-06-05: dedicated channel cache and flow-affinity fallback
+
+Problem found in live logs:
+
+- Secondary Tor relay channels were repeatedly flapping when one local peer had
+  more than one remote peer connected at the same time.
+- Logs showed a loop of remote peer availability on `channel=N`, followed by
+  `closing all peer connections` and `relay connection closed`.
+- Root cause: dedicated relay clients were opened per remote peer and per
+  channel, but the relay server identity is the local peer plus channel ID. A
+  second remote peer opening the same channel ID could replace the previous
+  dedicated relay client and close unrelated logical peer connections.
+
+Code fix:
+
+- `shared/relay/client.Manager` now caches dedicated relay clients by
+  `(server address, channel ID)`.
+- `openDedicatedConn` opens logical peer connections on the shared dedicated
+  channel client instead of creating and closing a full relay client for each
+  remote peer.
+- Dedicated clients are evicted on disconnect and cleaned up after the normal
+  unused-relay timeout when they have no logical connections.
+- `relay_multipath_conn` now lets flow-affine writes fall back to the best
+  scored healthy channel when the hinted channel is silent or stale, instead of
+  forcing data into a channel that has not returned reads.
+
+Local verification:
+
+```sh
+go test ./shared/relay/client ./client/internal/peer -count=1 -timeout=120s
+go test ./client/internal/anonymous ./client/internal/peer ./shared/relay/client ./shared/relay/client/dialer/ws ./client/internal/dns/config ./client/internal/dns/mgmt ./combined/cmd ./relay/server ./shared/relay/messages ./shared/anonymous/i2psam -count=1 -timeout=180s
+git diff --check
+```
+
+Actual status on 2026-06-05: pass.
+
+Live deployment:
+
+- Locally built Linux amd64 binary:
+  `/tmp/anonbird-build/anonbird-linux-amd64`.
+- Binary SHA256:
+  `f431c1f716427a633d2feae2ddc63aaff4a9c744797f55f94b2f6276915fcca1`.
+- Gzip SHA256:
+  `08ae0d93520765c447132d2981cf493bf40593de93e505bcd11c9096a92c6b48`.
+- Deployed version on `185.246.220.249`, `45.138.103.224`,
+  `213.108.2.95`: `development-local-tor-dedicated-cache`.
+- Runtime env on all three peers:
+  `NB_ANON_RELAY_MULTIPATH_STRATEGY=flow-affine`,
+  `NB_ANON_RELAY_MULTIPATH_CHANNELS=4`,
+  `NB_ANON_RELAY_MULTIPATH_PACKET_BURST_SIZE=8`,
+  `NB_ANON_RELAY_TOR_SOCKS_ISOLATION=false`,
+  `NB_ANON_RELAY_MULTIPATH_BATCH=true`,
+  `NB_ANON_RELAY_MULTIPATH_CHANNEL_SCORING=true`,
+  `NB_ANON_RELAY_MULTIPATH_SLOW_WRITE_MS=250`,
+  `NB_ANON_RELAY_MULTIPATH_CHANNEL_COOLDOWN_MS=3000`,
+  `NB_ANON_RELAY_MULTIPATH_READ_IDLE_MS=20000`,
+  `NB_ANON_RELAY_MULTIPATH_PACING_MS=0`,
+  `NB_ANON_RELAY_MULTIPATH_CHANNEL_MAX_INFLIGHT_BYTES=0`,
+  `NB_ANON_RELAY_MULTIPATH_TELEMETRY_MS=5000`.
+
+Live Tor ping results after the fix:
+
+| Direction | Result |
+| --- | --- |
+| `185 -> 45` | 6/6 received, 0% loss, avg 1340.606 ms |
+| `45 -> 185` | 6/6 received, 0% loss, avg 1173.915 ms |
+| `185 -> 213` | 6/6 received, 0% loss, avg 1020.883 ms |
+| `213 -> 185` | 6/6 received, 0% loss, avg 1062.039 ms |
+| `45 -> 213` | 6/6 received, 0% loss, avg 1131.008 ms |
+| `213 -> 45` | 6/6 received, 0% loss, avg 1919.496 ms |
+
+Live Tor bulk results after the fix:
+
+| Direction | Test | Result |
+| --- | --- | --- |
+| `185 -> 45` | `iperf3 -P 4 -t 30` | sender 27.6 MiB / 7.72 Mbit/s, receiver 21.1 MiB / 4.57 Mbit/s, 4 retransmits |
+| `45 -> 185` | `iperf3 -P 4 -t 30` | sender 20.9 MiB / 5.84 Mbit/s, receiver 16.4 MiB / 4.46 Mbit/s, 1383 retransmits |
+| `185 -> 213` | `iperf3 -P 4 -t 20` | sender 14.1 MiB / 5.92 Mbit/s, receiver 11.5 MiB / 3.90 Mbit/s, 9 retransmits |
+| `213 -> 185` | `iperf3 -P 4 -t 20` | sender 15.1 MiB / 6.34 Mbit/s, receiver 9.88 MiB / 3.70 Mbit/s, 256 retransmits |
+
+Conclusion:
+
+- The dedicated channel cache fixed the multi-peer channel flapping observed in
+  live logs.
+- Tor traffic now reaches the requested 5-10 Mbit/s range on the sender side
+  and shows repeated 8-16 Mbit/s intervals after TCP warmup.
+- Receiver-side averages are still below 5 Mbit/s in the measured windows
+  because data arrives in bursts and drains after `iperf3` stops.
+- Remaining work: add backpressure/spillover that accounts for the batcher
+  queue and stale channels before data is accepted into the local Tor socket.

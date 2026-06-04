@@ -32,6 +32,11 @@ type RelayTrack struct {
 	created     time.Time
 }
 
+type dedicatedRelayKey struct {
+	serverAddress string
+	channelID     uint32
+}
+
 func NewRelayTrack() *RelayTrack {
 	return &RelayTrack{
 		created: time.Now(),
@@ -92,6 +97,9 @@ type Manager struct {
 	relayClients      map[string]*RelayTrack
 	relayClientsMutex sync.RWMutex
 
+	dedicatedRelayClients      map[dedicatedRelayKey]*RelayTrack
+	dedicatedRelayClientsMutex sync.RWMutex
+
 	onDisconnectedListeners map[string]*list.List
 	onReconnectedListenerFn func()
 	listenerLock            sync.Mutex
@@ -124,6 +132,7 @@ func NewManager(ctx context.Context, serverURLs []string, peerID string, mtu uin
 			ConnectionTimeout: defaultConnectionTimeout,
 		},
 		relayClients:            make(map[string]*RelayTrack),
+		dedicatedRelayClients:   make(map[dedicatedRelayKey]*RelayTrack),
 		onDisconnectedListeners: make(map[string]*list.List),
 		cleanupInterval:         relayCleanupInterval,
 		keepUnusedServerTime:    keepUnusedServerTime,
@@ -369,21 +378,65 @@ func (m *Manager) openDedicatedConn(ctx context.Context, serverAddress, peerKey 
 	if m.socks5Proxy != "" || m.i2pSAM != "" {
 		serverIP = netip.Addr{}
 	}
-	relayClient := m.newRelayClient(serverAddress, serverIP, channelID)
-	if err := relayClient.Connect(ctx); err != nil {
-		return nil, err
-	}
-	conn, err := relayClient.OpenConnChannel(ctx, peerKey, channelID)
+
+	key := dedicatedRelayKey{serverAddress: serverAddress, channelID: channelID}
+	relayClient, err := m.dedicatedRelayClient(ctx, key, serverIP)
 	if err != nil {
-		_ = relayClient.Close()
 		return nil, err
 	}
-	return &ownedRelayConn{
-		Conn: conn,
-		closeFn: func() error {
-			return relayClient.Close()
-		},
-	}, nil
+	return relayClient.OpenConnChannel(ctx, peerKey, channelID)
+}
+
+func (m *Manager) dedicatedRelayClient(ctx context.Context, key dedicatedRelayKey, serverIP netip.Addr) (*Client, error) {
+	m.dedicatedRelayClientsMutex.RLock()
+	rt, ok := m.dedicatedRelayClients[key]
+	if ok {
+		rt.RLock()
+		m.dedicatedRelayClientsMutex.RUnlock()
+		defer rt.RUnlock()
+		if rt.err != nil {
+			return nil, rt.err
+		}
+		if rt.relayClient == nil {
+			return nil, ErrRelayClientNotConnected
+		}
+		return rt.relayClient, nil
+	}
+	m.dedicatedRelayClientsMutex.RUnlock()
+
+	m.dedicatedRelayClientsMutex.Lock()
+	rt, ok = m.dedicatedRelayClients[key]
+	if ok {
+		rt.RLock()
+		m.dedicatedRelayClientsMutex.Unlock()
+		defer rt.RUnlock()
+		if rt.err != nil {
+			return nil, rt.err
+		}
+		if rt.relayClient == nil {
+			return nil, ErrRelayClientNotConnected
+		}
+		return rt.relayClient, nil
+	}
+
+	rt = NewRelayTrack()
+	rt.Lock()
+	m.dedicatedRelayClients[key] = rt
+	m.dedicatedRelayClientsMutex.Unlock()
+
+	relayClient := m.newRelayClient(key.serverAddress, serverIP, key.channelID)
+	if err := relayClient.Connect(ctx); err != nil {
+		rt.err = err
+		rt.Unlock()
+		m.evictDedicatedRelay(key)
+		return nil, err
+	}
+	relayClient.SetOnDisconnectListener(func(string) {
+		m.evictDedicatedRelay(key)
+	})
+	rt.relayClient = relayClient
+	rt.Unlock()
+	return relayClient, nil
 }
 
 func (m *Manager) newRelayClient(serverAddress string, serverIP netip.Addr, channelID uint32) *Client {
@@ -399,27 +452,6 @@ func (m *Manager) newRelayClient(serverAddress string, serverIP netip.Addr, chan
 		m.i2pTunnelQuantity,
 		channelID,
 	)
-}
-
-type ownedRelayConn struct {
-	net.Conn
-	closeOnce sync.Once
-	closeFn   func() error
-}
-
-func (c *ownedRelayConn) Close() error {
-	var err error
-	c.closeOnce.Do(func() {
-		if c.Conn != nil {
-			err = c.Conn.Close()
-		}
-		if c.closeFn != nil {
-			if closeErr := c.closeFn(); err == nil {
-				err = closeErr
-			}
-		}
-	})
-	return err
 }
 
 func (m *Manager) onServerConnected() {
@@ -459,6 +491,15 @@ func (m *Manager) evictForeignRelay(serverAddress string) {
 	if _, ok := m.relayClients[serverAddress]; ok {
 		delete(m.relayClients, serverAddress)
 		log.Debugf("evicted disconnected foreign relay client: %s", serverAddress)
+	}
+}
+
+func (m *Manager) evictDedicatedRelay(key dedicatedRelayKey) {
+	m.dedicatedRelayClientsMutex.Lock()
+	defer m.dedicatedRelayClientsMutex.Unlock()
+	if _, ok := m.dedicatedRelayClients[key]; ok {
+		delete(m.dedicatedRelayClients, key)
+		log.Debugf("evicted disconnected dedicated relay client: %s channel %d", key.serverAddress, key.channelID)
 	}
 }
 
@@ -507,8 +548,6 @@ func (m *Manager) startCleanupLoop() {
 
 func (m *Manager) cleanUpUnusedRelays() {
 	m.relayClientsMutex.Lock()
-	defer m.relayClientsMutex.Unlock()
-
 	for addr, rt := range m.relayClients {
 		rt.Lock()
 		// if the connection failed to the server the relay client will be nil
@@ -528,11 +567,42 @@ func (m *Manager) cleanUpUnusedRelays() {
 			continue
 		}
 		rt.relayClient.SetOnDisconnectListener(nil)
-		go func() {
-			_ = rt.relayClient.Close()
-		}()
+		go func(relayClient *Client) {
+			_ = relayClient.Close()
+		}(rt.relayClient)
 		log.Debugf("clean up unused relay server connection: %s", addr)
 		delete(m.relayClients, addr)
+		rt.Unlock()
+	}
+	m.relayClientsMutex.Unlock()
+
+	m.cleanUpUnusedDedicatedRelays()
+}
+
+func (m *Manager) cleanUpUnusedDedicatedRelays() {
+	m.dedicatedRelayClientsMutex.Lock()
+	defer m.dedicatedRelayClientsMutex.Unlock()
+
+	for key, rt := range m.dedicatedRelayClients {
+		rt.Lock()
+		if rt.err != nil {
+			rt.Unlock()
+			continue
+		}
+		if time.Since(rt.created) <= m.keepUnusedServerTime {
+			rt.Unlock()
+			continue
+		}
+		if rt.relayClient.HasConns() {
+			rt.Unlock()
+			continue
+		}
+		rt.relayClient.SetOnDisconnectListener(nil)
+		go func(relayClient *Client) {
+			_ = relayClient.Close()
+		}(rt.relayClient)
+		log.Debugf("clean up unused dedicated relay connection: %s channel %d", key.serverAddress, key.channelID)
+		delete(m.dedicatedRelayClients, key)
 		rt.Unlock()
 	}
 }

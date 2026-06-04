@@ -34,6 +34,7 @@ const (
 	relayMultipathDefaultReadIdlePenalty = 20 * time.Second
 	relayMultipathDefaultPacingDelay     = 2 * time.Millisecond
 	relayMultipathDefaultMaxInflight     = 128 * 1024
+	relayMultipathSilentWriteThreshold   = 4
 
 	envAnonRelayMultipathStrategy        = "NB_ANON_RELAY_MULTIPATH_STRATEGY"
 	envAnonRelayMultipathPacketBurstSize = "NB_ANON_RELAY_MULTIPATH_PACKET_BURST_SIZE"
@@ -246,11 +247,13 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 		return 0, net.ErrClosed
 	}
 	channelID := c.primaryChannelID
+	strictPreferred := true
 	if isWireGuardDataPacket(p) {
 		switch c.writeStrategy {
 		case relayMultipathStrategyPacketBurst:
 			channelID = c.nextStripedChannelID()
 		default:
+			strictPreferred = false
 			select {
 			case channelID = <-c.hintCh:
 			default:
@@ -261,7 +264,7 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 	attempted := make(map[uint32]struct{}, len(c.channels))
 	var lastErr error
 	for len(attempted) < len(c.channels) {
-		conn, selectedChannelID := c.connForWriteExcluding(channelID, attempted)
+		conn, selectedChannelID := c.connForWriteExcluding(channelID, attempted, strictPreferred)
 		if conn == nil {
 			break
 		}
@@ -463,25 +466,46 @@ func (c *relayMultipathConn) selectorSnapshot() []multipath.Channel {
 }
 
 func (c *relayMultipathConn) connForWrite(preferred uint32) (net.Conn, uint32) {
-	return c.connForWriteExcluding(preferred, nil)
+	return c.connForWriteExcluding(preferred, nil, true)
 }
 
-func (c *relayMultipathConn) connForWriteExcluding(preferred uint32, excluded map[uint32]struct{}) (net.Conn, uint32) {
+func (c *relayMultipathConn) connForWriteExcluding(preferred uint32, excluded map[uint32]struct{}, strictPreferred bool) (net.Conn, uint32) {
 	c.selectorMu.RLock()
 	defer c.selectorMu.RUnlock()
 
-	candidates := c.writeCandidatesLocked(time.Now(), excluded, false, false, true)
+	now := time.Now()
+	candidates := c.writeCandidatesLocked(now, excluded, false, false, true)
 	if len(candidates) == 0 {
-		candidates = c.writeCandidatesLocked(time.Now(), excluded, true, true, true)
+		candidates = c.writeCandidatesLocked(now, excluded, true, true, true)
 	}
 
-	if conn, ok := relayMultipathCandidateConn(candidates, preferred); ok {
+	if conn, ok := relayMultipathCandidateConn(candidates, preferred); ok && (strictPreferred || c.preferredChannelReadyForFlow(preferred, candidates[0].id, now)) {
 		return conn, preferred
 	}
 	if len(candidates) > 0 {
 		return candidates[0].conn, candidates[0].id
 	}
 	return nil, 0
+}
+
+func (c *relayMultipathConn) preferredChannelReadyForFlow(channelID, bestChannelID uint32, now time.Time) bool {
+	if !c.scoringEnabled || channelID == bestChannelID {
+		return true
+	}
+	stats := c.channelStats[channelID]
+	if stats == nil {
+		return true
+	}
+	if stats.readFrames.Load() == 0 && stats.selectedWrites.Load() >= relayMultipathSilentWriteThreshold {
+		return false
+	}
+	if c.readIdlePenalty > 0 {
+		lastRead := stats.lastReadUnixNano.Load()
+		if lastRead > 0 && now.Sub(time.Unix(0, lastRead)) > c.readIdlePenalty/2 {
+			return false
+		}
+	}
+	return true
 }
 
 func channelExcluded(channelID uint32, excluded map[uint32]struct{}) bool {
@@ -830,11 +854,17 @@ func (c *relayMultipathConn) channelScore(channelID uint32, now time.Time) int64
 	score -= stats.writeEWMAMicros.Load() * 100
 	score -= int64(stats.writeFailures.Load()) * 1_000_000
 	score -= c.channelInFlightBytes(channelID) * 1000
+	if stats.readFrames.Load() == 0 && stats.selectedWrites.Load() >= relayMultipathSilentWriteThreshold {
+		score -= 500_000_000
+	}
 	if slowUntil := stats.slowUntilUnixNano.Load(); slowUntil > now.UnixNano() {
 		score -= 1_000_000_000_000
 	}
 	if lastRead := stats.lastReadUnixNano.Load(); lastRead > 0 && c.readIdlePenalty > 0 {
 		idle := now.Sub(time.Unix(0, lastRead))
+		if idle > c.readIdlePenalty/2 {
+			score -= int64((idle-c.readIdlePenalty/2)/time.Millisecond) * 1000
+		}
 		if idle > c.readIdlePenalty {
 			score -= int64((idle-c.readIdlePenalty)/time.Millisecond) * 1000
 		}

@@ -171,6 +171,26 @@ func TestRelayMultipathConnPacketBurstSkipsChannelOverInflightLimit(t *testing.T
 	}
 }
 
+func TestRelayMultipathConnFlowAffineAvoidsSilentPreferredChannel(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(2)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	conn.recordChannelRead(0, 128)
+	conn.channelStats[1].selectedWrites.Store(relayMultipathSilentWriteThreshold)
+	conn.enqueueHint(1)
+
+	packet := wireGuardDataPacket("bulk")
+	_, err := conn.Write(packet)
+	require.NoError(t, err)
+	require.Equal(t, packet, <-fakes[0].writes)
+	select {
+	case got := <-fakes[1].writes:
+		t.Fatalf("silent preferred channel received write %q", string(got))
+	default:
+	}
+}
+
 func TestRelayMultipathConnBatchesWireGuardDataPackets(t *testing.T) {
 	t.Setenv(envAnonRelayMultipathBatch, "true")
 	channels, fakes := newTestRelayMultipathChannels(2)
