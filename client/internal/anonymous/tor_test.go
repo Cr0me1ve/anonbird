@@ -55,10 +55,11 @@ func TestWriteTorConfig(t *testing.T) {
 	require.NoError(t, err)
 	torrc := string(torrcBytes)
 	require.Contains(t, torrc, "DataDirectory "+torrcQuote(dataDir))
-	require.Contains(t, torrc, "SocksPort 127.0.0.1:19050")
+	require.Contains(t, torrc, "SocksPort 127.0.0.1:19050 IsolateSOCKSAuth KeepAliveIsolateSOCKSAuth")
 	require.Contains(t, torrc, "ClientOnly 1")
 	require.Contains(t, torrc, "SafeSocks 1")
-	require.Contains(t, torrc, "Log notice file "+torrcQuote(filepath.Join(dataDir, "tor.log")))
+	require.Contains(t, torrc, "Log notice stdout")
+	require.NotContains(t, torrc, "Log notice file")
 }
 
 func startFakeSOCKS5(t *testing.T) string {

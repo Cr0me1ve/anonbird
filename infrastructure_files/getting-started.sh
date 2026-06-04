@@ -569,6 +569,15 @@ check_peer_management_endpoint() {
   esac
 }
 
+check_required_peer_management_endpoint() {
+  local endpoint="${1:-}"
+  if [[ -z "$endpoint" ]]; then
+    echo "Peer management endpoint cannot be empty." > /dev/stderr
+    return 1
+  fi
+  check_peer_management_endpoint "$endpoint"
+}
+
 read_peer_management_endpoint() {
   local endpoint
   echo "" > /dev/stderr
@@ -1203,7 +1212,7 @@ wait_for_tor_endpoint() {
   echo -n "Waiting for managed Tor onion address" > /dev/stderr
   while [[ "$counter" -lt 90 ]]; do
     endpoint=$($DOCKER_COMPOSE_COMMAND exec -T tor sh -lc 'cat /var/lib/tor/anonbird-management/hostname 2>/dev/null' 2>/dev/null | tr -d '\r\n' || true)
-    if check_peer_management_endpoint "http://$endpoint" >/dev/null 2>&1; then
+    if check_required_peer_management_endpoint "http://$endpoint" >/dev/null 2>&1; then
       echo " done" > /dev/stderr
       echo "http://$endpoint"
       return 0
@@ -1224,13 +1233,13 @@ wait_for_i2p_endpoint() {
   echo -n "Waiting for managed I2P b32 address" > /dev/stderr
   while [[ "$counter" -lt 120 ]]; do
     endpoint=$($DOCKER_COMPOSE_COMMAND exec -T i2pd sh -lc 'for f in /home/i2pd/data/destinations/*.dat; do b=$(basename "$f" 2>/dev/null); b=${b%%.*}; if echo "$b" | grep -Eq "^[a-z2-7]{52}$"; then echo "http://$b.b32.i2p"; exit 0; fi; done' 2>/dev/null | tr -d '\r\n' || true)
-    if check_peer_management_endpoint "$endpoint" >/dev/null 2>&1; then
+    if check_required_peer_management_endpoint "$endpoint" >/dev/null 2>&1; then
       echo " done" > /dev/stderr
       echo "$endpoint"
       return 0
     fi
     endpoint=$($DOCKER_COMPOSE_COMMAND logs --no-color --tail=200 i2pd 2>/dev/null | grep -Eo '[a-z2-7]{52}\.b32\.i2p' | head -n 1 || true)
-    if check_peer_management_endpoint "http://$endpoint" >/dev/null 2>&1; then
+    if check_required_peer_management_endpoint "http://$endpoint" >/dev/null 2>&1; then
       echo " done" > /dev/stderr
       echo "http://$endpoint"
       return 0
@@ -1292,7 +1301,7 @@ prepare_anonymous_management_endpoint() {
       ;;
   esac
 
-  if ! check_peer_management_endpoint "$ANONBIRD_PEER_MANAGEMENT_ENDPOINT"; then
+  if ! check_required_peer_management_endpoint "$ANONBIRD_PEER_MANAGEMENT_ENDPOINT"; then
     echo "ERROR: Failed to prepare a valid anonymous peer management endpoint." > /dev/stderr
     exit 1
   fi
@@ -1705,7 +1714,7 @@ EOF
 render_i2pd_tunnels_conf() {
   cat <<'EOF'
 [anonbird-management]
-type = http
+type = server
 host = anonbird-server
 port = 80
 keys = anonbird-management.dat

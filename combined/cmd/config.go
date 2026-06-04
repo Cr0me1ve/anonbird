@@ -38,10 +38,12 @@ import (
 type CombinedConfig struct {
 	Server ServerConfig `yaml:"server"`
 
-	// Internal configs - populated from Server settings, not user-configurable
-	Relay      RelayConfig      `yaml:"-"`
+	// Internal configs are populated from Server settings by default. Management
+	// stays YAML-addressable for advanced client endpoint overrides such as
+	// anonymous signal/relay URLs that point back to this combined server.
+	Relay      RelayConfig      `yaml:"relay,omitempty"`
 	Signal     SignalConfig     `yaml:"-"`
-	Management ManagementConfig `yaml:"-"`
+	Management ManagementConfig `yaml:"management,omitempty"`
 }
 
 // ServerConfig contains server-wide settings
@@ -324,8 +326,12 @@ func (c *CombinedConfig) applyRelayDefaults(exposedProto, exposedHostPort string
 	if exposedProto == "https" {
 		relayProto = "rels"
 	}
-	c.Relay.ExposedAddress = fmt.Sprintf("%s://%s", relayProto, exposedHostPort)
-	c.Relay.AuthSecret = c.Server.AuthSecret
+	if c.Relay.ExposedAddress == "" {
+		c.Relay.ExposedAddress = fmt.Sprintf("%s://%s", relayProto, exposedHostPort)
+	}
+	if c.Relay.AuthSecret == "" {
+		c.Relay.AuthSecret = c.Server.AuthSecret
+	}
 	c.Relay.RateLimit = c.Server.RelayRateLimit
 	if c.Relay.LogLevel == "" {
 		c.Relay.LogLevel = c.Server.LogLevel

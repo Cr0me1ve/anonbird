@@ -3,6 +3,7 @@ package mgmt
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"testing"
@@ -181,6 +182,48 @@ func TestResolver_PopulateFromConfig(t *testing.T) {
 	// No domains should be cached when using IP addresses
 	domains := resolver.GetCachedDomains()
 	assert.Equal(t, 0, len(domains), "No domains should be cached when using IP addresses")
+}
+
+func TestResolver_PopulateFromConfigSkipsAnonymousDomains(t *testing.T) {
+	resolver := NewResolver()
+
+	for _, rawURL := range []string{
+		"http://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80",
+		"http://abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.b32.i2p:80",
+	} {
+		t.Run(rawURL, func(t *testing.T) {
+			mgmtURL, err := url.Parse(rawURL)
+			assert.NoError(t, err)
+
+			assert.NoError(t, resolver.PopulateFromConfig(context.Background(), mgmtURL))
+			assert.Empty(t, resolver.GetCachedDomains())
+		})
+	}
+}
+
+func TestResolver_UpdateFromServerDomainsSkipsAnonymousDomains(t *testing.T) {
+	resolver := NewResolver()
+	oldRelay := domain.Domain("relay.example.com")
+	q := dns.Question{Name: "relay.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	resolver.records[q] = &cachedRecord{
+		records: []dns.RR{&dns.A{
+			Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.ParseIP("203.0.113.10").To4(),
+		}},
+		cachedAt: time.Now(),
+	}
+	resolver.serverDomains = &dnsconfig.ServerDomains{Relay: []domain.Domain{oldRelay}}
+
+	removed, err := resolver.UpdateFromServerDomains(context.Background(), dnsconfig.ServerDomains{
+		Signal: domain.Domain("exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion"),
+		Relay: []domain.Domain{
+			domain.Domain("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.b32.i2p"),
+		},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, domain.List{oldRelay}, removed)
+	assert.Empty(t, resolver.GetCachedDomains())
 }
 
 func TestResolver_ServeDNS(t *testing.T) {

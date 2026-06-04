@@ -22,6 +22,8 @@ import (
 
 type Dialer struct {
 	Socks5Proxy       string
+	Socks5Username    string
+	Socks5Password    string
 	I2PSAM            string
 	I2PTunnelLength   uint8
 	I2PTunnelQuantity uint8
@@ -38,7 +40,7 @@ func (d Dialer) Dial(ctx context.Context, address, serverName string) (net.Conn,
 	}
 
 	var underlying net.Conn
-	opts := createDialOptions(serverName, &underlying, d.Socks5Proxy, d.I2PSAM, d.I2PTunnelLength, d.I2PTunnelQuantity)
+	opts := createDialOptions(serverName, &underlying, d.Socks5Proxy, d.Socks5Username, d.Socks5Password, d.I2PSAM, d.I2PTunnelLength, d.I2PTunnelQuantity)
 
 	wsConn, resp, err := websocket.Dial(ctx, wsURL, opts)
 	if err != nil {
@@ -82,12 +84,19 @@ func prepareURL(address string) (string, error) {
 // httpClientNbDialer builds the http client used by the websocket library.
 // underlyingOut, when non-nil, is populated with the raw conn from the
 // transport's DialContext so the caller can read its RemoteAddr.
-func httpClientNbDialer(serverName string, underlyingOut *net.Conn, socks5Proxy string, i2pSAM string, i2pTunnelLength, i2pTunnelQuantity uint8) *http.Client {
+func httpClientNbDialer(serverName string, underlyingOut *net.Conn, socks5Proxy, socks5Username, socks5Password string, i2pSAM string, i2pTunnelLength, i2pTunnelQuantity uint8) *http.Client {
 	customDialer := nbnet.NewDialer()
 	var socksDialer proxy.ContextDialer
 	var socksErr error
 	if socks5Proxy != "" {
-		dialer, err := proxy.SOCKS5("tcp", socks5Proxy, nil, proxy.Direct)
+		var auth *proxy.Auth
+		if socks5Username != "" || socks5Password != "" {
+			auth = &proxy.Auth{
+				User:     socks5Username,
+				Password: socks5Password,
+			}
+		}
+		dialer, err := proxy.SOCKS5("tcp", socks5Proxy, auth, proxy.Direct)
 		if err != nil {
 			socksErr = fmt.Errorf("create SOCKS5 dialer %s: %w", socks5Proxy, err)
 		} else {

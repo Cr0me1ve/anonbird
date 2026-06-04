@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -16,7 +19,12 @@ import (
 	relayClient "github.com/netbirdio/netbird/shared/relay/client"
 )
 
-const relayMultipathDefaultChannels = 4
+const (
+	relayMultipathDefaultChannels = 4
+	relayMultipathMaxChannels     = 16
+
+	envAnonRelayMultipathChannels = "NB_ANON_RELAY_MULTIPATH_CHANNELS"
+)
 
 type RelayConnInfo struct {
 	relayedConn     net.Conn
@@ -181,8 +189,11 @@ func (w *WorkerRelay) wrapRelayMultipathConn(serverAddress string, serverIP neti
 	}
 
 	multipathConn := newRelayMultipathConn(channels, w.config.WgConfig.AllowedIps, nil)
+	multipathConn.setChannelReopener(func(ctx context.Context, channelID uint32) (net.Conn, error) {
+		return w.relayManager.OpenConnChannel(ctx, serverAddress, w.config.Key, serverIP, channelID)
+	})
 	multipathConn.setUnregisterObserver(filteredDevice.AddPacketObserver(multipathConn))
-	w.log.Infof("anonymous relay multipath enabled with %d/%d channels", len(channels), channelCount)
+	w.log.Infof("anonymous relay multipath enabled with %d/%d channels, strategy=%s", len(channels), channelCount, multipathConn.writeStrategy)
 	return multipathConn, nil
 }
 
@@ -194,5 +205,23 @@ func (w *WorkerRelay) relayMultipathChannelCount() int {
 	if transport.Type != anonymous.TransportTorRelayOnly {
 		return 1
 	}
-	return relayMultipathDefaultChannels
+	return w.configuredRelayMultipathChannelCount()
+}
+
+func (w *WorkerRelay) configuredRelayMultipathChannelCount() int {
+	raw := strings.TrimSpace(os.Getenv(envAnonRelayMultipathChannels))
+	if raw == "" {
+		return relayMultipathDefaultChannels
+	}
+
+	count, err := strconv.Atoi(raw)
+	if err != nil || count < 1 {
+		w.log.Warnf("invalid %s=%q, using %d anonymous relay multipath channels", envAnonRelayMultipathChannels, raw, relayMultipathDefaultChannels)
+		return relayMultipathDefaultChannels
+	}
+	if count > relayMultipathMaxChannels {
+		w.log.Warnf("%s=%d exceeds maximum %d, capping anonymous relay multipath channels", envAnonRelayMultipathChannels, count, relayMultipathMaxChannels)
+		return relayMultipathMaxChannels
+	}
+	return count
 }

@@ -1386,10 +1386,21 @@ func unhealthyEmitReason(immediate, everHealthy bool, elapsed, delay time.Durati
 
 // PopulateManagementDomain populates the DNS cache with management domain
 func (s *DefaultServer) PopulateManagementDomain(mgmtURL *url.URL) error {
+	if isAnonymousManagementURL(mgmtURL) {
+		log.Debugf("skipping DNS cache population for anonymous management URL host %s", mgmtURL.Hostname())
+		return nil
+	}
 	if s.mgmtCacheResolver != nil {
 		return s.mgmtCacheResolver.PopulateFromConfig(s.ctx, mgmtURL)
 	}
 	return nil
+}
+
+func isAnonymousManagementURL(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	return dnsconfig.IsAnonymousHost(u.Hostname())
 }
 
 // localPeerConnectivity adapts *peer.Status to local.PeerConnectivity so

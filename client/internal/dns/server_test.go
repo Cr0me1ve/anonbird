@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"runtime"
 	"testing"
@@ -26,6 +27,7 @@ import (
 	pfmock "github.com/netbirdio/netbird/client/iface/mocks"
 	"github.com/netbirdio/netbird/client/iface/wgaddr"
 	"github.com/netbirdio/netbird/client/internal/dns/local"
+	"github.com/netbirdio/netbird/client/internal/dns/mgmt"
 	"github.com/netbirdio/netbird/client/internal/dns/test"
 	"github.com/netbirdio/netbird/client/internal/dns/types"
 	"github.com/netbirdio/netbird/client/internal/netflow"
@@ -913,6 +915,27 @@ func createWgInterfaceWithBind(t *testing.T) (*iface.WGIface, error) {
 	}
 
 	return wgIface, nil
+}
+
+func TestPopulateManagementDomainSkipsAnonymousHosts(t *testing.T) {
+	resolver := mgmt.NewResolver()
+	dnsServer := &DefaultServer{
+		ctx:               context.Background(),
+		mgmtCacheResolver: resolver,
+	}
+
+	for _, rawURL := range []string{
+		"http://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80",
+		"http://abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.b32.i2p:80",
+	} {
+		t.Run(rawURL, func(t *testing.T) {
+			parsed, err := url.Parse(rawURL)
+			require.NoError(t, err)
+
+			require.NoError(t, dnsServer.PopulateManagementDomain(parsed))
+			require.Empty(t, resolver.GetCachedDomains())
+		})
+	}
 }
 
 func newDnsResolver(ip netip.Addr, port int) *net.Resolver {

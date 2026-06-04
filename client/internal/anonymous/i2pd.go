@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -114,8 +115,8 @@ func startI2PDaemon(ctx context.Context, transport TransportConfig) (*I2PDaemon,
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create i2pd data dir %s: %w", dataDir, err)
 	}
-	if err := os.MkdirAll(filepath.Join(dataDir, "tunnels.d"), 0o700); err != nil {
-		return nil, fmt.Errorf("create i2pd tunnels dir %s: %w", dataDir, err)
+	if err := ensureI2PDataDirLayout(dataDir); err != nil {
+		return nil, err
 	}
 	if err := writeI2PDConfig(dataDir, transport.I2PSAM); err != nil {
 		return nil, err
@@ -126,11 +127,27 @@ func startI2PDaemon(ctx context.Context, transport TransportConfig) (*I2PDaemon,
 	if err != nil {
 		return nil, fmt.Errorf("open i2pd log %s: %w", logPath, err)
 	}
+	if err := prepareI2PDataDirOwnership(dataDir); err != nil {
+		_ = logFile.Close()
+		return nil, err
+	}
 
-	args := i2pdArgs(dataDir)
+	pidFile, err := i2pPIDFile(dataDir)
+	if err != nil {
+		_ = logFile.Close()
+		return nil, err
+	}
+
+	args := i2pdArgs(dataDir, pidFile)
 	cmd := exec.CommandContext(ctx, binaryPath, args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
+	if uid, gid, ok, err := packagedI2PUserIDsForRoot(); err != nil {
+		_ = logFile.Close()
+		return nil, err
+	} else if ok {
+		setI2PCommandCredential(cmd, uid, gid)
+	}
 
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
@@ -213,13 +230,13 @@ func waitForI2PSAM(ctx context.Context, samAddress string, daemon *I2PDaemon) er
 	}
 }
 
-func i2pdArgs(dataDir string) []string {
+func i2pdArgs(dataDir, pidFile string) []string {
 	return []string{
 		"--datadir=" + dataDir,
 		"--conf=" + filepath.Join(dataDir, "i2pd.conf"),
 		"--tunconf=" + filepath.Join(dataDir, "tunnels.conf"),
 		"--tunnelsdir=" + filepath.Join(dataDir, "tunnels.d"),
-		"--pidfile=" + filepath.Join(dataDir, "i2pd.pid"),
+		"--pidfile=" + pidFile,
 	}
 }
 
@@ -268,6 +285,99 @@ func writeI2PDConfig(dataDir, samAddress string) error {
 		return fmt.Errorf("write i2pd tunnels config: %w", err)
 	}
 	return nil
+}
+
+func ensureI2PDataDirLayout(dataDir string) error {
+	for _, dir := range []string{"tunnels.d", "destinations"} {
+		path := filepath.Join(dataDir, dir)
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			return fmt.Errorf("create i2pd %s dir %s: %w", dir, path, err)
+		}
+	}
+	return nil
+}
+
+func prepareI2PDataDirOwnership(dataDir string) error {
+	uid, gid, ok, err := packagedI2PUserIDsForRoot()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	if parent := i2pPackagedHomeParent(dataDir); parent != "" {
+		if err := os.Chown(parent, uid, gid); err != nil {
+			return fmt.Errorf("chown %s to i2pd: %w", parent, err)
+		}
+	}
+
+	if err := filepath.WalkDir(dataDir, func(path string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if chownErr := os.Chown(path, uid, gid); chownErr != nil {
+			return fmt.Errorf("chown %s to i2pd: %w", path, chownErr)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("prepare i2pd data dir ownership: %w", err)
+	}
+	return nil
+}
+
+func packagedI2PUserIDsForRoot() (int, int, bool, error) {
+	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
+		return 0, 0, false, nil
+	}
+
+	i2pUser, err := user.Lookup("i2pd")
+	if err != nil {
+		if _, ok := err.(user.UnknownUserError); ok {
+			return 0, 0, false, nil
+		}
+		return 0, 0, false, fmt.Errorf("lookup i2pd user: %w", err)
+	}
+	uid, err := strconv.Atoi(i2pUser.Uid)
+	if err != nil {
+		return 0, 0, false, fmt.Errorf("parse i2pd uid %q: %w", i2pUser.Uid, err)
+	}
+	gid, err := strconv.Atoi(i2pUser.Gid)
+	if err != nil {
+		return 0, 0, false, fmt.Errorf("parse i2pd gid %q: %w", i2pUser.Gid, err)
+	}
+	return uid, gid, true, nil
+}
+
+func i2pPIDFile(dataDir string) (string, error) {
+	uid, gid, ok, err := packagedI2PUserIDsForRoot()
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return filepath.Join(dataDir, "i2pd.pid"), nil
+	}
+
+	runtimeDir := filepath.Join(string(os.PathSeparator), "run", "i2pd")
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		return "", fmt.Errorf("create i2pd runtime dir %s: %w", runtimeDir, err)
+	}
+	if err := os.Chown(runtimeDir, uid, gid); err != nil {
+		return "", fmt.Errorf("chown %s to i2pd: %w", runtimeDir, err)
+	}
+	pidFile := filepath.Join(runtimeDir, "i2pd.pid")
+	if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("remove stale i2pd pid file %s: %w", pidFile, err)
+	}
+	return pidFile, nil
+}
+
+func i2pPackagedHomeParent(dataDir string) string {
+	parent := filepath.Clean(filepath.Dir(dataDir))
+	if parent == filepath.Join(string(os.PathSeparator), "var", "lib", "i2pd") {
+		return parent
+	}
+	return ""
 }
 
 func defaultI2PDataDir() (string, error) {

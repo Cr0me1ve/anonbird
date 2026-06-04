@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -93,6 +94,39 @@ func TestInstallSystemPackageFallsBackToSudo(t *testing.T) {
 
 	require.NoError(t, installSystemPackage(context.Background(), "i2pd"))
 	require.Equal(t, expectedSudoCommands, commands)
+}
+
+func TestInstallSystemPackageAptInstallFallbackWhenUpdateFails(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("apt-get fallback is linux-specific")
+	}
+
+	restore := overrideDependencyHooks(t)
+	defer restore()
+
+	lookPath = func(name string) (string, error) {
+		switch name {
+		case "apt-get":
+			return "/usr/bin/apt-get", nil
+		default:
+			return "", exec.ErrNotFound
+		}
+	}
+
+	var commands []string
+	runInstallStep = func(_ context.Context, name string, args ...string) error {
+		commands = append(commands, name+" "+strings.Join(args, " "))
+		if len(args) > 0 && args[0] == "update" {
+			return errors.New("third-party repository failed")
+		}
+		return nil
+	}
+
+	require.NoError(t, installSystemPackage(context.Background(), "tor"))
+	require.Equal(t, []string{
+		"apt-get update",
+		"apt-get install -y tor",
+	}, commands)
 }
 
 func overrideDependencyHooks(t *testing.T) func() {

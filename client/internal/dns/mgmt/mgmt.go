@@ -175,6 +175,11 @@ func (m *Resolver) continueToNext(w dns.ResponseWriter, r *dns.Msg) {
 // A family that resolves NODATA (nil err, zero records) evicts any stale
 // entry for that qtype.
 func (m *Resolver) AddDomain(ctx context.Context, d domain.Domain) error {
+	if dnsconfig.IsAnonymousDomain(d) {
+		log.Debugf("skipping DNS cache population for anonymous management domain=%s", d.SafeString())
+		return m.RemoveDomain(d)
+	}
+
 	dnsName := strings.ToLower(dns.Fqdn(d.PunycodeString()))
 
 	ctx, cancel := context.WithTimeout(ctx, dnsTimeout)
@@ -441,6 +446,11 @@ func (m *Resolver) PopulateFromConfig(ctx context.Context, mgmtURL *url.URL) err
 	m.mutex.Lock()
 	m.mgmtDomain = &d
 	m.mutex.Unlock()
+
+	if dnsconfig.IsAnonymousDomain(d) {
+		log.Debugf("skipping DNS cache population for anonymous management URL domain=%s", d.SafeString())
+		return nil
+	}
 
 	if err := m.AddDomain(ctx, d); err != nil {
 		return fmt.Errorf("add domain: %w", err)

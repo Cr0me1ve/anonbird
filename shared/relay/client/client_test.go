@@ -14,6 +14,7 @@ import (
 	"github.com/netbirdio/netbird/client/iface"
 	"github.com/netbirdio/netbird/shared/relay/auth/allow"
 	"github.com/netbirdio/netbird/shared/relay/auth/hmac"
+	"github.com/netbirdio/netbird/shared/relay/client/dialer/ws"
 	"github.com/netbirdio/netbird/util"
 
 	"github.com/netbirdio/netbird/relay/server"
@@ -39,8 +40,34 @@ func TestClientGetDialersWithSOCKS5UsesWebSocketOnly(t *testing.T) {
 	if got := dialers[0].Protocol(); got != "WS" {
 		t.Fatalf("expected WebSocket-only anonymous relay dialer, got %s", got)
 	}
+	wsDialer, ok := dialers[0].(ws.Dialer)
+	if !ok {
+		t.Fatalf("expected WS dialer type, got %T", dialers[0])
+	}
+	if wsDialer.Socks5Username != "" || wsDialer.Socks5Password != "" {
+		t.Fatalf("expected Tor SOCKS isolation to be opt-in, got username=%q password=%q", wsDialer.Socks5Username, wsDialer.Socks5Password)
+	}
 	if !client.usesAnonymousRelayTransport() {
 		t.Fatal("expected SOCKS5 relay client to use anonymous health-check timings")
+	}
+}
+
+func TestClientGetDialersWithSOCKS5IsolatesRelayChannels(t *testing.T) {
+	t.Setenv(envAnonRelayTorSOCKSIsolation, "true")
+	baseClient := newClientWithRelayChannel("rels://relayexampleabcdefghijklmnop.onion:443", netip.Addr{}, hmacTokenStore, "alice", iface.DefaultMTU, "127.0.0.1:9050", "", 0, 0, 0)
+	channelClient := newClientWithRelayChannel("rels://relayexampleabcdefghijklmnop.onion:443", netip.Addr{}, hmacTokenStore, "alice", iface.DefaultMTU, "127.0.0.1:9050", "", 0, 0, 7)
+
+	baseDialer := baseClient.getDialers()[0].(ws.Dialer)
+	channelDialer := channelClient.getDialers()[0].(ws.Dialer)
+
+	if baseDialer.Socks5Username != channelDialer.Socks5Username {
+		t.Fatalf("expected Tor SOCKS auth extension username to stay stable, got %q and %q", baseDialer.Socks5Username, channelDialer.Socks5Username)
+	}
+	if baseDialer.Socks5Password == channelDialer.Socks5Password {
+		t.Fatalf("expected distinct Tor isolation tokens, got %q", baseDialer.Socks5Password)
+	}
+	if channelDialer.Socks5Password != torRelayIsolationToken(7) {
+		t.Fatalf("unexpected channel isolation token %q", channelDialer.Socks5Password)
 	}
 }
 

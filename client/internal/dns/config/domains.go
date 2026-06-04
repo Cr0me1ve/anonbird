@@ -62,6 +62,18 @@ func ExtractValidDomain(rawURL string) (domain.Domain, error) {
 	return extractFromRawString(rawURL)
 }
 
+// IsAnonymousDomain returns true for hostnames that must be resolved by an
+// anonymous transport stack instead of the system DNS resolver.
+func IsAnonymousDomain(d domain.Domain) bool {
+	return IsAnonymousHost(d.PunycodeString())
+}
+
+// IsAnonymousHost returns true for Tor and I2P hostnames.
+func IsAnonymousHost(host string) bool {
+	normalized := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	return strings.HasSuffix(normalized, ".onion") || strings.HasSuffix(normalized, ".i2p")
+}
+
 // extractFromParsedURL handles domain extraction from successfully parsed URLs
 func extractFromParsedURL(parsedURL *url.URL) (domain.Domain, error) {
 	if parsedURL.Hostname() != "" {

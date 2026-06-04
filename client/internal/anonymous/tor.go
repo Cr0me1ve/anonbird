@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -140,6 +141,10 @@ func startTorDaemon(ctx context.Context, transport TransportConfig) (*TorDaemon,
 	if err != nil {
 		return nil, fmt.Errorf("open tor log %s: %w", logPath, err)
 	}
+	if err := prepareTorDataDirOwnership(dataDir); err != nil {
+		_ = logFile.Close()
+		return nil, err
+	}
 
 	args := []string{"-f", filepath.Join(dataDir, "torrc")}
 	cmd := exec.CommandContext(ctx, binaryPath, args...)
@@ -230,10 +235,9 @@ func writeTorConfig(dataDir, socksAddress string) error {
 	}
 	host = normalizeLoopbackHost(host)
 
-	logPath := filepath.Join(dataDir, "tor.log")
-	torrc := strings.Join([]string{
+	torrcLines := []string{
 		"DataDirectory " + torrcQuote(dataDir),
-		"SocksPort " + net.JoinHostPort(host, port),
+		"SocksPort " + net.JoinHostPort(host, port) + " IsolateSOCKSAuth KeepAliveIsolateSOCKSAuth",
 		"ClientOnly 1",
 		"SafeSocks 1",
 		"TestSocks 1",
@@ -241,10 +245,15 @@ func writeTorConfig(dataDir, socksAddress string) error {
 		"DNSPort 0",
 		"TransPort 0",
 		"RunAsDaemon 0",
-		"Log notice file " + torrcQuote(logPath),
-		"",
-	}, "\n")
+	}
+	if torUser, ok, err := lookupPackagedTorUserForRoot(); err != nil {
+		return err
+	} else if ok {
+		torrcLines = append(torrcLines, "User "+torUser.Username)
+	}
 
+	torrcLines = append(torrcLines, "Log notice stdout", "")
+	torrc := strings.Join(torrcLines, "\n")
 	if err := os.WriteFile(filepath.Join(dataDir, "torrc"), []byte(torrc), 0o600); err != nil {
 		return fmt.Errorf("write tor config: %w", err)
 	}
@@ -263,6 +272,58 @@ func normalizeLoopbackHost(host string) string {
 		return "127.0.0.1"
 	}
 	return host
+}
+
+func prepareTorDataDirOwnership(dataDir string) error {
+	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
+		return nil
+	}
+
+	torUser, ok, err := lookupPackagedTorUserForRoot()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	uid, err := strconv.Atoi(torUser.Uid)
+	if err != nil {
+		return fmt.Errorf("parse tor uid %q: %w", torUser.Uid, err)
+	}
+	gid, err := strconv.Atoi(torUser.Gid)
+	if err != nil {
+		return fmt.Errorf("parse tor gid %q: %w", torUser.Gid, err)
+	}
+
+	if err := filepath.WalkDir(dataDir, func(path string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if chownErr := os.Chown(path, uid, gid); chownErr != nil {
+			return fmt.Errorf("chown %s to tor user: %w", path, chownErr)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("prepare tor data dir ownership: %w", err)
+	}
+	return nil
+}
+
+func lookupPackagedTorUserForRoot() (*user.User, bool, error) {
+	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
+		return nil, false, nil
+	}
+	for _, username := range []string{"debian-tor", "tor"} {
+		torUser, err := user.Lookup(username)
+		if err == nil {
+			return torUser, true, nil
+		}
+		if _, ok := err.(user.UnknownUserError); ok {
+			continue
+		}
+		return nil, false, fmt.Errorf("lookup tor user %s: %w", username, err)
+	}
+	return nil, false, nil
 }
 
 func defaultTorDataDir() (string, error) {

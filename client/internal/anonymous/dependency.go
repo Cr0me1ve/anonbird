@@ -74,18 +74,22 @@ func installSystemPackage(ctx context.Context, packageName string) error {
 	}
 	log.Infof("installing anonymous runtime dependency package %q with %s", packageName, manager)
 
-	if err := runInstallSteps(ctx, steps); err == nil {
+	err = runInstallStepsWithOptionalSudo(ctx, manager, steps)
+	if err == nil {
 		return nil
-	} else if managerAllowsSudo(manager) {
-		sudoPath, sudoErr := lookPath("sudo")
-		if sudoErr != nil {
-			return err
-		}
-		log.Debugf("package install with %s failed, retrying with sudo -n: %v", manager, err)
-		return runInstallStepsWithSudo(ctx, sudoPath, steps)
-	} else {
-		return err
 	}
+
+	if manager == "apt-get" {
+		fallback := []installStep{{name: "apt-get", args: []string{"install", "-y", packageName}}}
+		log.Warnf("apt-get update/install failed, retrying install without update: %v", err)
+		if fallbackErr := runInstallStepsWithOptionalSudo(ctx, manager, fallback); fallbackErr == nil {
+			return nil
+		} else {
+			return fmt.Errorf("%w; apt-get install fallback failed: %v", err, fallbackErr)
+		}
+	}
+
+	return err
 }
 
 func managerAllowsSudo(manager string) bool {
@@ -141,6 +145,21 @@ func runInstallSteps(ctx context.Context, steps []installStep) error {
 		}
 	}
 	return nil
+}
+
+func runInstallStepsWithOptionalSudo(ctx context.Context, manager string, steps []installStep) error {
+	if err := runInstallSteps(ctx, steps); err == nil {
+		return nil
+	} else if managerAllowsSudo(manager) {
+		sudoPath, sudoErr := lookPath("sudo")
+		if sudoErr != nil {
+			return err
+		}
+		log.Debugf("package install with %s failed, retrying with sudo -n: %v", manager, err)
+		return runInstallStepsWithSudo(ctx, sudoPath, steps)
+	} else {
+		return err
+	}
 }
 
 func runInstallStepsWithSudo(ctx context.Context, sudoPath string, steps []installStep) error {

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/netbirdio/netbird/shared/management/domain"
 )
 
 func TestExtractValidDomain(t *testing.T) {
@@ -162,6 +164,52 @@ func TestExtractValidDomain(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsAnonymousHost(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want bool
+	}{
+		{
+			name: "tor onion",
+			host: "exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion",
+			want: true,
+		},
+		{
+			name: "i2p b32",
+			host: "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.b32.i2p",
+			want: true,
+		},
+		{
+			name: "mixed case with trailing dot",
+			host: "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJK.B32.I2P.",
+			want: true,
+		},
+		{
+			name: "clearnet",
+			host: "signal.example.com",
+			want: false,
+		},
+		{
+			name: "suffix text not enough",
+			host: "signal.onion.example.com",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsAnonymousHost(tt.host))
+		})
+	}
+}
+
+func TestIsAnonymousDomain(t *testing.T) {
+	d, err := domain.FromString("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.b32.i2p")
+	assert.NoError(t, err)
+	assert.True(t, IsAnonymousDomain(d))
 }
 
 func TestExtractDomainFromHost(t *testing.T) {

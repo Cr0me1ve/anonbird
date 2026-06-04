@@ -56,11 +56,28 @@ func TestWriteI2PDConfig(t *testing.T) {
 
 func TestI2PDArgsUseManagedTunnelsDir(t *testing.T) {
 	dataDir := t.TempDir()
+	pidFile := filepath.Join(dataDir, "i2pd.pid")
 
-	args := i2pdArgs(dataDir)
+	args := i2pdArgs(dataDir, pidFile)
 
 	require.Contains(t, args, "--tunconf="+filepath.Join(dataDir, "tunnels.conf"))
 	require.Contains(t, args, "--tunnelsdir="+filepath.Join(dataDir, "tunnels.d"))
+	require.Contains(t, args, "--pidfile="+pidFile)
+}
+
+func TestEnsureI2PDataDirLayout(t *testing.T) {
+	dataDir := t.TempDir()
+
+	require.NoError(t, ensureI2PDataDirLayout(dataDir))
+	require.DirExists(t, filepath.Join(dataDir, "tunnels.d"))
+	require.DirExists(t, filepath.Join(dataDir, "destinations"))
+}
+
+func TestI2PPackagedHomeParent(t *testing.T) {
+	dataDir := filepath.Join(string(os.PathSeparator), "var", "lib", "i2pd", "anonbird")
+
+	require.Equal(t, filepath.Dir(dataDir), i2pPackagedHomeParent(dataDir))
+	require.Empty(t, i2pPackagedHomeParent(filepath.Join(t.TempDir(), "anonbird")))
 }
 
 func startFakeSAM(t *testing.T) string {

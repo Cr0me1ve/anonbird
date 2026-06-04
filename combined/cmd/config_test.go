@@ -180,6 +180,52 @@ server:
 	}
 }
 
+func TestLoadConfigAllowsAnonymousManagementAndRelayOverrides(t *testing.T) {
+	configPath := writeCombinedConfig(t, `
+server:
+  listenAddress: "127.0.0.1:8080"
+  exposedAddress: "https://vpn.example.com:443"
+  stunPorts: []
+  authSecret: "server-secret"
+  dataDir: "/tmp/anonbird-test"
+  auth:
+    issuer: "https://vpn.example.com/oauth2"
+  store:
+    engine: "sqlite"
+management:
+  signalUri: "http://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80"
+  relays:
+    addresses:
+      - "rel://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80"
+    credentialsTTL: "12h"
+    secret: "relay-secret"
+relay:
+  exposedAddress: "rel://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80"
+  authSecret: "relay-secret"
+`)
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+
+	if cfg.Management.SignalURI != "http://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80" {
+		t.Fatalf("unexpected management signal URI: %q", cfg.Management.SignalURI)
+	}
+	if len(cfg.Management.Relays.Addresses) != 1 || cfg.Management.Relays.Addresses[0] != "rel://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80" {
+		t.Fatalf("unexpected management relay addresses: %v", cfg.Management.Relays.Addresses)
+	}
+	if cfg.Management.Relays.Secret != "relay-secret" {
+		t.Fatalf("unexpected management relay secret: %q", cfg.Management.Relays.Secret)
+	}
+	if cfg.Relay.ExposedAddress != "rel://exampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampleexampld.onion:80" {
+		t.Fatalf("unexpected relay exposed address: %q", cfg.Relay.ExposedAddress)
+	}
+	if cfg.Relay.AuthSecret != "relay-secret" {
+		t.Fatalf("unexpected relay auth secret: %q", cfg.Relay.AuthSecret)
+	}
+}
+
 func TestHostFromListenAddress(t *testing.T) {
 	if got := hostFromListenAddress("127.0.0.1:8080"); got != "127.0.0.1" {
 		t.Fatalf("hostFromListenAddress() = %q, want %q", got, "127.0.0.1")

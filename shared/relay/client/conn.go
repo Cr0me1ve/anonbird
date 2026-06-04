@@ -1,11 +1,14 @@
 package client
 
 import (
+	"errors"
 	"net"
 	"time"
 
 	"github.com/netbirdio/netbird/shared/relay/messages"
 )
+
+var errRelayConnDeadlineUnsupported = errors.New("relay conn deadlines are not supported")
 
 // Conn represent a connection to a relayed remote peer.
 type Conn struct {
@@ -46,16 +49,13 @@ func (c *Conn) RemoteAddr() net.Addr {
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {
-	//TODO implement me
-	panic("SetDeadline is not implemented")
+	return errRelayConnDeadlineUnsupported
 }
 
 func (c *Conn) SetReadDeadline(t time.Time) error {
-	//TODO implement me
-	panic("SetReadDeadline is not implemented")
+	return errRelayConnDeadlineUnsupported
 }
 
 func (c *Conn) SetWriteDeadline(t time.Time) error {
-	//TODO implement me
-	panic("SetReadDeadline is not implemented")
+	return errRelayConnDeadlineUnsupported
 }
