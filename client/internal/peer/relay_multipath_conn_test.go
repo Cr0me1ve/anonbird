@@ -633,6 +633,7 @@ func TestRelayMultipathTelemetrySnapshotIncludesChannelStats(t *testing.T) {
 	conn.markChannelCongested(0)
 	require.True(t, conn.tryReserveChannelPendingBytes(0, 128))
 	conn.addChannelActiveWriteBytes(0, 64)
+	conn.ObservePacket(relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000), true)
 
 	snapshot := conn.telemetrySnapshot(time.Now())
 	require.Len(t, snapshot, 1)
@@ -648,6 +649,7 @@ func TestRelayMultipathTelemetrySnapshotIncludesChannelStats(t *testing.T) {
 	require.Equal(t, int64(256), snapshot[0].writtenSinceRead)
 	require.Equal(t, uint64(1), snapshot[0].congestions)
 	require.Zero(t, snapshot[0].stalls)
+	require.Equal(t, 1, snapshot[0].assignedFlows)
 	require.Positive(t, snapshot[0].writeEWMA)
 }
 

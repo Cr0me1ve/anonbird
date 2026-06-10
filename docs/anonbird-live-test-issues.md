@@ -1065,3 +1065,89 @@ Next live retest status:
 - After deployment, rerun status, real-IP checks, ping, `iperf3 -P 4`, and
   telemetry specifically checking that handshakes recover without waiting for a
   single primary Tor stream.
+
+## 2026-06-10: Tor handshake rotation live retest
+
+Deployment:
+
+- Deployed client version: `development-local-tor-handshake-rr`.
+- Deployed client SHA256:
+  `cb97049c01b09dea1d2657024d969abe2050635d296912188c6718e06bbaa1fe`.
+- Gzip SHA256:
+  `8e73d6e303f5cae1b4428f49a2f617585e2e9371d3cdc6d36ae9f9e5f9e6070e`.
+- Installed on `45.138.103.224`, `185.246.220.249`,
+  `213.108.2.95`, and `83.171.225.115`.
+- All four clients reported matching version/SHA, `anonbird=active`,
+  `netbird=inactive`, management/signal connected, relay `1/1 Available`,
+  and `Peers count: 3/14 Connected`.
+- Real peer IPv4 checks against `ss -Htnp | grep anonbird` were empty on all
+  four hosts.
+
+Ping after warmup, `ping -c 6 -W 12 -i 0.5`:
+
+| Direction | Result |
+| --- | --- |
+| `45 -> 185` | 6/6, avg 888 ms |
+| `45 -> 213` | 6/6, avg 1691 ms |
+| `45 -> 83` | 6/6, avg 805 ms |
+| `185 -> 45` | 6/6, avg 858 ms |
+| `185 -> 213` | 6/6, avg 783 ms |
+| `185 -> 83` | 6/6, avg 1330 ms |
+| `213 -> 45` | 6/6, avg 1875 ms |
+| `213 -> 185` | 6/6, avg 988 ms |
+| `213 -> 83` | 6/6, avg 769 ms |
+| `83 -> 45` | 6/6, avg 6957 ms |
+| `83 -> 185` | 6/6, avg 629 ms |
+| `83 -> 213` | 6/6, avg 577 ms |
+
+Tor `iperf3 -P 4 -t 20`, with `iperf3 -s` restarted before each measured
+direction where noted:
+
+| Direction | Result |
+| --- | --- |
+| `45 -> 185` | sender 11.4 Mbit/s, receiver 7.51 Mbit/s |
+| `185 -> 45` | sender 10.1 Mbit/s, receiver 5.65 Mbit/s |
+| `185 -> 83` | sender 11.5 Mbit/s, receiver 7.63 Mbit/s |
+| `83 -> 185` | sender 8.39 Mbit/s, receiver 5.64 Mbit/s |
+| `45 -> 83` | sender 6.81 Mbit/s, receiver 3.59 Mbit/s |
+| `83 -> 45` | sender 6.29 Mbit/s, receiver 3.63 Mbit/s |
+| `45 -> 213` | TCP streams connected, then `iperf3` control reset |
+| `213 -> 45` | TCP streams connected, then zero useful transfer/control failure |
+| `213 -> 83` | TCP streams connected, then `iperf3` control reset |
+| `83 -> 213` | TCP streams connected, then `iperf3` control reset |
+
+Conclusion:
+
+- The handshake/control channel rotation fixed the worst liveness failure:
+  after load, all four clients still reported their three live test peers as
+  connected, relayed, with no direct ICE endpoints and no direct real-peer TCP
+  connections.
+- The target is now reached on several Tor directions for 20-second bulk tests:
+  `45 <-> 185` and `185 <-> 83` sustained 5.6-7.6 Mbit/s receiver-side and
+  8.4-11.5 Mbit/s sender-side.
+- The target is not met across the full pool. Paths involving `213.108.2.95`
+  still often establish TCP but fail during the `iperf3` control/result phase.
+
+Pacing/in-flight follow-up:
+
+- A systemd drop-in with `NB_ANON_RELAY_MULTIPATH_PACING_MS=1` and
+  `NB_ANON_RELAY_MULTIPATH_CHANNEL_MAX_INFLIGHT_BYTES=262144` was initially
+  misleading because `/etc/sysconfig/anonbird` still overrode those values for
+  the actual daemon process.
+- After applying the values directly to `/etc/sysconfig/anonbird` and verifying
+  `/proc/$PID/environ`, the real profile worsened latency/loss on at least
+  `213 -> 45` (`1/6` ping delivered in the first probe) and produced very long
+  RTT tails on some paths.
+- The live pool was reverted to the previously verified profile:
+  `NB_ANON_RELAY_MULTIPATH_PACING_MS=0` and
+  `NB_ANON_RELAY_MULTIPATH_CHANNEL_MAX_INFLIGHT_BYTES=0`.
+
+Remaining Tor issue:
+
+- Live telemetry still shows some bulk relay connections using channel `0`
+  almost exclusively even when `flows=5` and four channels are configured.
+- Next code direction: add telemetry for flow assignment counts per channel and
+  inspect why healthy secondary relay channels are not selected in some live
+  flow-affine paths. If plaintext flow hints are missing or delayed, the
+  fallback must distribute data over healthy channels more deterministically
+  without breaking per-flow ordering.

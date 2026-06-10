@@ -153,6 +153,7 @@ type relayMultipathTelemetryChannel struct {
 	readIdle          time.Duration
 	writeIdle         time.Duration
 	queueLen          int
+	assignedFlows     int
 	selectedWrites    uint64
 	selectedSinceRead uint64
 	readFrames        uint64
@@ -1138,7 +1139,7 @@ func (c *relayMultipathConn) logTelemetrySnapshot() {
 		}
 		_, _ = fmt.Fprintf(
 			&b,
-			"{id=%d healthy=%t stalled=%t pending=%d active=%d ewma=%s cooldown=%s pace_wait=%s read_idle=%s write_idle=%s queue=%d selected=%d selected_since_read=%d read_frames=%d read_bytes=%d written_bytes=%d written_since_read=%d failures=%d congestions=%d stalls=%d}",
+			"{id=%d healthy=%t stalled=%t pending=%d active=%d ewma=%s cooldown=%s pace_wait=%s read_idle=%s write_idle=%s queue=%d assigned_flows=%d selected=%d selected_since_read=%d read_frames=%d read_bytes=%d written_bytes=%d written_since_read=%d failures=%d congestions=%d stalls=%d}",
 			channel.id,
 			channel.healthy,
 			channel.stalled,
@@ -1150,6 +1151,7 @@ func (c *relayMultipathConn) logTelemetrySnapshot() {
 			channel.readIdle,
 			channel.writeIdle,
 			channel.queueLen,
+			channel.assignedFlows,
 			channel.selectedWrites,
 			channel.selectedSinceRead,
 			channel.readFrames,
@@ -1219,6 +1221,10 @@ func (c *relayMultipathConn) telemetrySnapshot(now time.Time) []relayMultipathTe
 		}
 	}
 	c.batchMu.Unlock()
+	flowCounts := c.flowChannelCountSnapshot()
+	for i := range channels {
+		channels[i].assignedFlows = flowCounts[channels[i].id]
+	}
 	return channels
 }
 
@@ -1226,6 +1232,17 @@ func (c *relayMultipathConn) trackedFlowCount() int {
 	c.flowMu.Lock()
 	defer c.flowMu.Unlock()
 	return len(c.flowAssignments)
+}
+
+func (c *relayMultipathConn) flowChannelCountSnapshot() map[uint32]int {
+	c.flowMu.Lock()
+	defer c.flowMu.Unlock()
+
+	counts := make(map[uint32]int, len(c.flowChannelCounts))
+	for channelID, count := range c.flowChannelCounts {
+		counts[channelID] = count
+	}
+	return counts
 }
 
 func (c *relayMultipathConn) matchesAllowedDestination(dst netip.Addr) bool {
