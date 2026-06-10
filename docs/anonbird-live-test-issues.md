@@ -1187,6 +1187,17 @@ Follow-up finding:
   more than half of `NB_ANON_RELAY_MULTIPATH_READ_IDLE_MS`, even when those
   channels have no unanswered writes. Idle alone means "unused", not
   "unhealthy". This causes hints for assigned flows to fall back to channel `0`.
-- Fix in progress: allow a hinted secondary channel after idle if it has not
+- Implemented fix: allow a hinted secondary channel after idle if it has not
   accumulated unanswered writes since the last read/reset; keep rejecting it
   when silent/stalled write counters indicate a real blackhole.
+- Live result from `development-local-tor-idle-hint`: under `45 <-> 185`
+  `iperf3 -P 4 -t 15` load, channel selection is no longer pinned to channel
+  `0`. Example telemetry showed selected writes distributed across all four
+  channels (`45`: `421/617/1773/2101`, `185`: `697/394/3210/2097`) with
+  `raw_allowed=0`, `raw_other=0`, `unknown=0`, and all channels still healthy.
+- Remaining issue after this fix: throughput is still below target on the
+  measured pair. `185 -> 45` completed but only reached about `3.35 Mbit/s`
+  sender-side and `1.22 Mbit/s` receiver-side; `45 -> 185` moved data but still
+  failed to receive final `iperf3` results. The next suspect is not channel
+  selection anymore, but Tor/WebSocket buffering, batching flush behavior, or
+  TCP result/control fragility under high latency.
