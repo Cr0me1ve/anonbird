@@ -1157,9 +1157,22 @@ Follow-up finding:
 - After adding `assigned_flows` telemetry, live logs showed flow assignments
   distributed across channels (`2/1/1/1`) while writes still selected channel
   `0` almost exclusively.
-- Cause: the userspace relay path writes raw IPv4/IPv6 packets into
+- Hypothesis: the userspace relay path may write raw IPv4/IPv6 packets into
   `relayMultipathConn`, not only WireGuard transport-data frames. `Write`
-  applied flow-affine selection only to WireGuard type-4 packets, so raw IP
-  payloads fell back to the primary channel.
-- Fix in progress: classify raw IP packets inside `Write` and route them
-  through the same sticky per-flow channel assignment path.
+  currently applies flow-affine selection only to WireGuard type-4 packets, so
+  any non-WireGuard payload falls back to the primary channel.
+- A raw-IP routing candidate was built as `development-local-tor-raw-flow`
+  (`2ab0a117c1019762b45ee013165cdbeda40f7f5dd146068ed518b8a4805671d7`) and
+  deployed to the live pool. It was not stable enough for the pool: after
+  rollout `185.246.220.249` lost management/signal connectivity and the mesh
+  degraded to two connected test peers on the remaining nodes.
+- The pool was rolled back to the last verified stable build,
+  `development-local-tor-flow-telemetry`
+  (`cf7041b3a6fc4c7fa51458ab274ac599d4340d67fc6b55f0ebd8df2d1422331d`).
+  After restarting Tor and AnonBird on `185.246.220.249`, all four live nodes
+  again reported `Management: Connected`, `Signal: Connected`,
+  `Relays: 1/1 Available`, and `Peers count: 3/14 Connected`; direct real-peer
+  TCP checks remained `0`.
+- Next safe step: add telemetry-only payload classification for `Write`
+  (`wg_data`, handshake/control, raw IP to allowed destination, raw IP to other
+  destination, unknown) before attempting another routing change.
