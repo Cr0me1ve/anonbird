@@ -22,7 +22,7 @@ func (c *Client) getDialers() []dialer.DialeFn {
 	if c.socks5Proxy != "" {
 		c.log.Infof("anonymous relay transport enabled, forcing WebSocket over SOCKS5")
 		wsDialer := ws.Dialer{Socks5Proxy: c.socks5Proxy}
-		if torRelaySOCKSIsolationEnabled() {
+		if torRelaySOCKSIsolationEnabled(c.relayChannelID) {
 			wsDialer.Socks5Username = torSOCKSAuthExtensionUsername
 			wsDialer.Socks5Password = torRelayIsolationToken(c.relayChannelID)
 		}
@@ -47,11 +47,13 @@ func torRelayIsolationToken(channelID uint32) string {
 	return fmt.Sprintf("anonbird-relay-channel-%d", channelID)
 }
 
-func torRelaySOCKSIsolationEnabled() bool {
+func torRelaySOCKSIsolationEnabled(channelID uint32) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(envAnonRelayTorSOCKSIsolation))) {
 	case "1", "true", "yes", "on":
 		return true
-	default:
+	case "0", "false", "no", "off":
 		return false
+	default:
+		return channelID != 0
 	}
 }

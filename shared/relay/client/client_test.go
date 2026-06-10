@@ -45,10 +45,28 @@ func TestClientGetDialersWithSOCKS5UsesWebSocketOnly(t *testing.T) {
 		t.Fatalf("expected WS dialer type, got %T", dialers[0])
 	}
 	if wsDialer.Socks5Username != "" || wsDialer.Socks5Password != "" {
-		t.Fatalf("expected Tor SOCKS isolation to be opt-in, got username=%q password=%q", wsDialer.Socks5Username, wsDialer.Socks5Password)
+		t.Fatalf("expected primary Tor relay channel to avoid SOCKS isolation by default, got username=%q password=%q", wsDialer.Socks5Username, wsDialer.Socks5Password)
 	}
 	if !client.usesAnonymousRelayTransport() {
 		t.Fatal("expected SOCKS5 relay client to use anonymous health-check timings")
+	}
+}
+
+func TestClientGetDialersWithSOCKS5IsolatesDedicatedRelayChannelsByDefault(t *testing.T) {
+	baseClient := newClientWithRelayChannel("rels://relayexampleabcdefghijklmnop.onion:443", netip.Addr{}, hmacTokenStore, "alice", iface.DefaultMTU, "127.0.0.1:9050", "", 0, 0, 0)
+	channelClient := newClientWithRelayChannel("rels://relayexampleabcdefghijklmnop.onion:443", netip.Addr{}, hmacTokenStore, "alice", iface.DefaultMTU, "127.0.0.1:9050", "", 0, 0, 7)
+
+	baseDialer := baseClient.getDialers()[0].(ws.Dialer)
+	channelDialer := channelClient.getDialers()[0].(ws.Dialer)
+
+	if baseDialer.Socks5Username != "" || baseDialer.Socks5Password != "" {
+		t.Fatalf("expected primary channel to avoid SOCKS isolation by default, got username=%q password=%q", baseDialer.Socks5Username, baseDialer.Socks5Password)
+	}
+	if channelDialer.Socks5Username != torSOCKSAuthExtensionUsername {
+		t.Fatalf("unexpected dedicated channel isolation username %q", channelDialer.Socks5Username)
+	}
+	if channelDialer.Socks5Password != torRelayIsolationToken(7) {
+		t.Fatalf("unexpected dedicated channel isolation token %q", channelDialer.Socks5Password)
 	}
 }
 
@@ -68,6 +86,16 @@ func TestClientGetDialersWithSOCKS5IsolatesRelayChannels(t *testing.T) {
 	}
 	if channelDialer.Socks5Password != torRelayIsolationToken(7) {
 		t.Fatalf("unexpected channel isolation token %q", channelDialer.Socks5Password)
+	}
+}
+
+func TestClientGetDialersWithSOCKS5CanDisableRelayChannelIsolation(t *testing.T) {
+	t.Setenv(envAnonRelayTorSOCKSIsolation, "false")
+	channelClient := newClientWithRelayChannel("rels://relayexampleabcdefghijklmnop.onion:443", netip.Addr{}, hmacTokenStore, "alice", iface.DefaultMTU, "127.0.0.1:9050", "", 0, 0, 7)
+
+	channelDialer := channelClient.getDialers()[0].(ws.Dialer)
+	if channelDialer.Socks5Username != "" || channelDialer.Socks5Password != "" {
+		t.Fatalf("expected env=false to disable dedicated channel isolation, got username=%q password=%q", channelDialer.Socks5Username, channelDialer.Socks5Password)
 	}
 }
 

@@ -1212,3 +1212,8 @@ Follow-up finding:
 - Current best live Tor profile includes SOCKS isolation enabled. It is closer
   to the `5-15 Mbit/s` target, but receiver-side throughput is still below
   target on this pair.
+- Code follow-up: dedicated Tor relay channels now enable SOCKS auth isolation
+  by default, while the primary channel remains unisolated unless explicitly
+  requested. `NB_ANON_RELAY_TOR_SOCKS_ISOLATION=false` remains an override for
+  disabling secondary-channel isolation. This makes the faster Tor profile the
+  out-of-box behavior for URL+setup-key users without changing the CLI flow.
