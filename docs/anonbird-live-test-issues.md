@@ -1178,3 +1178,15 @@ Follow-up finding:
   `unknown`) before attempting another routing change. This does not change
   channel selection or packet bytes; it only exposes what the live write path is
   actually receiving.
+- Live result from `development-local-tor-payload-telemetry`: bulk/ping traffic
+  reports only WireGuard payloads (`raw_allowed=0`, `raw_other=0`,
+  `unknown=0`). The raw-IP hypothesis is therefore not the cause of the primary
+  channel bias.
+- New root cause: flow assignments are distributed across channels, but the
+  scoring gate rejects hinted secondary channels after they have been idle for
+  more than half of `NB_ANON_RELAY_MULTIPATH_READ_IDLE_MS`, even when those
+  channels have no unanswered writes. Idle alone means "unused", not
+  "unhealthy". This causes hints for assigned flows to fall back to channel `0`.
+- Fix in progress: allow a hinted secondary channel after idle if it has not
+  accumulated unanswered writes since the last read/reset; keep rejecting it
+  when silent/stalled write counters indicate a real blackhole.

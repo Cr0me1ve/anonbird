@@ -690,11 +690,25 @@ func (c *relayMultipathConn) preferredChannelReadyForFlow(channelID, bestChannel
 	}
 	if c.readIdlePenalty > 0 {
 		lastRead := stats.lastReadUnixNano.Load()
-		if lastRead > 0 && now.Sub(time.Unix(0, lastRead)) > c.readIdlePenalty/2 {
+		if lastRead > 0 && now.Sub(time.Unix(0, lastRead)) > c.readIdlePenalty/2 && c.channelHasUnansweredWrites(stats) {
 			return false
 		}
 	}
 	return true
+}
+
+func (c *relayMultipathConn) channelHasUnansweredWrites(stats *relayMultipathChannelStats) bool {
+	if stats.selectedSinceRead.Load() >= relayMultipathSilentWriteThreshold {
+		return true
+	}
+	if c.stallWriteBytes <= 0 {
+		return false
+	}
+	threshold := c.stallWriteBytes / 4
+	if threshold < 1 {
+		threshold = 1
+	}
+	return stats.writtenSinceRead.Load() >= threshold
 }
 
 func channelExcluded(channelID uint32, excluded map[uint32]struct{}) bool {

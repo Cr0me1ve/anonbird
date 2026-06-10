@@ -312,6 +312,25 @@ func TestRelayMultipathConnFlowAffineAvoidsSilentPreferredChannel(t *testing.T) 
 	}
 }
 
+func TestRelayMultipathConnFlowAffineUsesIdlePreferredChannelWithoutUnansweredWrites(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(2)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	conn.channelStats[1].lastReadUnixNano.Store(time.Now().Add(-conn.readIdlePenalty).UnixNano())
+	conn.enqueueHint(1)
+
+	packet := wireGuardDataPacket("bulk")
+	_, err := conn.Write(packet)
+	require.NoError(t, err)
+	require.Equal(t, packet, <-fakes[1].writes)
+	select {
+	case got := <-fakes[0].writes:
+		t.Fatalf("primary channel received hinted write %q", string(got))
+	default:
+	}
+}
+
 func TestRelayMultipathConnReopensStalledChannelAndReassignsFlow(t *testing.T) {
 	t.Setenv(envAnonRelayMultipathReadIdleMS, "1")
 	t.Setenv(envAnonRelayMultipathStallBytes, "8")
