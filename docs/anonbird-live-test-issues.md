@@ -943,6 +943,22 @@ Live infrastructure issues found:
      This preserves per-flow ordering while making fresh TCP flows use all Tor
      sub-channels deterministically.
 
+9. After the round-robin flow scheduler deploy, one host could keep management
+   and relay partly alive while WireGuard handshakes to peers timed out.
+   - Symptom: `185.246.220.249` reported relay availability but
+     management/signal deadline spikes and peers falling back to `Connecting`.
+     Other hosts logged repeated WireGuard handshake timeouts to that peer.
+   - Cause: WireGuard transport-data packets had multipath selection, but
+     WireGuard handshake/control packets still preferred the primary Tor relay
+     channel. A primary Tor stream can accept writes while being a poor path for
+     useful delivery, so handshakes could stall even when other relay channels
+     were healthy.
+   - Fix: handshake/control packets now rotate round-robin across healthy relay
+     channels without consuming plaintext flow hints. If all relay channels are
+     reopening, any WireGuard packet, including handshake/control, returns a
+     temporary `net.Error` so the userspace bind/proxy drops only that packet
+     and keeps the peer dataplane alive.
+
 Current four-node Tor test pool:
 
 | Host | Role | AnonBird IP | FQDN |
@@ -1041,8 +1057,11 @@ Conclusion from this retest:
 
 Next live retest status:
 
-- Pending fresh deployment of the round-robin new-flow scheduler to all four
-  hosts.
+- The round-robin new-flow scheduler was deployed as
+  `development-local-tor-flow-round-robin`, but the first live probe exposed
+  the handshake/control primary-channel stall described above.
+- Pending fresh deployment of the handshake/control channel-rotation fix to all
+  four hosts.
 - After deployment, rerun status, real-IP checks, ping, `iperf3 -P 4`, and
-  telemetry specifically checking that `selected` is non-zero on all four Tor
-  channels for fresh bulk flows.
+  telemetry specifically checking that handshakes recover without waiting for a
+  single primary Tor stream.

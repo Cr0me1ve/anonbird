@@ -122,13 +122,30 @@ func TestRelayMultipathConnDoesNotConsumeHintsForWireGuardHandshake(t *testing.T
 	packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
 
 	conn.ObservePacket(packet, true)
-	_, err := conn.Write([]byte{1, 0, 0, 0, 'h', 's'})
-	require.NoError(t, err)
-	require.Equal(t, []byte{1, 0, 0, 0, 'h', 's'}, <-fakes[0].writes)
+	var err error
+	for i := 0; i < len(channels); i++ {
+		handshake := []byte{1, 0, 0, 0, byte('a' + i)}
+		_, err = conn.Write(handshake)
+		require.NoError(t, err)
+		require.Equal(t, handshake, <-fakes[uint32(i)].writes)
+	}
 
 	_, err = conn.Write(wireGuardDataPacket("after-handshake"))
 	require.NoError(t, err)
 	require.Equal(t, wireGuardDataPacket("after-handshake"), <-fakes[0].writes)
+}
+
+func TestRelayMultipathConnHandshakeSkipsFailedControlChannel(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(3)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	fakes[0].writeErr = errors.New("control channel failed")
+	handshake := []byte{1, 0, 0, 0, 'h', 's'}
+	_, err := conn.Write(handshake)
+	require.NoError(t, err)
+	require.Equal(t, handshake, <-fakes[1].writes)
+	require.False(t, relayMultipathChannelHealthy(conn, 0))
 }
 
 func TestRelayMultipathConnIgnoresPacketsOutsidePeerAllowedIPs(t *testing.T) {
@@ -440,7 +457,7 @@ func TestRelayMultipathConnReturnsTemporaryErrorWhileAllChannelsReopen(t *testin
 		return nil, errors.New("still reopening")
 	})
 
-	n, err := conn.Write(wireGuardDataPacket("during-reopen"))
+	n, err := conn.Write([]byte{1, 0, 0, 0, 'r', 'e', 'o', 'p', 'e', 'n'})
 	require.Zero(t, n)
 	require.Error(t, err)
 	var netErr net.Error

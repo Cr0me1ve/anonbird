@@ -188,6 +188,7 @@ type relayMultipathConn struct {
 	writeStrategy   string
 	packetBurstSize uint64
 	stripeCounter   atomic.Uint64
+	controlCounter  atomic.Uint64
 	flowCounter     atomic.Uint64
 	scoringEnabled  bool
 	slowWrite       time.Duration
@@ -411,6 +412,9 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 				channelID = c.nextStripedChannelID()
 			}
 		}
+	} else if isWireGuardHandshakePacket(p) {
+		channelID = c.nextControlChannelID()
+		strictPreferred = false
 	}
 
 	attempted := make(map[uint32]struct{}, len(c.channels))
@@ -441,12 +445,12 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 	}
 
 	if lastErr != nil {
-		if isWireGuardDataPacket(p) && c.hasChannelReopener() {
+		if isWireGuardPacket(p) && c.hasChannelReopener() {
 			return 0, relayMultipathTemporaryWriteError{err: lastErr}
 		}
 		return 0, lastErr
 	}
-	if isWireGuardDataPacket(p) && c.hasChannelReopener() {
+	if isWireGuardPacket(p) && c.hasChannelReopener() {
 		return 0, relayMultipathTemporaryWriteError{err: net.ErrClosed}
 	}
 	return 0, net.ErrClosed
@@ -688,6 +692,15 @@ func (c *relayMultipathConn) nextStripedChannelID() uint32 {
 	packetIndex := c.stripeCounter.Add(1) - 1
 	channelIndex := int((packetIndex / c.packetBurstSize) % uint64(len(channelIDs)))
 	return channelIDs[channelIndex]
+}
+
+func (c *relayMultipathConn) nextControlChannelID() uint32 {
+	channelIDs := c.healthyChannelIDs()
+	if len(channelIDs) == 0 {
+		return c.primaryChannelID
+	}
+	packetIndex := c.controlCounter.Add(1) - 1
+	return channelIDs[int(packetIndex%uint64(len(channelIDs)))]
 }
 
 func (c *relayMultipathConn) healthyChannelIDs() []uint32 {
@@ -1775,7 +1788,24 @@ func (c *relayMultipathConn) err() error {
 }
 
 func isWireGuardDataPacket(packet []byte) bool {
-	return len(packet) >= 4 && packet[0] == 4 && packet[1] == 0 && packet[2] == 0 && packet[3] == 0
+	return wireGuardPacketType(packet) == 4
+}
+
+func isWireGuardHandshakePacket(packet []byte) bool {
+	packetType := wireGuardPacketType(packet)
+	return packetType >= 1 && packetType <= 3
+}
+
+func isWireGuardPacket(packet []byte) bool {
+	packetType := wireGuardPacketType(packet)
+	return packetType >= 1 && packetType <= 4
+}
+
+func wireGuardPacketType(packet []byte) byte {
+	if len(packet) < 4 || packet[1] != 0 || packet[2] != 0 || packet[3] != 0 {
+		return 0
+	}
+	return packet[0]
 }
 
 func relayMultipathWriteStrategy() string {
