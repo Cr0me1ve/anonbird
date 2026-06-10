@@ -5,6 +5,7 @@ package bind
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -160,11 +161,22 @@ func (b *ICEBind) Send(bufs [][]byte, ep wgConn.Endpoint) error {
 	}
 
 	for _, buf := range bufs {
-		if _, err := conn.Write(buf); err != nil {
-			return err
+		n, err := conn.Write(buf)
+		if err == nil {
+			continue
 		}
+		if n == 0 && isTemporaryNetError(err) {
+			log.WithError(err).WithField("endpoint", ep.DstIP()).Debug("temporary relayed endpoint write error; dropping packet while relay recovers")
+			continue
+		}
+		return err
 	}
 	return nil
+}
+
+func isTemporaryNetError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Temporary()
 }
 
 func (s *ICEBind) createReceiverFn(pc wgConn.BatchReader, conn *net.UDPConn, rxOffload bool, msgsPool *sync.Pool) wgConn.ReceiveFunc {

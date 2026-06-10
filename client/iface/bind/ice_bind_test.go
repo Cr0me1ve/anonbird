@@ -1,7 +1,9 @@
 package bind
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -13,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	wgConn "golang.zx2c4.com/wireguard/conn"
 
 	"github.com/netbirdio/netbird/client/iface/wgaddr"
 )
@@ -247,6 +250,45 @@ func TestICEBind_HandlesConcurrentMixedTraffic(t *testing.T) {
 	assert.GreaterOrEqual(t, ipv6Count, minDelivered, "IPv6 delivery below threshold")
 }
 
+func TestICEBind_SendDropsTemporaryRelayedWriteErrors(t *testing.T) {
+	iceBind := setupICEBind(t)
+	peerIP := netip.MustParseAddr("127.1.2.3")
+	writeErr := temporaryTestNetError{err: errors.New("relay channels recovering")}
+	conn := &recordingNetConn{writeErr: writeErr}
+	iceBind.SetEndpoint(peerIP, conn)
+
+	err := iceBind.Send([][]byte{[]byte("packet-1"), []byte("packet-2")}, testEndpoint(peerIP))
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, conn.writeCount())
+}
+
+func TestICEBind_SendReturnsHardRelayedWriteErrors(t *testing.T) {
+	iceBind := setupICEBind(t)
+	peerIP := netip.MustParseAddr("127.1.2.4")
+	writeErr := errors.New("relay closed")
+	conn := &recordingNetConn{writeErr: writeErr}
+	iceBind.SetEndpoint(peerIP, conn)
+
+	err := iceBind.Send([][]byte{[]byte("packet")}, testEndpoint(peerIP))
+
+	require.ErrorIs(t, err, writeErr)
+	assert.Equal(t, 1, conn.writeCount())
+}
+
+func TestICEBind_SendReturnsPartialTemporaryRelayedWriteErrors(t *testing.T) {
+	iceBind := setupICEBind(t)
+	peerIP := netip.MustParseAddr("127.1.2.5")
+	writeErr := temporaryTestNetError{err: errors.New("partial write")}
+	conn := &recordingNetConn{writeN: 4, writeErr: writeErr}
+	iceBind.SetEndpoint(peerIP, conn)
+
+	err := iceBind.Send([][]byte{[]byte("packet")}, testEndpoint(peerIP))
+
+	require.ErrorIs(t, err, writeErr)
+	assert.Equal(t, 1, conn.writeCount())
+}
+
 func TestICEBind_DetectsAddressFamilyFromConnection(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -325,4 +367,81 @@ func listenUDP(t *testing.T, network, addr string) *net.UDPConn {
 	conn, err := net.ListenUDP(network, udpAddr)
 	require.NoError(t, err)
 	return conn
+}
+
+func testEndpoint(addr netip.Addr) wgConn.Endpoint {
+	return &wgConn.StdNetEndpoint{AddrPort: netip.AddrPortFrom(addr, 51820)}
+}
+
+type temporaryTestNetError struct {
+	err error
+}
+
+func (e temporaryTestNetError) Error() string {
+	return e.err.Error()
+}
+
+func (e temporaryTestNetError) Unwrap() error {
+	return e.err
+}
+
+func (e temporaryTestNetError) Timeout() bool {
+	return false
+}
+
+func (e temporaryTestNetError) Temporary() bool {
+	return true
+}
+
+type recordingNetConn struct {
+	mu       sync.Mutex
+	writes   [][]byte
+	writeN   int
+	writeErr error
+}
+
+func (c *recordingNetConn) Read(_ []byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (c *recordingNetConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	copied := append([]byte(nil), p...)
+	c.writes = append(c.writes, copied)
+	if c.writeErr != nil {
+		return c.writeN, c.writeErr
+	}
+	return len(p), nil
+}
+
+func (c *recordingNetConn) Close() error {
+	return nil
+}
+
+func (c *recordingNetConn) LocalAddr() net.Addr {
+	return &net.TCPAddr{}
+}
+
+func (c *recordingNetConn) RemoteAddr() net.Addr {
+	return &net.TCPAddr{}
+}
+
+func (c *recordingNetConn) SetDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *recordingNetConn) SetReadDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *recordingNetConn) SetWriteDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *recordingNetConn) writeCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.writes)
 }

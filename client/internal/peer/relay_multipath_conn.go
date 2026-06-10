@@ -70,6 +70,34 @@ var relayMultipathBatchMagic = [4]byte{0xab, 0x1d, 0xba, 0x7c}
 
 var errRelayMultipathChannelCongested = errors.New("relay multipath channel congested")
 var errRelayMultipathChannelStalled = errors.New("relay multipath channel stalled")
+var errRelayMultipathChannelsRecovering = errors.New("relay multipath channels recovering")
+
+type relayMultipathTemporaryWriteError struct {
+	err error
+}
+
+func (e relayMultipathTemporaryWriteError) Error() string {
+	if e.err == nil {
+		return errRelayMultipathChannelsRecovering.Error()
+	}
+	return errRelayMultipathChannelsRecovering.Error() + ": " + e.err.Error()
+}
+
+func (e relayMultipathTemporaryWriteError) Unwrap() error {
+	return e.err
+}
+
+func (e relayMultipathTemporaryWriteError) Is(target error) bool {
+	return target == errRelayMultipathChannelsRecovering || errors.Is(e.err, target)
+}
+
+func (e relayMultipathTemporaryWriteError) Timeout() bool {
+	return false
+}
+
+func (e relayMultipathTemporaryWriteError) Temporary() bool {
+	return true
+}
 
 type relayMultipathChannel struct {
 	id   uint32
@@ -403,6 +431,7 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 			select {
 			case channelID = <-c.hintCh:
 			default:
+				channelID = c.nextStripedChannelID()
 			}
 		}
 	}
@@ -435,7 +464,13 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 	}
 
 	if lastErr != nil {
+		if isWireGuardDataPacket(p) && c.hasChannelReopener() {
+			return 0, relayMultipathTemporaryWriteError{err: lastErr}
+		}
 		return 0, lastErr
+	}
+	if isWireGuardDataPacket(p) && c.hasChannelReopener() {
+		return 0, relayMultipathTemporaryWriteError{err: net.ErrClosed}
 	}
 	return 0, net.ErrClosed
 }
@@ -1097,13 +1132,15 @@ func (c *relayMultipathConn) logTelemetrySnapshot() {
 	var b strings.Builder
 	_, _ = fmt.Fprintf(
 		&b,
-		"anonymous relay multipath telemetry strategy=%s batch=%t scoring=%t burst=%d pacing=%s max_inflight=%d channels=",
+		"anonymous relay multipath telemetry strategy=%s batch=%t scoring=%t burst=%d pacing=%s max_inflight=%d hint_queue=%d flows=%d channels=",
 		c.writeStrategy,
 		c.batchingEnabled,
 		c.scoringEnabled,
 		c.packetBurstSize,
 		c.pacingDelay,
 		c.maxInflight,
+		len(c.hintCh),
+		c.trackedFlowCount(),
 	)
 	for i, channel := range channels {
 		if i > 0 {
@@ -1193,6 +1230,12 @@ func (c *relayMultipathConn) telemetrySnapshot(now time.Time) []relayMultipathTe
 	}
 	c.batchMu.Unlock()
 	return channels
+}
+
+func (c *relayMultipathConn) trackedFlowCount() int {
+	c.flowMu.Lock()
+	defer c.flowMu.Unlock()
+	return len(c.flowAssignments)
 }
 
 func (c *relayMultipathConn) matchesAllowedDestination(dst netip.Addr) bool {

@@ -218,6 +218,11 @@ func (p *WGUDPProxy) proxyToRemote(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Temporary() {
+				log.Debugf("temporary remote write error, dropping packet and keeping proxy alive: %s", err)
+				continue
+			}
 
 			log.Debugf("failed to write to remote conn: %s", err)
 			return

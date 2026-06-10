@@ -852,3 +852,122 @@ Local verification so far:
 ```sh
 go test ./client/internal/peer -count=1 -timeout=120s
 ```
+
+## 2026-06-10: central restore and full-channel Tor recovery
+
+Live infrastructure issues found:
+
+1. `anonbird.minet.space` resolved to `45.138.103.224`, but the AnonBird
+   compose stack there was not serving the dashboard/API.
+   - Cause: the host-level `marten-lb-nginx` stack owns ports 80/443, while
+     AnonBird had no active external nginx vhost for `anonbird.minet.space`.
+   - Fix: regenerate AnonBird compose for external nginx, attach it to the
+     shared `lb-server_default` network, add an nginx vhost for dashboard/API,
+     and issue a Let's Encrypt certificate for `anonbird.minet.space`.
+   - Verification: `https://anonbird.minet.space/` returned HTTP 200 and
+     `/api/users` returned HTTP 401 instead of being unreachable.
+
+2. The registry `latest` server image still advertised clearnet endpoints to
+   anonymous clients.
+   - Fix: build the combined server locally with CGO cross-compilation and
+     deploy it as `anonbird-server:development-local-tor-stall-recovery`.
+   - Verification: server logs advertised onion management, signal, and relay
+     endpoints:
+     `4mvuprkev3xqtzeb2ha4gskcjut7maktl6dic6u22cqktzswah5ugrad.onion`.
+
+3. `45.138.103.224` still had a legacy `netbird.service` trying to manage
+   `wt0`.
+   - Symptom: AnonBird failed with `error creating tun device: invalid
+     argument` and could not hold a stable peer dataplane on that host.
+   - Fix: stop, disable, and mask the legacy `netbird.service`, remove the old
+     `wt0` interface, and restart AnonBird.
+   - Verification: `anonbird status --detail` on `45.138.103.224` showed
+     management/signal connected and all three Tor-relayed peers connected.
+
+4. `83.171.225.115` was added as a replacement test client for the unreliable
+   old `83.171.225.182`.
+   - Install method: upload locally built Linux amd64 binary, install the
+     system service, then enroll with the same NetBird-like inputs:
+     management URL plus setup key.
+   - Verification: `anonbird status --detail` showed the new peer connected
+     over the onion relay with userspace WireGuard and no ICE endpoints.
+
+5. When every Tor relay sub-channel failed at once, `relayMultipathConn.Write`
+   could return a normal write error to `WGUDPProxy`.
+   - Risk: `WGUDPProxy.proxyToRemote` treats ordinary remote write errors as
+     terminal, so a temporary period where all Tor/WebSocket streams are being
+     reopened can close the whole UDP proxy instead of dropping only the packet
+     that hit the recovery window.
+   - Fix: return a temporary `net.Error` for WireGuard data packets when all
+     relay channels are currently recovering and a channel reopener exists.
+     `WGUDPProxy.proxyToRemote` now logs temporary remote write errors, drops
+     that one packet, and keeps the proxy loop alive.
+   - Safety: WireGuard handshake/control packets still return hard errors so a
+     truly dead connection can fail fast instead of hiding setup failures.
+
+6. The first live recovery patch covered `WGUDPProxy`, but Linux userspace
+   clients in the test pool send relay traffic through `ICEBind.Send`.
+   - Symptom: fresh clients stayed connected at the management/signal/relay
+     level, but bulk `iperf3` still had TCP setup timeouts and application-level
+     stalls.
+   - Cause: `ICEBind.Send` returned the temporary "all channels reopening"
+     error to wireguard-go, so the live userspace bind path did not get the
+     packet-drop-and-continue behavior added to `WGUDPProxy`.
+   - Fix: `ICEBind.Send` now treats zero-byte temporary `net.Error` writes to a
+     relayed endpoint as a dropped UDP packet and continues the send loop.
+     Partial writes and hard errors are still returned.
+
+7. `flow-affine` could underuse Tor channels when no fresh plaintext flow hint
+   reached `relayMultipathConn.Write`.
+   - Symptom: live telemetry during `iperf3` showed channel `0` selected
+     thousands of times while channels `1..3` stayed at `selected=0` and
+     `read_bytes=0`.
+   - Cause: without a queued flow hint, `flow-affine` fell back to the primary
+     channel. That made any observer blind spot, hint queue gap, or delayed
+     packet classification collapse the bulk path to one Tor circuit.
+   - Fix: `flow-affine` keeps sticky flow hints when available, but unhinted
+     WireGuard data now falls back to bounded burst striping over healthy
+     channels. Telemetry also logs `hint_queue` and `flows` so live tests can
+     confirm whether plaintext flow observation is active.
+
+Current four-node Tor test pool:
+
+| Host | Role | AnonBird IP | FQDN |
+| --- | --- | --- | --- |
+| `45.138.103.224` | central server plus client | `100.68.209.114` | `anonbird-66bf4c83b717.anonbird.local` |
+| `185.246.220.249` | client | `100.68.230.18` | `anonbird-dff311e007b1.anonbird.local` |
+| `213.108.2.95` | client | `100.68.140.77` | `anonbird-2ea94005d484.anonbird.local` |
+| `83.171.225.115` | client | `100.68.133.8` | `anonbird-e830d5e15da1.anonbird.local` |
+
+Local verification added for this fix:
+
+```sh
+go test ./client/iface/bind -count=1
+go test ./client/internal/peer -count=1 -timeout=120s
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test ./client/iface/wgproxy/udp -count=1
+go test ./client/internal/anonymous ./shared/relay/client ./shared/relay/client/dialer/ws ./client/internal/dns/config ./client/internal/dns/mgmt ./combined/cmd ./relay/server ./shared/relay/messages ./shared/anonymous/i2psam -count=1 -timeout=180s
+```
+
+Live retest before the `ICEBind.Send` and unhinted `flow-affine` fixes:
+
+- All four clients were on version `development-local-tor-recovering-write`,
+  connected to the onion management/signal/relay URLs, and had
+  `Peers count: 3/14 Connected`.
+- Real peer IPv4 filters against `ss -Htnp` for the `anonbird` process were
+  empty on all four hosts; the data path stayed relayed through the onion relay
+  rather than direct peer TCP.
+- Ping worked after Tor warmup, but some directions needed longer timeouts:
+  `185 -> 45` improved from 100% loss in a 6-second probe to 8/10 delivered
+  with a 15-second timeout; `83 -> 185` reached 10/10 but averaged about
+  6.4 seconds with large jitter.
+- Bulk `iperf3 -P 4` did not meet the target yet. Best directions were
+  `83 -> 213` at sender 6.87 Mbit/s / receiver 3.09 Mbit/s and `213 -> 83`
+  at sender 4.77 Mbit/s / receiver 2.28 Mbit/s; several central-server
+  directions timed out during TCP setup.
+
+Next live retest status:
+
+- Pending fresh client deployment of the `ICEBind.Send` temporary-write fix and
+  the unhinted `flow-affine` channel fallback to all four test hosts.
+- After deployment, rerun Tor ping, Tor `iperf3 -P 4`, process health, and
+  real-IP visibility checks across the four-node pool.
