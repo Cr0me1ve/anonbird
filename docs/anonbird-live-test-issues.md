@@ -798,3 +798,57 @@ Conclusion:
 - Remaining issue: retransmits can still spike on a single TCP stream in some
   directions, so the next improvement should focus on per-flow health/rotation
   when one assigned channel degrades during a long-lived flow.
+
+## 2026-06-10: stalled Tor channel recovery plan
+
+Problem found during longer stability checks:
+
+- The daemon and relay overlay stayed up: `anonbird` had no restarts, no
+  `unhealthy`, no `relay connection closed`, and no peer-wide close events.
+- A 5-minute `185 -> 45` `iperf3 -P 4` completed, but throughput varied from
+  about 3.8 to 10.2 Mbit/s per 30-second window and retransmits were high.
+- `213 -> 185` could open all TCP data sockets, then fail with
+  `control socket has closed unexpectedly`; the receiver logged
+  `idle timeout for receiving data`.
+- Post-failure pings still worked with 0% loss, so the issue is not a dead
+  peer connection. It is a Tor/WebSocket channel that remains formally healthy
+  while no longer making useful bidirectional progress.
+
+Implementation plan:
+
+1. Track per-channel useful progress:
+   - selected writes since the last read;
+   - bytes written since the last read;
+   - read idle duration.
+2. Classify a channel as stalled when it has been read-idle for at least
+   `NB_ANON_RELAY_MULTIPATH_READ_IDLE_MS` and either:
+   - wrote at least `NB_ANON_RELAY_MULTIPATH_STALL_BYTES` bytes since the last
+     read; or
+   - was selected many times without read progress.
+3. Exclude stalled channels from new flow selection when any non-stalled
+   channel is available.
+4. Remove flow assignments that pointed at a stalled channel so long-lived
+   flows can move off the dead path.
+5. If spare healthy channels exist, close and reopen only the stalled channel
+   in the background.
+6. If the stalled channel is the last healthy channel, open a replacement first
+   and only close the old connection after the replacement is installed.
+7. Extend telemetry with `stalled`, `selected_since_read`,
+   `written_since_read`, and `stalls` so long-run tests can show whether the
+   recovery mechanism acted before application-level idle timeouts.
+
+Local code status:
+
+- Added `NB_ANON_RELAY_MULTIPATH_STALL_BYTES` with a default of 512 KiB.
+- Added stalled-channel detection and background replacement.
+- Added flow assignment eviction for unavailable/stalled channels.
+- Added preemptive replacement for the last healthy-but-stalled channel to
+  avoid creating an artificial outage.
+- Added unit coverage for stalled-channel reopen, flow reassignment, last
+  channel preemptive replacement, and read-progress counter reset.
+
+Local verification so far:
+
+```sh
+go test ./client/internal/peer -count=1 -timeout=120s
+```

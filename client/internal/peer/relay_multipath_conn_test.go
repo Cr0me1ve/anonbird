@@ -247,6 +247,122 @@ func TestRelayMultipathConnFlowAffineAvoidsSilentPreferredChannel(t *testing.T) 
 	}
 }
 
+func TestRelayMultipathConnReopensStalledChannelAndReassignsFlow(t *testing.T) {
+	t.Setenv(envAnonRelayMultipathReadIdleMS, "1")
+	t.Setenv(envAnonRelayMultipathStallBytes, "8")
+	channels, fakes := newTestRelayMultipathChannels(3)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	reopened := newRelayMultipathFakeConn()
+	reopenedCh := make(chan uint32, 1)
+	conn.setChannelReopener(func(_ context.Context, channelID uint32) (net.Conn, error) {
+		reopenedCh <- channelID
+		return reopened, nil
+	})
+
+	packet, stalledChannel := relayMultipathPacketForChannel(t, channels, func(id uint32) bool { return id == 1 })
+	conn.ObservePacket(packet, true)
+	first := wireGuardDataPacket("first")
+	_, err := conn.Write(first)
+	require.NoError(t, err)
+	require.Equal(t, first, <-fakes[stalledChannel].writes)
+
+	forceRelayMultipathChannelStalled(conn, stalledChannel)
+	conn.ObservePacket(packet, true)
+	second := wireGuardDataPacket("second")
+	_, err = conn.Write(second)
+	require.NoError(t, err)
+
+	require.Equal(t, stalledChannel, <-reopenedCh)
+	require.Eventually(t, func() bool {
+		return fakes[stalledChannel].isClosed()
+	}, time.Second, 10*time.Millisecond)
+
+	select {
+	case got := <-fakes[stalledChannel].writes:
+		t.Fatalf("stalled channel received write after reassignment: %q", string(got))
+	default:
+	}
+	require.Eventually(t, func() bool {
+		for channelID, fake := range fakes {
+			if channelID == stalledChannel {
+				continue
+			}
+			select {
+			case got := <-fake.writes:
+				require.Equal(t, second, got)
+				return true
+			default:
+			}
+		}
+		return false
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestRelayMultipathConnReplacesLastStalledChannelWithoutClosingFirst(t *testing.T) {
+	t.Setenv(envAnonRelayMultipathReadIdleMS, "1")
+	t.Setenv(envAnonRelayMultipathStallBytes, "8")
+	channels, fakes := newTestRelayMultipathChannels(1)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	reopened := newRelayMultipathFakeConn()
+	reopenStarted := make(chan struct{}, 1)
+	releaseReopen := make(chan struct{})
+	conn.setChannelReopener(func(ctx context.Context, _ uint32) (net.Conn, error) {
+		select {
+		case reopenStarted <- struct{}{}:
+		default:
+		}
+		select {
+		case <-releaseReopen:
+			return reopened, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	})
+
+	forceRelayMultipathChannelStalled(conn, 0)
+	conn.reapStalledChannels(time.Now())
+	require.Eventually(t, func() bool {
+		select {
+		case <-reopenStarted:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+	require.True(t, relayMultipathChannelHealthy(conn, 0))
+	require.False(t, fakes[0].isClosed())
+
+	close(releaseReopen)
+	require.Eventually(t, func() bool {
+		return fakes[0].isClosed()
+	}, time.Second, 10*time.Millisecond)
+
+	packet := wireGuardDataPacket("after-replace")
+	_, err := conn.Write(packet)
+	require.NoError(t, err)
+	require.Equal(t, packet, <-reopened.writes)
+}
+
+func TestRelayMultipathConnReadProgressClearsStallCounters(t *testing.T) {
+	t.Setenv(envAnonRelayMultipathReadIdleMS, "1")
+	t.Setenv(envAnonRelayMultipathStallBytes, "8")
+	channels, _ := newTestRelayMultipathChannels(1)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	forceRelayMultipathChannelStalled(conn, 0)
+	require.True(t, conn.channelStalled(0, time.Now()))
+
+	conn.recordChannelRead(0, 128)
+	require.False(t, conn.channelStalled(0, time.Now().Add(conn.readIdlePenalty*2)))
+	require.Zero(t, conn.channelStats[0].selectedSinceRead.Load())
+	require.Zero(t, conn.channelStats[0].writtenSinceRead.Load())
+}
+
 func TestRelayMultipathConnBatchesWireGuardDataPackets(t *testing.T) {
 	t.Setenv(envAnonRelayMultipathBatch, "true")
 	channels, fakes := newTestRelayMultipathChannels(2)
@@ -408,10 +524,13 @@ func TestRelayMultipathTelemetrySnapshotIncludesChannelStats(t *testing.T) {
 	require.Equal(t, int64(128), snapshot[0].pendingBytes)
 	require.Equal(t, int64(64), snapshot[0].activeBytes)
 	require.Equal(t, uint64(1), snapshot[0].selectedWrites)
+	require.Zero(t, snapshot[0].selectedSinceRead)
 	require.Equal(t, uint64(1), snapshot[0].readFrames)
 	require.Equal(t, uint64(512), snapshot[0].readBytes)
 	require.Equal(t, uint64(256), snapshot[0].writtenBytes)
+	require.Equal(t, int64(256), snapshot[0].writtenSinceRead)
 	require.Equal(t, uint64(1), snapshot[0].congestions)
+	require.Zero(t, snapshot[0].stalls)
 	require.Positive(t, snapshot[0].writeEWMA)
 }
 
@@ -604,6 +723,13 @@ func relayMultipathChannelHealthy(conn *relayMultipathConn, channelID uint32) bo
 	conn.selectorMu.RLock()
 	defer conn.selectorMu.RUnlock()
 	return conn.channelHealthyLocked(channelID)
+}
+
+func forceRelayMultipathChannelStalled(conn *relayMultipathConn, channelID uint32) {
+	stats := conn.channelStats[channelID]
+	stats.lastReadUnixNano.Store(time.Now().Add(-conn.readIdlePenalty * 2).UnixNano())
+	stats.writtenSinceRead.Store(conn.stallWriteBytes)
+	stats.selectedSinceRead.Store(relayMultipathStallSelectedWrites)
 }
 
 func (c *relayMultipathFakeConn) Read(b []byte) (int, error) {

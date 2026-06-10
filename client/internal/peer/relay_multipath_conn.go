@@ -35,6 +35,8 @@ const (
 	relayMultipathDefaultPacingDelay     = 2 * time.Millisecond
 	relayMultipathDefaultMaxInflight     = 128 * 1024
 	relayMultipathSilentWriteThreshold   = 4
+	relayMultipathDefaultStallWriteBytes = 512 * 1024
+	relayMultipathStallSelectedWrites    = 256
 
 	envAnonRelayMultipathStrategy        = "NB_ANON_RELAY_MULTIPATH_STRATEGY"
 	envAnonRelayMultipathPacketBurstSize = "NB_ANON_RELAY_MULTIPATH_PACKET_BURST_SIZE"
@@ -46,6 +48,7 @@ const (
 	envAnonRelayMultipathPacingMS        = "NB_ANON_RELAY_MULTIPATH_PACING_MS"
 	envAnonRelayMultipathMaxInflight     = "NB_ANON_RELAY_MULTIPATH_CHANNEL_MAX_INFLIGHT_BYTES"
 	envAnonRelayMultipathTelemetryMS     = "NB_ANON_RELAY_MULTIPATH_TELEMETRY_MS"
+	envAnonRelayMultipathStallBytes      = "NB_ANON_RELAY_MULTIPATH_STALL_BYTES"
 
 	relayMultipathReopenTimeout        = 30 * time.Second
 	relayMultipathReopenInitialBackoff = time.Second
@@ -66,6 +69,7 @@ const (
 var relayMultipathBatchMagic = [4]byte{0xab, 0x1d, 0xba, 0x7c}
 
 var errRelayMultipathChannelCongested = errors.New("relay multipath channel congested")
+var errRelayMultipathChannelStalled = errors.New("relay multipath channel stalled")
 
 type relayMultipathChannel struct {
 	id   uint32
@@ -89,10 +93,13 @@ type relayMultipathChannelStats struct {
 	nextWriteUnixNano atomic.Int64
 	writeFailures     atomic.Uint64
 	selectedWrites    atomic.Uint64
+	selectedSinceRead atomic.Uint64
 	readFrames        atomic.Uint64
 	readBytes         atomic.Uint64
 	writtenBytes      atomic.Uint64
+	writtenSinceRead  atomic.Int64
 	congestions       atomic.Uint64
+	stalls            atomic.Uint64
 }
 
 type relayMultipathWriteCandidate struct {
@@ -107,22 +114,26 @@ type relayMultipathFlowAssignment struct {
 }
 
 type relayMultipathTelemetryChannel struct {
-	id             uint32
-	healthy        bool
-	pendingBytes   int64
-	activeBytes    int64
-	writeEWMA      time.Duration
-	cooldown       time.Duration
-	pacingWait     time.Duration
-	readIdle       time.Duration
-	writeIdle      time.Duration
-	queueLen       int
-	selectedWrites uint64
-	readFrames     uint64
-	readBytes      uint64
-	writtenBytes   uint64
-	writeFailures  uint64
-	congestions    uint64
+	id                uint32
+	healthy           bool
+	stalled           bool
+	pendingBytes      int64
+	activeBytes       int64
+	writeEWMA         time.Duration
+	cooldown          time.Duration
+	pacingWait        time.Duration
+	readIdle          time.Duration
+	writeIdle         time.Duration
+	queueLen          int
+	selectedWrites    uint64
+	selectedSinceRead uint64
+	readFrames        uint64
+	readBytes         uint64
+	writtenBytes      uint64
+	writtenSinceRead  int64
+	writeFailures     uint64
+	congestions       uint64
+	stalls            uint64
 }
 
 type relayMultipathConn struct {
@@ -156,6 +167,7 @@ type relayMultipathConn struct {
 	pacingDelay     time.Duration
 	maxInflight     int64
 	telemetryEvery  time.Duration
+	stallWriteBytes int64
 
 	reopenMu  sync.Mutex
 	reopener  relayMultipathChannelReopener
@@ -192,6 +204,7 @@ func newRelayMultipathConn(channels []relayMultipathChannel, allowedIPs []netip.
 		pacingDelay:         relayMultipathDurationFromMSAllowZero(envAnonRelayMultipathPacingMS, relayMultipathDefaultPacingDelay),
 		maxInflight:         relayMultipathInt64FromEnvAllowZero(envAnonRelayMultipathMaxInflight, relayMultipathDefaultMaxInflight),
 		telemetryEvery:      relayMultipathDurationFromMSAllowZero(envAnonRelayMultipathTelemetryMS, 0),
+		stallWriteBytes:     relayMultipathInt64FromEnvAllowZero(envAnonRelayMultipathStallBytes, relayMultipathDefaultStallWriteBytes),
 		reopening:           make(map[uint32]struct{}),
 		batchingEnabled:     relayMultipathBatchingEnabled(),
 		batchers:            make(map[uint32]*relayMultipathBatcher),
@@ -228,7 +241,9 @@ func (c *relayMultipathConn) ObservePacket(data []byte, outbound bool) {
 	if err != nil || !c.matchesAllowedDestination(info.Destination) {
 		return
 	}
-	channelID, ok := c.channelForObservedFlow(info.Flow, time.Now())
+	now := time.Now()
+	c.reapStalledChannels(now)
+	channelID, ok := c.channelForObservedFlow(info.Flow, now)
 	if !ok {
 		return
 	}
@@ -241,7 +256,7 @@ func (c *relayMultipathConn) channelForObservedFlow(flow multipath.FlowKey, now 
 
 	c.pruneFlowAssignmentsLocked(now)
 	if assignment, ok := c.flowAssignments[flow]; ok {
-		if c.channelHealthy(assignment.channelID) {
+		if c.channelHealthy(assignment.channelID) && !c.channelStalled(assignment.channelID, now) {
 			assignment.lastSeen = now
 			c.flowAssignments[flow] = assignment
 			return assignment.channelID, true
@@ -268,7 +283,7 @@ func (c *relayMultipathConn) pruneFlowAssignmentsLocked(now time.Time) {
 	c.lastFlowPrune = now
 
 	for flow, assignment := range c.flowAssignments {
-		if now.Sub(assignment.lastSeen) <= relayMultipathFlowTTL && c.channelHealthy(assignment.channelID) {
+		if now.Sub(assignment.lastSeen) <= relayMultipathFlowTTL && c.channelHealthy(assignment.channelID) && !c.channelStalled(assignment.channelID, now) {
 			continue
 		}
 		c.removeFlowAssignmentLocked(flow, assignment.channelID)
@@ -300,6 +315,17 @@ func (c *relayMultipathConn) removeFlowAssignmentLocked(flow multipath.FlowKey, 
 		return
 	}
 	c.flowChannelCounts[channelID]--
+}
+
+func (c *relayMultipathConn) removeFlowAssignmentsForChannel(channelID uint32) {
+	c.flowMu.Lock()
+	defer c.flowMu.Unlock()
+
+	for flow, assignment := range c.flowAssignments {
+		if assignment.channelID == channelID {
+			c.removeFlowAssignmentLocked(flow, channelID)
+		}
+	}
 }
 
 func (c *relayMultipathConn) selectChannelForNewFlow(flow multipath.FlowKey, now time.Time) (uint32, bool) {
@@ -365,6 +391,7 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 	if c.closed.Load() {
 		return 0, net.ErrClosed
 	}
+	c.reapStalledChannels(time.Now())
 	channelID := c.primaryChannelID
 	strictPreferred := true
 	if isWireGuardDataPacket(p) {
@@ -608,7 +635,13 @@ func (c *relayMultipathConn) connForWriteExcluding(preferred uint32, excluded ma
 }
 
 func (c *relayMultipathConn) preferredChannelReadyForFlow(channelID, bestChannelID uint32, now time.Time) bool {
-	if !c.scoringEnabled || channelID == bestChannelID {
+	if !c.scoringEnabled {
+		return true
+	}
+	if c.channelStalled(channelID, now) && channelID != bestChannelID {
+		return false
+	}
+	if channelID == bestChannelID {
 		return true
 	}
 	stats := c.channelStats[channelID]
@@ -677,6 +710,9 @@ func (c *relayMultipathConn) writeCandidatesLocked(now time.Time, excluded map[u
 		if !allowCooling && c.channelCooling(channelID, now) {
 			continue
 		}
+		if !allowCooling && c.channelStalled(channelID, now) {
+			continue
+		}
 		if !allowOverLimit && c.channelOverInflightLimit(channelID) {
 			continue
 		}
@@ -739,10 +775,13 @@ func (s *relayMultipathChannelStats) reset(now time.Time) {
 	s.nextWriteUnixNano.Store(0)
 	s.writeFailures.Store(0)
 	s.selectedWrites.Store(0)
+	s.selectedSinceRead.Store(0)
 	s.readFrames.Store(0)
 	s.readBytes.Store(0)
 	s.writtenBytes.Store(0)
+	s.writtenSinceRead.Store(0)
 	s.congestions.Store(0)
+	s.stalls.Store(0)
 }
 
 func (c *relayMultipathConn) resetChannelStats(channelID uint32) {
@@ -754,12 +793,15 @@ func (c *relayMultipathConn) resetChannelStats(channelID uint32) {
 func (c *relayMultipathConn) recordChannelSelected(channelID uint32) {
 	if stats := c.channelStats[channelID]; stats != nil {
 		stats.selectedWrites.Add(1)
+		stats.selectedSinceRead.Add(1)
 	}
 }
 
 func (c *relayMultipathConn) recordChannelRead(channelID uint32, n int) {
 	if stats := c.channelStats[channelID]; stats != nil {
 		stats.lastReadUnixNano.Store(time.Now().UnixNano())
+		stats.selectedSinceRead.Store(0)
+		stats.writtenSinceRead.Store(0)
 		stats.readFrames.Add(1)
 		if n > 0 {
 			stats.readBytes.Add(uint64(n))
@@ -783,6 +825,7 @@ func (c *relayMultipathConn) recordChannelWrite(channelID uint32, duration time.
 		return
 	}
 	stats.writtenBytes.Add(uint64(n))
+	stats.writtenSinceRead.Add(int64(n))
 
 	micros := duration.Microseconds()
 	if micros < 1 {
@@ -812,6 +855,7 @@ func (c *relayMultipathConn) recordChannelWrite(channelID uint32, duration time.
 		}
 		c.extendChannelNextWrite(channelID, now.Add(delay))
 	}
+	c.reapStalledChannels(now)
 }
 
 func (c *relayMultipathConn) recordChannelFailure(channelID uint32) {
@@ -835,6 +879,17 @@ func (c *relayMultipathConn) markChannelCongested(channelID uint32) {
 		return
 	}
 	stats.slowUntilUnixNano.Store(time.Now().Add(c.channelCooldown).UnixNano())
+}
+
+func (c *relayMultipathConn) recordChannelStall(channelID uint32) {
+	stats := c.channelStats[channelID]
+	if stats == nil {
+		return
+	}
+	stats.stalls.Add(1)
+	if c.scoringEnabled {
+		stats.slowUntilUnixNano.Store(time.Now().Add(c.channelCooldown).UnixNano())
+	}
 }
 
 func (c *relayMultipathConn) tryReserveChannelPendingBytes(channelID uint32, bytes int64) bool {
@@ -892,6 +947,24 @@ func (c *relayMultipathConn) channelInFlightBytes(channelID uint32) int64 {
 
 func (c *relayMultipathConn) channelOverInflightLimit(channelID uint32) bool {
 	return c.maxInflight > 0 && c.channelInFlightBytes(channelID) >= c.maxInflight
+}
+
+func (c *relayMultipathConn) channelStalled(channelID uint32, now time.Time) bool {
+	if !c.scoringEnabled || c.readIdlePenalty <= 0 || c.stallWriteBytes <= 0 {
+		return false
+	}
+	stats := c.channelStats[channelID]
+	if stats == nil {
+		return false
+	}
+	lastRead := stats.lastReadUnixNano.Load()
+	if lastRead <= 0 || now.Sub(time.Unix(0, lastRead)) < c.readIdlePenalty {
+		return false
+	}
+	if stats.writtenSinceRead.Load() >= c.stallWriteBytes {
+		return true
+	}
+	return stats.selectedSinceRead.Load() >= relayMultipathStallSelectedWrites
 }
 
 func (c *relayMultipathConn) channelPacingWait(channelID uint32, now time.Time) time.Duration {
@@ -985,6 +1058,9 @@ func (c *relayMultipathConn) channelScore(channelID uint32, now time.Time) int64
 	if slowUntil := stats.slowUntilUnixNano.Load(); slowUntil > now.UnixNano() {
 		score -= 1_000_000_000_000
 	}
+	if c.channelStalled(channelID, now) {
+		score -= 2_000_000_000_000
+	}
 	if lastRead := stats.lastReadUnixNano.Load(); lastRead > 0 && c.readIdlePenalty > 0 {
 		idle := now.Sub(time.Unix(0, lastRead))
 		if idle > c.readIdlePenalty/2 {
@@ -1035,9 +1111,10 @@ func (c *relayMultipathConn) logTelemetrySnapshot() {
 		}
 		_, _ = fmt.Fprintf(
 			&b,
-			"{id=%d healthy=%t pending=%d active=%d ewma=%s cooldown=%s pace_wait=%s read_idle=%s write_idle=%s queue=%d selected=%d read_frames=%d read_bytes=%d written_bytes=%d failures=%d congestions=%d}",
+			"{id=%d healthy=%t stalled=%t pending=%d active=%d ewma=%s cooldown=%s pace_wait=%s read_idle=%s write_idle=%s queue=%d selected=%d selected_since_read=%d read_frames=%d read_bytes=%d written_bytes=%d written_since_read=%d failures=%d congestions=%d stalls=%d}",
 			channel.id,
 			channel.healthy,
+			channel.stalled,
 			channel.pendingBytes,
 			channel.activeBytes,
 			channel.writeEWMA,
@@ -1047,11 +1124,14 @@ func (c *relayMultipathConn) logTelemetrySnapshot() {
 			channel.writeIdle,
 			channel.queueLen,
 			channel.selectedWrites,
+			channel.selectedSinceRead,
 			channel.readFrames,
 			channel.readBytes,
 			channel.writtenBytes,
+			channel.writtenSinceRead,
 			channel.writeFailures,
 			channel.congestions,
+			channel.stalls,
 		)
 	}
 	log.Info(b.String())
@@ -1069,6 +1149,7 @@ func (c *relayMultipathConn) telemetrySnapshot(now time.Time) []relayMultipathTe
 		snapshot := relayMultipathTelemetryChannel{
 			id:      channelID,
 			healthy: selectorChannel.Healthy,
+			stalled: c.channelStalled(channelID, now),
 		}
 		if stats != nil {
 			lastRead := stats.lastReadUnixNano.Load()
@@ -1091,11 +1172,14 @@ func (c *relayMultipathConn) telemetrySnapshot(now time.Time) []relayMultipathTe
 			snapshot.activeBytes = stats.activeWriteBytes.Load()
 			snapshot.writeEWMA = (time.Duration(stats.writeEWMAMicros.Load()) * time.Microsecond).Truncate(time.Microsecond)
 			snapshot.selectedWrites = stats.selectedWrites.Load()
+			snapshot.selectedSinceRead = stats.selectedSinceRead.Load()
 			snapshot.readFrames = stats.readFrames.Load()
 			snapshot.readBytes = stats.readBytes.Load()
 			snapshot.writtenBytes = stats.writtenBytes.Load()
+			snapshot.writtenSinceRead = stats.writtenSinceRead.Load()
 			snapshot.writeFailures = stats.writeFailures.Load()
 			snapshot.congestions = stats.congestions.Load()
+			snapshot.stalls = stats.stalls.Load()
 		}
 		channels = append(channels, snapshot)
 	}
@@ -1135,18 +1219,118 @@ func (c *relayMultipathConn) fail(err error) {
 	_ = c.Close()
 }
 
+type relayMultipathStalledChannel struct {
+	id    uint32
+	conn  net.Conn
+	score int64
+}
+
+func (c *relayMultipathConn) reapStalledChannels(now time.Time) {
+	if !c.scoringEnabled || c.stallWriteBytes <= 0 || c.closed.Load() {
+		return
+	}
+
+	var stalled []relayMultipathStalledChannel
+	healthy := 0
+	c.selectorMu.RLock()
+	for _, selectorChannel := range c.selectorChannels {
+		if !selectorChannel.Healthy {
+			continue
+		}
+		channelID, ok := c.selectorIDToChannel[selectorChannel.ID]
+		if !ok {
+			continue
+		}
+		conn := c.channels[channelID]
+		if conn == nil {
+			continue
+		}
+		healthy++
+		if c.channelStalled(channelID, now) {
+			stalled = append(stalled, relayMultipathStalledChannel{
+				id:    channelID,
+				conn:  conn,
+				score: c.channelScore(channelID, now),
+			})
+		}
+	}
+	c.selectorMu.RUnlock()
+
+	if len(stalled) == 0 {
+		return
+	}
+	sort.SliceStable(stalled, func(i, j int) bool {
+		if stalled[i].score == stalled[j].score {
+			return stalled[i].id < stalled[j].id
+		}
+		return stalled[i].score < stalled[j].score
+	})
+
+	for _, channel := range stalled {
+		if healthy > 1 {
+			if c.markChannelStalled(channel.id, channel.conn) {
+				healthy--
+			}
+			continue
+		}
+		c.preemptivelyReopenStalledChannel(channel.id)
+	}
+}
+
+func (c *relayMultipathConn) preemptivelyReopenStalledChannel(channelID uint32) {
+	c.recordChannelStall(channelID)
+	if c.startChannelReopen(channelID) {
+		log.Warnf("anonymous relay multipath channel %d stalled with no spare healthy channel; opening replacement before closing it", channelID)
+	}
+}
+
+func (c *relayMultipathConn) markChannelStalled(channelID uint32, failedConn net.Conn) bool {
+	changed, remaining, conn := c.markChannelUnavailable(channelID, failedConn, c.recordChannelStall)
+	if conn != nil {
+		_ = conn.Close()
+	}
+	c.closeBatcher(channelID)
+	if changed {
+		c.removeFlowAssignmentsForChannel(channelID)
+		log.Warnf("anonymous relay multipath channel %d stalled; closing it and reopening in background", channelID)
+		c.startChannelReopen(channelID)
+	}
+	if remaining == 0 && !c.hasChannelReopener() {
+		c.fail(errRelayMultipathChannelStalled)
+	}
+	return changed
+}
+
 func (c *relayMultipathConn) markChannelUnhealthy(channelID uint32, failedConn net.Conn, err error) {
+	changed, remaining, conn := c.markChannelUnavailable(channelID, failedConn, c.recordChannelFailure)
+	if conn != nil {
+		_ = conn.Close()
+	}
+	c.closeBatcher(channelID)
+	if changed {
+		c.removeFlowAssignmentsForChannel(channelID)
+		c.startChannelReopen(channelID)
+	}
+	if remaining == 0 && !c.hasChannelReopener() {
+		c.fail(err)
+	}
+}
+
+func (c *relayMultipathConn) markChannelUnavailable(channelID uint32, failedConn net.Conn, record func(uint32)) (bool, int, net.Conn) {
 	var remaining int
 	var conn net.Conn
 	var changed bool
 
 	c.selectorMu.Lock()
+	defer c.selectorMu.Unlock()
+
 	conn = c.channels[channelID]
 	if failedConn != nil && conn != failedConn {
-		c.selectorMu.Unlock()
-		return
+		return false, 0, nil
 	}
-	c.recordChannelFailure(channelID)
+	if record != nil {
+		record(channelID)
+	}
 	selectorID := strconv.FormatUint(uint64(channelID), 10)
 	for i := range c.selectorChannels {
 		if c.selectorChannels[i].ID == selectorID {
@@ -1160,18 +1344,7 @@ func (c *relayMultipathConn) markChannelUnhealthy(channelID uint32, failedConn n
 			remaining++
 		}
 	}
-	c.selectorMu.Unlock()
-
-	if conn != nil {
-		_ = conn.Close()
-	}
-	c.closeBatcher(channelID)
-	if changed {
-		c.startChannelReopen(channelID)
-	}
-	if remaining == 0 && !c.hasChannelReopener() {
-		c.fail(err)
-	}
+	return changed, remaining, conn
 }
 
 func (c *relayMultipathConn) channelConnsSnapshot() []net.Conn {
@@ -1193,21 +1366,22 @@ func (c *relayMultipathConn) hasChannelReopener() bool {
 	return c.reopener != nil
 }
 
-func (c *relayMultipathConn) startChannelReopen(channelID uint32) {
+func (c *relayMultipathConn) startChannelReopen(channelID uint32) bool {
 	c.reopenMu.Lock()
 	reopener := c.reopener
 	if reopener == nil || c.closed.Load() {
 		c.reopenMu.Unlock()
-		return
+		return false
 	}
 	if _, ok := c.reopening[channelID]; ok {
 		c.reopenMu.Unlock()
-		return
+		return false
 	}
 	c.reopening[channelID] = struct{}{}
 	c.reopenMu.Unlock()
 
 	go c.reopenChannel(channelID, reopener)
+	return true
 }
 
 func (c *relayMultipathConn) reopenChannel(channelID uint32, reopener relayMultipathChannelReopener) {
@@ -1248,22 +1422,27 @@ func (c *relayMultipathConn) installReopenedChannel(channelID uint32, conn net.C
 	}
 
 	c.selectorMu.Lock()
-	defer c.selectorMu.Unlock()
-
 	if c.closed.Load() {
+		c.selectorMu.Unlock()
 		return false
 	}
 	selectorID := strconv.FormatUint(uint64(channelID), 10)
 	for i := range c.selectorChannels {
 		if c.selectorChannels[i].ID == selectorID {
+			oldConn := c.channels[channelID]
 			c.closeBatcher(channelID)
 			c.channels[channelID] = conn
 			c.selectorChannels[i].Healthy = true
 			c.resetChannelStats(channelID)
+			c.selectorMu.Unlock()
+			if oldConn != nil && oldConn != conn {
+				_ = oldConn.Close()
+			}
 			go c.readFrom(channelID, conn)
 			return true
 		}
 	}
+	c.selectorMu.Unlock()
 	return false
 }
 
