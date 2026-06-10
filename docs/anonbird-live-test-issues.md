@@ -1173,6 +1173,8 @@ Follow-up finding:
   again reported `Management: Connected`, `Signal: Connected`,
   `Relays: 1/1 Available`, and `Peers count: 3/14 Connected`; direct real-peer
   TCP checks remained `0`.
-- Next safe step: add telemetry-only payload classification for `Write`
-  (`wg_data`, handshake/control, raw IP to allowed destination, raw IP to other
-  destination, unknown) before attempting another routing change.
+- Implemented safe next step: `Write` now records telemetry-only payload
+  classification (`wg_data`, `wg_control`, `raw_allowed`, `raw_other`,
+  `unknown`) before attempting another routing change. This does not change
+  channel selection or packet bytes; it only exposes what the live write path is
+  actually receiving.

@@ -653,6 +653,30 @@ func TestRelayMultipathTelemetrySnapshotIncludesChannelStats(t *testing.T) {
 	require.Positive(t, snapshot[0].writeEWMA)
 }
 
+func TestRelayMultipathConnTracksWritePayloadClasses(t *testing.T) {
+	channels, _ := newTestRelayMultipathChannels(1)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	_, err := conn.Write(wireGuardDataPacket("data"))
+	require.NoError(t, err)
+	_, err = conn.Write([]byte{1, 0, 0, 0})
+	require.NoError(t, err)
+	_, err = conn.Write(relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000))
+	require.NoError(t, err)
+	_, err = conn.Write(relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.30", 40001))
+	require.NoError(t, err)
+	_, err = conn.Write([]byte{9})
+	require.NoError(t, err)
+
+	stats := conn.writePayloadStats.snapshot()
+	require.Equal(t, uint64(1), stats.wireGuardData)
+	require.Equal(t, uint64(1), stats.wireGuardControl)
+	require.Equal(t, uint64(1), stats.rawAllowed)
+	require.Equal(t, uint64(1), stats.rawOther)
+	require.Equal(t, uint64(1), stats.unknown)
+}
+
 func TestRelayMultipathPacketBurstSizeFallsBackAndCaps(t *testing.T) {
 	t.Setenv(envAnonRelayMultipathPacketBurstSize, "bad")
 	require.Equal(t, uint64(relayMultipathDefaultPacketBurstSize), relayMultipathPacketBurstSize())

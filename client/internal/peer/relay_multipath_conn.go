@@ -141,6 +141,22 @@ type relayMultipathFlowAssignment struct {
 	lastSeen  time.Time
 }
 
+type relayMultipathWritePayloadStats struct {
+	wireGuardData    atomic.Uint64
+	wireGuardControl atomic.Uint64
+	rawAllowed       atomic.Uint64
+	rawOther         atomic.Uint64
+	unknown          atomic.Uint64
+}
+
+type relayMultipathWritePayloadSnapshot struct {
+	wireGuardData    uint64
+	wireGuardControl uint64
+	rawAllowed       uint64
+	rawOther         uint64
+	unknown          uint64
+}
+
 type relayMultipathTelemetryChannel struct {
 	id                uint32
 	healthy           bool
@@ -213,6 +229,8 @@ type relayMultipathConn struct {
 	flowAssignments   map[multipath.FlowKey]relayMultipathFlowAssignment
 	flowChannelCounts map[uint32]int
 	lastFlowPrune     time.Time
+
+	writePayloadStats relayMultipathWritePayloadStats
 }
 
 func newRelayMultipathConn(channels []relayMultipathChannel, allowedIPs []netip.Prefix, unregisterObserver func()) *relayMultipathConn {
@@ -398,6 +416,7 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 	if c.closed.Load() {
 		return 0, net.ErrClosed
 	}
+	c.recordWritePayload(p)
 	now := time.Now()
 	c.reapStalledChannels(now)
 	channelID := c.primaryChannelID
@@ -1121,10 +1140,11 @@ func (c *relayMultipathConn) logTelemetrySnapshot() {
 		return
 	}
 
+	payloads := c.writePayloadStats.snapshot()
 	var b strings.Builder
 	_, _ = fmt.Fprintf(
 		&b,
-		"anonymous relay multipath telemetry strategy=%s batch=%t scoring=%t burst=%d pacing=%s max_inflight=%d hint_queue=%d flows=%d channels=",
+		"anonymous relay multipath telemetry strategy=%s batch=%t scoring=%t burst=%d pacing=%s max_inflight=%d hint_queue=%d flows=%d payloads={wg_data=%d wg_control=%d raw_allowed=%d raw_other=%d unknown=%d} channels=",
 		c.writeStrategy,
 		c.batchingEnabled,
 		c.scoringEnabled,
@@ -1133,6 +1153,11 @@ func (c *relayMultipathConn) logTelemetrySnapshot() {
 		c.maxInflight,
 		len(c.hintCh),
 		c.trackedFlowCount(),
+		payloads.wireGuardData,
+		payloads.wireGuardControl,
+		payloads.rawAllowed,
+		payloads.rawOther,
+		payloads.unknown,
 	)
 	for i, channel := range channels {
 		if i > 0 {
@@ -1797,6 +1822,36 @@ func decodeRelayPacketBatch(payload []byte) ([][]byte, bool) {
 		return nil, false
 	}
 	return packets, true
+}
+
+func (c *relayMultipathConn) recordWritePayload(packet []byte) {
+	switch {
+	case isWireGuardDataPacket(packet):
+		c.writePayloadStats.wireGuardData.Add(1)
+	case isWireGuardHandshakePacket(packet):
+		c.writePayloadStats.wireGuardControl.Add(1)
+	default:
+		info, err := multipath.ClassifyPacketInfo(packet)
+		if err != nil {
+			c.writePayloadStats.unknown.Add(1)
+			return
+		}
+		if c.matchesAllowedDestination(info.Destination) {
+			c.writePayloadStats.rawAllowed.Add(1)
+			return
+		}
+		c.writePayloadStats.rawOther.Add(1)
+	}
+}
+
+func (s *relayMultipathWritePayloadStats) snapshot() relayMultipathWritePayloadSnapshot {
+	return relayMultipathWritePayloadSnapshot{
+		wireGuardData:    s.wireGuardData.Load(),
+		wireGuardControl: s.wireGuardControl.Load(),
+		rawAllowed:       s.rawAllowed.Load(),
+		rawOther:         s.rawOther.Load(),
+		unknown:          s.unknown.Load(),
+	}
 }
 
 func (c *relayMultipathConn) err() error {
