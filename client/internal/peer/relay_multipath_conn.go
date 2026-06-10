@@ -188,6 +188,7 @@ type relayMultipathConn struct {
 	writeStrategy   string
 	packetBurstSize uint64
 	stripeCounter   atomic.Uint64
+	flowCounter     atomic.Uint64
 	scoringEnabled  bool
 	slowWrite       time.Duration
 	channelCooldown time.Duration
@@ -356,44 +357,20 @@ func (c *relayMultipathConn) removeFlowAssignmentsForChannel(channelID uint32) {
 	}
 }
 
-func (c *relayMultipathConn) selectChannelForNewFlow(flow multipath.FlowKey, now time.Time) (uint32, bool) {
+func (c *relayMultipathConn) selectChannelForNewFlow(_ multipath.FlowKey, now time.Time) (uint32, bool) {
 	c.selectorMu.RLock()
 	defer c.selectorMu.RUnlock()
 
-	candidates := c.writeCandidatesLocked(now, nil, false, false, true)
+	candidates := c.writeCandidatesLocked(now, nil, false, false, false)
 	if len(candidates) == 0 {
-		candidates = c.writeCandidatesLocked(now, nil, true, true, true)
+		candidates = c.writeCandidatesLocked(now, nil, true, true, false)
 	}
 	if len(candidates) == 0 {
 		return 0, false
 	}
 
-	minFlows := c.flowChannelCounts[candidates[0].id]
-	for _, candidate := range candidates[1:] {
-		if count := c.flowChannelCounts[candidate.id]; count < minFlows {
-			minFlows = count
-		}
-	}
-
-	leastLoaded := make([]multipath.Channel, 0, len(candidates))
-	for _, candidate := range candidates {
-		if c.flowChannelCounts[candidate.id] != minFlows {
-			continue
-		}
-		leastLoaded = append(leastLoaded, multipath.Channel{
-			ID:      strconv.FormatUint(uint64(candidate.id), 10),
-			Healthy: true,
-		})
-	}
-	selected, err := multipath.SelectChannel(flow, leastLoaded)
-	if err != nil {
-		return candidates[0].id, true
-	}
-	channelID, ok := c.selectorIDToChannel[selected.ID]
-	if !ok {
-		return candidates[0].id, true
-	}
-	return channelID, true
+	index := int((c.flowCounter.Add(1) - 1) % uint64(len(candidates)))
+	return candidates[index].id, true
 }
 
 func (c *relayMultipathConn) Read(b []byte) (int, error) {

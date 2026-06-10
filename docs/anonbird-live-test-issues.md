@@ -930,6 +930,19 @@ Live infrastructure issues found:
      channels. Telemetry also logs `hint_queue` and `flows` so live tests can
      confirm whether plaintext flow observation is active.
 
+8. Live telemetry after the previous fix showed that plaintext flow hints were
+   present, but new flow assignment could still collapse to channel `0`.
+   - Symptom: many relay connections logged `flows=5`, but channel `0` had
+     thousands of `selected` writes while channels `1..3` stayed at zero.
+   - Cause: the old new-flow scheduler combined least-loaded counts,
+     rendezvous hashing, and channel score. Stale tracked flow counts plus the
+     score advantage of the recently-read primary channel could keep new flows
+     pinned to channel `0` even though the other Tor channels were healthy.
+   - Fix: new observed flows are assigned round-robin across currently
+     writable healthy channels, then remain sticky through `flowAssignments`.
+     This preserves per-flow ordering while making fresh TCP flows use all Tor
+     sub-channels deterministically.
+
 Current four-node Tor test pool:
 
 | Host | Role | AnonBird IP | FQDN |
@@ -965,9 +978,71 @@ Live retest before the `ICEBind.Send` and unhinted `flow-affine` fixes:
   at sender 4.77 Mbit/s / receiver 2.28 Mbit/s; several central-server
   directions timed out during TCP setup.
 
+Live retest after deploying `development-local-tor-bind-flow-fallback`:
+
+- Deployed client SHA256:
+  `a55222f563f700378be2ced46863c4089ec60e4e93376a1e5ec2f8978110a003`.
+- All four clients reported the same version/SHA, management/signal connected,
+  relay `1/1 Available`, userspace interface, and `Peers count: 3/14
+  Connected`.
+- `45.138.103.224` had an extra legacy
+  `marten-netbird-autologin.timer` that restarted old NetBird after it was
+  disabled. That timer/service was disabled, `netbird` was force-masked, and
+  `anonbird` was restarted. After this, only `/usr/bin/anonbird` remained for
+  the client process and `netbird=inactive`.
+- Direct real peer IPv4 checks against `ss -Htnp | grep anonbird` were empty on
+  all four hosts.
+
+Ping matrix with `ping -c 6 -W 12 -i 0.5`:
+
+| Direction | Result |
+| --- | --- |
+| `45 -> 185` | 6/6, avg 1194 ms |
+| `45 -> 213` | 6/6, avg 609 ms |
+| `45 -> 83` | 6/6, avg 613 ms |
+| `185 -> 45` | 6/6, avg 1400 ms |
+| `185 -> 213` | 6/6, avg 1096 ms |
+| `185 -> 83` | 6/6, avg 698 ms |
+| `213 -> 45` | 6/6, avg 1537 ms |
+| `213 -> 185` | 6/6, avg 1330 ms |
+| `213 -> 83` | 6/6, avg 1111 ms |
+| `83 -> 45` | 6/6, avg 1871 ms |
+| `83 -> 185` | 2/6, avg 960 ms for received packets |
+| `83 -> 213` | 6/6, avg 867 ms |
+
+Tor `iperf3 -P 4 -t 20` matrix:
+
+| Direction | Result |
+| --- | --- |
+| `185 -> 45` | reset at end; receiver 0.763 Mbit/s |
+| `45 -> 185` | sender 0.31 Mbit/s, receiver 0.05 Mbit/s |
+| `185 -> 213` | sender 5.98 Mbit/s, receiver 2.75 Mbit/s |
+| `213 -> 185` | sender 4.61 Mbit/s, receiver 2.48 Mbit/s |
+| `185 -> 83` | sender 5.71 Mbit/s, receiver 2.98 Mbit/s |
+| `83 -> 185` | sender 3.15 Mbit/s, receiver 1.48 Mbit/s |
+| `45 -> 213` | reset at end; receiver 2.13 Mbit/s |
+| `213 -> 45` | reset at end; receiver 0.554 Mbit/s |
+| `45 -> 83` | broken pipe at end; receiver 1.83 Mbit/s |
+| `83 -> 45` | reset at end; receiver 0.737 Mbit/s |
+| `213 -> 83` | sender 9.65 Mbit/s, receiver 5.10 Mbit/s |
+| `83 -> 213` | reset at end; receiver 1.65 Mbit/s |
+
+Conclusion from this retest:
+
+- Connectivity is reliable enough for peer status and pings after warmup, but
+  the speed/stability target is still not reached across the full pool.
+- The best direction, `213 -> 83`, reached the requested 5-15 Mbit/s range on
+  both sender and receiver. Several other directions hit 5-14 Mbit/s in
+  one-second sender intervals but drained slowly or reset during the iperf
+  control/result phase.
+- Telemetry showed that many live relay connections still selected only
+  channel `0` despite `flows=5`; this led to the round-robin new-flow scheduler
+  fix above.
+
 Next live retest status:
 
-- Pending fresh client deployment of the `ICEBind.Send` temporary-write fix and
-  the unhinted `flow-affine` channel fallback to all four test hosts.
-- After deployment, rerun Tor ping, Tor `iperf3 -P 4`, process health, and
-  real-IP visibility checks across the four-node pool.
+- Pending fresh deployment of the round-robin new-flow scheduler to all four
+  hosts.
+- After deployment, rerun status, real-IP checks, ping, `iperf3 -P 4`, and
+  telemetry specifically checking that `selected` is non-zero on all four Tor
+  channels for fresh bulk flows.

@@ -20,22 +20,20 @@ func TestRelayMultipathConnRoutesDataPacketsByFlowHint(t *testing.T) {
 	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
 	defer conn.Close()
 
-	packetA, channelA := relayMultipathPacketForChannel(t, channels, func(id uint32) bool { return true })
-	packetB, channelB := relayMultipathPacketForChannel(t, channels, func(id uint32) bool { return id != channelA })
-	require.NotEqual(t, channelA, channelB)
-
+	packetA := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
 	conn.ObservePacket(packetA, true)
 	_, err := conn.Write(wireGuardDataPacket("flow-a"))
 	require.NoError(t, err)
-	require.Equal(t, wireGuardDataPacket("flow-a"), <-fakes[channelA].writes)
+	require.Equal(t, wireGuardDataPacket("flow-a"), <-fakes[0].writes)
 
+	packetB := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40001)
 	conn.ObservePacket(packetB, true)
 	_, err = conn.Write(wireGuardDataPacket("flow-b"))
 	require.NoError(t, err)
-	require.Equal(t, wireGuardDataPacket("flow-b"), <-fakes[channelB].writes)
+	require.Equal(t, wireGuardDataPacket("flow-b"), <-fakes[1].writes)
 }
 
-func TestRelayMultipathConnBalancesNewFlowHintsAcrossLeastLoadedChannels(t *testing.T) {
+func TestRelayMultipathConnBalancesNewFlowHintsRoundRobin(t *testing.T) {
 	channels, fakes := newTestRelayMultipathChannels(4)
 	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
 	defer conn.Close()
@@ -58,6 +56,31 @@ func TestRelayMultipathConnBalancesNewFlowHintsAcrossLeastLoadedChannels(t *test
 	for _, count := range conn.flowChannelCounts {
 		require.Equal(t, 1, count)
 	}
+}
+
+func TestRelayMultipathConnNewFlowHintsIgnoreStaleFlowCounts(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(4)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	conn.flowChannelCounts[1] = 10
+	conn.flowChannelCounts[2] = 10
+	conn.flowChannelCounts[3] = 10
+	for i := 0; i < len(channels); i++ {
+		conn.ObservePacket(relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", uint16(41000+i)), true)
+		_, err := conn.Write(wireGuardDataPacket("flow-" + strconv.Itoa(i)))
+		require.NoError(t, err)
+	}
+
+	used := make(map[uint32]bool)
+	for channelID, fake := range fakes {
+		select {
+		case <-fake.writes:
+			used[channelID] = true
+		default:
+		}
+	}
+	require.Len(t, used, len(channels))
 }
 
 func TestRelayMultipathConnKeepsExistingFlowHintSticky(t *testing.T) {
@@ -96,7 +119,7 @@ func TestRelayMultipathConnDoesNotConsumeHintsForWireGuardHandshake(t *testing.T
 	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
 	defer conn.Close()
 
-	packet, selectedChannel := relayMultipathPacketForChannel(t, channels, func(id uint32) bool { return id != 0 })
+	packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
 
 	conn.ObservePacket(packet, true)
 	_, err := conn.Write([]byte{1, 0, 0, 0, 'h', 's'})
@@ -105,7 +128,7 @@ func TestRelayMultipathConnDoesNotConsumeHintsForWireGuardHandshake(t *testing.T
 
 	_, err = conn.Write(wireGuardDataPacket("after-handshake"))
 	require.NoError(t, err)
-	require.Equal(t, wireGuardDataPacket("after-handshake"), <-fakes[selectedChannel].writes)
+	require.Equal(t, wireGuardDataPacket("after-handshake"), <-fakes[0].writes)
 }
 
 func TestRelayMultipathConnIgnoresPacketsOutsidePeerAllowedIPs(t *testing.T) {
@@ -286,7 +309,9 @@ func TestRelayMultipathConnReopensStalledChannelAndReassignsFlow(t *testing.T) {
 		return reopened, nil
 	})
 
-	packet, stalledChannel := relayMultipathPacketForChannel(t, channels, func(id uint32) bool { return id == 1 })
+	stalledChannel := uint32(1)
+	conn.flowCounter.Store(uint64(stalledChannel))
+	packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
 	conn.ObservePacket(packet, true)
 	conn.recordChannelRead(stalledChannel, 1)
 	first := wireGuardDataPacket("first")
@@ -628,7 +653,7 @@ func TestRelayMultipathPacingAndInflightCanBeDisabled(t *testing.T) {
 	require.Zero(t, relayMultipathInt64FromEnvAllowZero(envAnonRelayMultipathMaxInflight, relayMultipathDefaultMaxInflight))
 }
 
-func TestRelayMultipathConnReopensUnhealthyChannel(t *testing.T) {
+func TestRelayMultipathConnReopensUnhealthyChannelAndContinues(t *testing.T) {
 	channels, fakes := newTestRelayMultipathChannels(3)
 	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
 	defer conn.Close()
@@ -640,7 +665,9 @@ func TestRelayMultipathConnReopensUnhealthyChannel(t *testing.T) {
 		return reopened, nil
 	})
 
-	packet, failedChannel := relayMultipathPacketForChannel(t, channels, func(id uint32) bool { return id == 1 })
+	failedChannel := uint32(1)
+	conn.flowCounter.Store(uint64(failedChannel))
+	packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
 	fakes[failedChannel].writeErr = errors.New("channel failed")
 
 	conn.ObservePacket(packet, true)
@@ -661,14 +688,20 @@ func TestRelayMultipathConnReopensUnhealthyChannel(t *testing.T) {
 			require.Equal(t, wireGuardDataPacket("after-reopen"), got)
 			return true
 		case got := <-fakes[0].writes:
-			t.Fatalf("fallback channel received write after reopen: %q", string(got))
+			require.Equal(t, wireGuardDataPacket("after-reopen"), got)
+			return true
 		case got := <-fakes[2].writes:
-			t.Fatalf("unhinted channel received write after reopen: %q", string(got))
+			require.Equal(t, wireGuardDataPacket("after-reopen"), got)
+			return true
 		default:
 			return false
 		}
-		return false
 	}, time.Second, 10*time.Millisecond)
+	select {
+	case got := <-fakes[failedChannel].writes:
+		t.Fatalf("old failed channel received write after reopen: %q", string(got))
+	default:
+	}
 }
 
 func TestRelayMultipathConnDoesNotWaitForChannelReopen(t *testing.T) {
@@ -692,7 +725,9 @@ func TestRelayMultipathConnDoesNotWaitForChannelReopen(t *testing.T) {
 	})
 	defer close(releaseReopen)
 
-	packet, failedChannel := relayMultipathPacketForChannel(t, channels, func(id uint32) bool { return id == 1 })
+	failedChannel := uint32(1)
+	conn.flowCounter.Store(uint64(failedChannel))
+	packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
 	fakes[failedChannel].writeErr = errors.New("channel failed")
 
 	conn.ObservePacket(packet, true)
@@ -728,7 +763,9 @@ func TestRelayMultipathConnSkipsUnhealthyChannelAfterWriteError(t *testing.T) {
 	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
 	defer conn.Close()
 
-	packet, failedChannel := relayMultipathPacketForChannel(t, channels, func(id uint32) bool { return id == 1 })
+	failedChannel := uint32(1)
+	conn.flowCounter.Store(uint64(failedChannel))
+	packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
 	fakes[failedChannel].writeErr = errors.New("channel failed")
 
 	conn.ObservePacket(packet, true)
