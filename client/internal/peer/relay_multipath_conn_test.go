@@ -58,6 +58,19 @@ func TestRelayMultipathConnBalancesNewFlowHintsRoundRobin(t *testing.T) {
 	}
 }
 
+func TestRelayMultipathConnRoutesRawIPPacketsByFlow(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(4)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	for i := 0; i < len(channels); i++ {
+		packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", uint16(42000+i))
+		_, err := conn.Write(packet)
+		require.NoError(t, err)
+		require.Equal(t, packet, <-fakes[uint32(i)].writes)
+	}
+}
+
 func TestRelayMultipathConnNewFlowHintsIgnoreStaleFlowCounts(t *testing.T) {
 	channels, fakes := newTestRelayMultipathChannels(4)
 	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)

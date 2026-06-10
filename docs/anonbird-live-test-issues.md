@@ -1151,3 +1151,15 @@ Remaining Tor issue:
   flow-affine paths. If plaintext flow hints are missing or delayed, the
   fallback must distribute data over healthy channels more deterministically
   without breaking per-flow ordering.
+
+Follow-up finding:
+
+- After adding `assigned_flows` telemetry, live logs showed flow assignments
+  distributed across channels (`2/1/1/1`) while writes still selected channel
+  `0` almost exclusively.
+- Cause: the userspace relay path writes raw IPv4/IPv6 packets into
+  `relayMultipathConn`, not only WireGuard transport-data frames. `Write`
+  applied flow-affine selection only to WireGuard type-4 packets, so raw IP
+  payloads fell back to the primary channel.
+- Fix in progress: classify raw IP packets inside `Write` and route them
+  through the same sticky per-flow channel assignment path.

@@ -398,10 +398,13 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 	if c.closed.Load() {
 		return 0, net.ErrClosed
 	}
-	c.reapStalledChannels(time.Now())
+	now := time.Now()
+	c.reapStalledChannels(now)
 	channelID := c.primaryChannelID
 	strictPreferred := true
-	if isWireGuardDataPacket(p) {
+	if rawChannelID, ok := c.channelForRawPacket(p, now); ok {
+		channelID = rawChannelID
+	} else if isWireGuardDataPacket(p) {
 		switch c.writeStrategy {
 		case relayMultipathStrategyPacketBurst:
 			channelID = c.nextStripedChannelID()
@@ -455,6 +458,14 @@ func (c *relayMultipathConn) Write(p []byte) (int, error) {
 		return 0, relayMultipathTemporaryWriteError{err: net.ErrClosed}
 	}
 	return 0, net.ErrClosed
+}
+
+func (c *relayMultipathConn) channelForRawPacket(packet []byte, now time.Time) (uint32, bool) {
+	info, err := multipath.ClassifyPacketInfo(packet)
+	if err != nil || !c.matchesAllowedDestination(info.Destination) {
+		return 0, false
+	}
+	return c.channelForObservedFlow(info.Flow, now)
 }
 
 func (c *relayMultipathConn) writeToChannel(channelID uint32, conn net.Conn, p []byte) (int, error) {
