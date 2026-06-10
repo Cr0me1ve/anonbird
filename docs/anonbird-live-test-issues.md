@@ -1201,3 +1201,14 @@ Follow-up finding:
   failed to receive final `iperf3` results. The next suspect is not channel
   selection anymore, but Tor/WebSocket buffering, batching flush behavior, or
   TCP result/control fragility under high latency.
+- Configuration follow-up: enabling
+  `NB_ANON_RELAY_TOR_SOCKS_ISOLATION=true` on all four live nodes improved the
+  same `45 <-> 185` test without a rebuild. Both directions completed without
+  `iperf3` control reset. Results:
+  - `45 -> 185`: `4.68 Mbit/s` sender-side, `2.89 Mbit/s` receiver-side.
+  - `185 -> 45`: `8.04 Mbit/s` sender-side, `4.29 Mbit/s` receiver-side.
+  After the run all four nodes still reported `Peers count: 3/14 Connected`,
+  `Relays: 1/1 Available`, and direct real-peer TCP checks remained `0`.
+- Current best live Tor profile includes SOCKS isolation enabled. It is closer
+  to the `5-15 Mbit/s` target, but receiver-side throughput is still below
+  target on this pair.
