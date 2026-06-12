@@ -234,11 +234,15 @@ type relayMultipathConn struct {
 }
 
 func newRelayMultipathConn(channels []relayMultipathChannel, allowedIPs []netip.Prefix, unregisterObserver func()) *relayMultipathConn {
+	return newRelayMultipathConnWithChannelCount(channels, len(channels), allowedIPs, unregisterObserver)
+}
+
+func newRelayMultipathConnWithChannelCount(channels []relayMultipathChannel, desiredChannelCount int, allowedIPs []netip.Prefix, unregisterObserver func()) *relayMultipathConn {
 	c := &relayMultipathConn{
-		channels:            make(map[uint32]net.Conn, len(channels)),
-		selectorChannels:    make([]multipath.Channel, 0, len(channels)),
-		selectorIDToChannel: make(map[string]uint32, len(channels)),
-		channelStats:        make(map[uint32]*relayMultipathChannelStats, len(channels)),
+		channels:            make(map[uint32]net.Conn, desiredChannelCount),
+		selectorChannels:    make([]multipath.Channel, 0, desiredChannelCount),
+		selectorIDToChannel: make(map[string]uint32, desiredChannelCount),
+		channelStats:        make(map[uint32]*relayMultipathChannelStats, desiredChannelCount),
 		allowedIPs:          append([]netip.Prefix(nil), allowedIPs...),
 		hintCh:              make(chan uint32, relayMultipathHintQueueSize),
 		readCh:              make(chan relayMultipathRead, relayMultipathReadQueueSize),
@@ -262,16 +266,23 @@ func newRelayMultipathConn(channels []relayMultipathChannel, allowedIPs []netip.
 		flowChannelCounts:   make(map[uint32]int),
 	}
 	now := time.Now()
+	for _, channel := range channels {
+		if int(channel.id)+1 > desiredChannelCount {
+			desiredChannelCount = int(channel.id) + 1
+		}
+	}
+	for channelID := 0; channelID < desiredChannelCount; channelID++ {
+		c.addChannelSlot(uint32(channelID), nil, false, now)
+	}
 	for i, channel := range channels {
+		healthy := channel.conn != nil
+		c.addChannelSlot(channel.id, channel.conn, healthy, now)
 		if i == 0 {
 			c.primaryChannelID = channel.id
 		}
-		c.channels[channel.id] = channel.conn
-		c.channelStats[channel.id] = newRelayMultipathChannelStats(now)
-		selectorID := strconv.FormatUint(uint64(channel.id), 10)
-		c.selectorChannels = append(c.selectorChannels, multipath.Channel{ID: selectorID, Healthy: true})
-		c.selectorIDToChannel[selectorID] = channel.id
-		go c.readFrom(channel.id, channel.conn)
+		if healthy {
+			go c.readFrom(channel.id, channel.conn)
+		}
 	}
 	if c.unregisterObserver == nil {
 		c.unregisterObserver = func() {}
@@ -280,6 +291,23 @@ func newRelayMultipathConn(channels []relayMultipathChannel, allowedIPs []netip.
 		go c.logTelemetry()
 	}
 	return c
+}
+
+func (c *relayMultipathConn) addChannelSlot(channelID uint32, conn net.Conn, healthy bool, now time.Time) {
+	selectorID := strconv.FormatUint(uint64(channelID), 10)
+	if _, ok := c.selectorIDToChannel[selectorID]; !ok {
+		c.selectorChannels = append(c.selectorChannels, multipath.Channel{ID: selectorID, Healthy: healthy})
+		c.selectorIDToChannel[selectorID] = channelID
+		c.channelStats[channelID] = newRelayMultipathChannelStats(now)
+	} else {
+		for i := range c.selectorChannels {
+			if c.selectorChannels[i].ID == selectorID {
+				c.selectorChannels[i].Healthy = healthy
+				break
+			}
+		}
+	}
+	c.channels[channelID] = conn
 }
 
 func (c *relayMultipathConn) ObservePacket(data []byte, outbound bool) {
@@ -533,8 +561,9 @@ func (c *relayMultipathConn) setUnregisterObserver(unregisterObserver func()) {
 
 func (c *relayMultipathConn) setChannelReopener(reopener relayMultipathChannelReopener) {
 	c.reopenMu.Lock()
-	defer c.reopenMu.Unlock()
 	c.reopener = reopener
+	c.reopenMu.Unlock()
+	c.startUnavailableChannelReopens()
 }
 
 func (c *relayMultipathConn) LocalAddr() net.Addr {
@@ -1454,6 +1483,35 @@ func (c *relayMultipathConn) hasChannelReopener() bool {
 	c.reopenMu.Lock()
 	defer c.reopenMu.Unlock()
 	return c.reopener != nil
+}
+
+func (c *relayMultipathConn) startUnavailableChannelReopens() {
+	if c.closed.Load() || !c.hasChannelReopener() {
+		return
+	}
+
+	c.selectorMu.RLock()
+	var channelIDs []uint32
+	for _, selectorChannel := range c.selectorChannels {
+		if selectorChannel.Healthy {
+			continue
+		}
+		channelID, ok := c.selectorIDToChannel[selectorChannel.ID]
+		if !ok {
+			continue
+		}
+		if c.channels[channelID] != nil {
+			continue
+		}
+		channelIDs = append(channelIDs, channelID)
+	}
+	c.selectorMu.RUnlock()
+
+	for _, channelID := range channelIDs {
+		if c.startChannelReopen(channelID) {
+			log.Infof("anonymous relay multipath channel %d unavailable at startup; reopening in background", channelID)
+		}
+	}
 }
 
 func (c *relayMultipathConn) startChannelReopen(channelID uint32) bool {

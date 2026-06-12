@@ -183,12 +183,7 @@ func (w *WorkerRelay) wrapRelayMultipathConn(serverAddress string, serverIP neti
 		}
 		channels = append(channels, relayMultipathChannel{id: uint32(channelID), conn: channelConn})
 	}
-	if len(channels) == 1 {
-		w.log.Warnf("anonymous relay multipath unavailable, continuing with primary relay channel")
-		return primaryConn, nil
-	}
-
-	multipathConn := newRelayMultipathConn(channels, w.config.WgConfig.AllowedIps, nil)
+	multipathConn := newRelayMultipathConnWithChannelCount(channels, channelCount, w.config.WgConfig.AllowedIps, nil)
 	multipathConn.setChannelReopener(func(ctx context.Context, channelID uint32) (net.Conn, error) {
 		return w.relayManager.OpenConnChannel(ctx, serverAddress, w.config.Key, serverIP, channelID)
 	})

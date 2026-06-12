@@ -1217,3 +1217,47 @@ Follow-up finding:
   requested. `NB_ANON_RELAY_TOR_SOCKS_ISOLATION=false` remains an override for
   disabling secondary-channel isolation. This makes the faster Tor profile the
   out-of-box behavior for URL+setup-key users without changing the CLI flow.
+
+## 2026-06-12: Tor missing startup channel recovery
+
+Live retest before the fix, current profile:
+
+- Deployed version: `development-local-tor-channel-isolation`.
+- Runtime profile on the checked nodes:
+  `flow-affine`, 4 relay channels, batch enabled, secondary Tor SOCKS
+  isolation enabled by default, no pacing and no in-flight byte cap.
+- `45.138.103.224 -> 185.246.220.249`, `iperf3 -P 4 -t 30`:
+  sender `2.62 Mbit/s`, receiver `1.26 Mbit/s`.
+- `185.246.220.249 -> 45.138.103.224`, `iperf3 -P 4 -t 30`:
+  several one-second sender intervals reached `10-17 Mbit/s`, but the run ended
+  with `iperf3` `Broken pipe` before final receiver results.
+
+Finding:
+
+- Live telemetry showed missing relay channels stuck as `healthy=false` for
+  many hours, for example channel `2` on `45.138.103.224` and channels `2/3` on
+  `185.246.220.249`.
+- The reopen loop itself retries after failures, but it can only reopen channel
+  IDs that exist in `relayMultipathConn`.
+- If an extra Tor relay channel fails during initial startup/auth, the worker
+  used to skip it completely. The multipath connection then had no slot for
+  that channel ID, so the background reopener could never restore the missing
+  capacity.
+
+Fix:
+
+- `relayMultipathConn` can now be created with a desired channel count. It
+  registers unavailable channel slots as unhealthy with nil conns.
+- `setChannelReopener` immediately starts background reopen attempts for those
+  unavailable startup slots.
+- `WorkerRelay` now keeps multipath enabled even if only the primary channel
+  opens initially; missing secondary Tor streams are recovered in the
+  background while the primary/healthy channels continue carrying traffic.
+
+Local verification:
+
+```sh
+go test ./client/internal/peer -count=1 -timeout=120s
+```
+
+Actual status on 2026-06-12: pass.

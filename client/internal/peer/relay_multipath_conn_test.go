@@ -766,6 +766,53 @@ func TestRelayMultipathConnReopensUnhealthyChannelAndContinues(t *testing.T) {
 	}
 }
 
+func TestRelayMultipathConnReopensMissingStartupChannel(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(1)
+	conn := newRelayMultipathConnWithChannelCount(channels, 3, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	require.True(t, relayMultipathChannelHealthy(conn, 0))
+	require.False(t, relayMultipathChannelHealthy(conn, 1))
+	require.False(t, relayMultipathChannelHealthy(conn, 2))
+
+	reopened := newRelayMultipathFakeConn()
+	reopenedCh := make(chan uint32, 2)
+	conn.setChannelReopener(func(_ context.Context, channelID uint32) (net.Conn, error) {
+		reopenedCh <- channelID
+		if channelID == 2 {
+			return reopened, nil
+		}
+		return nil, errors.New("still unavailable")
+	})
+
+	require.Eventually(t, func() bool {
+		return relayMultipathChannelHealthy(conn, 2)
+	}, time.Second, 10*time.Millisecond)
+	require.False(t, relayMultipathChannelHealthy(conn, 1))
+
+	seen := make(map[uint32]bool)
+	require.Eventually(t, func() bool {
+		for {
+			select {
+			case channelID := <-reopenedCh:
+				seen[channelID] = true
+			default:
+				return seen[1] && seen[2]
+			}
+		}
+	}, time.Second, 10*time.Millisecond)
+
+	conn.enqueueHint(2)
+	_, err := conn.Write(wireGuardDataPacket("after-startup-reopen"))
+	require.NoError(t, err)
+	require.Equal(t, wireGuardDataPacket("after-startup-reopen"), <-reopened.writes)
+	select {
+	case got := <-fakes[0].writes:
+		t.Fatalf("primary channel received hinted write after startup reopen: %q", string(got))
+	default:
+	}
+}
+
 func TestRelayMultipathConnDoesNotWaitForChannelReopen(t *testing.T) {
 	channels, fakes := newTestRelayMultipathChannels(3)
 	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
