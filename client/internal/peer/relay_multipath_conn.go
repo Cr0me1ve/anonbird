@@ -1557,11 +1557,17 @@ func (c *relayMultipathConn) startChannelReopen(channelID uint32) bool {
 }
 
 func (c *relayMultipathConn) reopenChannel(channelID uint32, reopener relayMultipathChannelReopener) {
-	defer func() {
+	reopenFinished := false
+	finishReopen := func() {
+		if reopenFinished {
+			return
+		}
+		reopenFinished = true
 		c.reopenMu.Lock()
 		delete(c.reopening, channelID)
 		c.reopenMu.Unlock()
-	}()
+	}
+	defer finishReopen()
 
 	backoff := relayMultipathReopenInitialBackoff
 	for !c.closed.Load() {
@@ -1569,11 +1575,15 @@ func (c *relayMultipathConn) reopenChannel(channelID uint32, reopener relayMulti
 		conn, err := reopener(ctx, channelID)
 		cancel()
 		if err == nil && conn != nil {
+			finishReopen()
 			if c.installReopenedChannel(channelID, conn) {
 				return
 			}
 			_ = conn.Close()
 			return
+		}
+		if err != nil && !c.closed.Load() {
+			log.Warnf("anonymous relay multipath channel %d reopen failed: %s; retrying in %s", channelID, err, backoff)
 		}
 
 		select {

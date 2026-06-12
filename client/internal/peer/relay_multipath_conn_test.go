@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -798,6 +799,44 @@ func TestRelayMultipathConnReopensUnhealthyChannelAndContinues(t *testing.T) {
 		t.Fatalf("old failed channel received write after reopen: %q", string(got))
 	default:
 	}
+}
+
+func TestRelayMultipathConnReopensAgainWhenReopenedChannelFailsImmediately(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(3)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	failedChannel := uint32(1)
+	var reopenCalls atomic.Uint32
+	stable := newRelayMultipathFakeConn()
+	conn.setChannelReopener(func(_ context.Context, channelID uint32) (net.Conn, error) {
+		require.Equal(t, failedChannel, channelID)
+		call := reopenCalls.Add(1)
+		if call == 1 {
+			diesImmediately := newRelayMultipathFakeConn()
+			diesImmediately.readErrs <- errors.New("reopened channel died immediately")
+			return diesImmediately, nil
+		}
+		return stable, nil
+	})
+
+	conn.flowCounter.Store(uint64(failedChannel))
+	packet := relayMultipathIPv4Packet(t, "100.80.0.10", "100.80.0.20", 40000)
+	fakes[failedChannel].writeErr = errors.New("channel failed")
+
+	conn.ObservePacket(packet, true)
+	_, err := conn.Write(wireGuardDataPacket("first"))
+	require.NoError(t, err)
+	require.Equal(t, wireGuardDataPacket("first"), <-fakes[0].writes)
+
+	require.Eventually(t, func() bool {
+		return reopenCalls.Load() >= 2 && relayMultipathChannelHealthy(conn, failedChannel)
+	}, time.Second, 10*time.Millisecond)
+
+	conn.enqueueHint(failedChannel)
+	_, err = conn.Write(wireGuardDataPacket("after-second-reopen"))
+	require.NoError(t, err)
+	require.Equal(t, wireGuardDataPacket("after-second-reopen"), <-stable.writes)
 }
 
 func TestRelayMultipathConnReopensMissingStartupChannel(t *testing.T) {

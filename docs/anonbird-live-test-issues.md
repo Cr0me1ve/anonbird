@@ -1309,3 +1309,188 @@ Conclusion:
   `3.6-3.7 Mbit/s` receiver-side despite sender-side being above `6 Mbit/s`.
   The next bottleneck is no longer missing channel recovery; it is Tor/TCP
   tail latency and per-channel congestion/blackhole avoidance under load.
+
+## 2026-06-12: Tor degraded-channel avoidance
+
+Problem found after startup-channel recovery:
+
+- All four Tor sub-channels could be present and `healthy=true`, but a channel
+  could still stop returning useful reads while accepting writes.
+- The older scoring logic waited for the stricter stall threshold before
+  avoiding such a channel. That left bulk TCP flows feeding a path with long
+  read-idle tails, which lowered receiver-side throughput and sometimes caused
+  `iperf3` control/result fragility.
+- A channel that is idle but has no unanswered writes is still allowed. The new
+  guard only treats it as degraded when read progress is stale and there are
+  outstanding writes since the last read/reset.
+
+Fix:
+
+- Added a degraded-channel classification to `relayMultipathConn`.
+- Normal channel selection now skips degraded channels when at least one better
+  writable channel exists.
+- The fallback path can still use degraded channels if every channel is
+  degraded, so the peer does not artificially go down while Tor recovers.
+- Degraded state is included in telemetry as `degraded=true/false`.
+
+Local verification:
+
+```sh
+go test ./client/internal/peer -count=1 -timeout=120s
+go test ./client/internal/peer ./client/iface/bind ./shared/relay/client ./shared/relay/client/dialer/ws -count=1 -timeout=180s
+```
+
+Actual status on 2026-06-12: pass.
+
+Deployment:
+
+- Deployed version on `45.138.103.224`, `185.246.220.249`,
+  `213.108.2.95`, and `83.171.225.115`:
+  `development-local-tor-degraded-guard`.
+- Binary SHA256 on all four hosts:
+  `be946e777c25406d03a6c74a6a4f5739c80a374785f8a076ff41fff0a0bb1523`.
+- Gzip SHA256:
+  `b0129478b2651e00a663cd6e341968853f332c71eb8086e31f92c686a7f3a136`.
+- Runtime env on all four hosts:
+  `flow-affine`, 4 channels, batch enabled, secondary Tor SOCKS isolation
+  enabled, channel scoring enabled, degraded-channel telemetry enabled, no
+  pacing, no in-flight byte cap.
+- After warm-up, all four hosts reported management/signal connected, relay
+  `1/1 Available`, and `Peers count: 3/14 Connected`.
+- Direct real-peer TCP checks stayed `0` on all four hosts.
+
+Tor throughput after degraded-channel avoidance:
+
+| Direction | Result |
+| --- | --- |
+| `45 -> 185`, `iperf3 -P 4 -t 30` | sender `11.8 Mbit/s`, receiver `9.09 Mbit/s`, completed |
+| `185 -> 45`, `iperf3 -P 4 -t 30` | sender `9.99 Mbit/s`, receiver `6.62 Mbit/s`, completed |
+| `185 -> 83`, `iperf3 -P 4 -t 20` | sender `12.9 Mbit/s`, receiver `8.44 Mbit/s`, completed after restarting the `iperf3` server |
+| `83 -> 185`, `iperf3 -P 4 -t 20` | sender `11.5 Mbit/s`, receiver `7.34 Mbit/s`, completed |
+
+Additional observation:
+
+- An immediate parallel `185 <-> 83` run failed with `Broken pipe` before a
+  useful transfer. Restarting the `iperf3` servers and running the two
+  directions sequentially completed successfully. This looks like
+  `iperf3` control/server state fragility rather than a proven AnonBird
+  dataplane failure, because post-load AnonBird status, relay availability, and
+  real-peer TCP checks stayed clean.
+
+Post-load health:
+
+- All four hosts still reported management/signal connected, relay available,
+  and `Peers count: 3/14 Connected`.
+- Direct real-peer TCP checks remained `0`.
+- Telemetry showed the new `degraded` field. During and after load, some Tor
+  channels became `degraded=true`, but the peer connection stayed up and writes
+  continued on other healthy channels.
+
+Conclusion:
+
+- The current four-node Tor build reaches the target `5-15 Mbit/s` range on the
+  retested pairs. Receiver-side results were `6.62-9.09 Mbit/s` on `45 <-> 185`
+  and `7.34-8.44 Mbit/s` on `185 <-> 83`.
+- The remaining stability question is duration, not short-run throughput. The
+  next step is a longer run with telemetry snapshots to confirm that degraded
+  channel avoidance keeps working over minutes instead of only 20-30 second
+  windows.
+
+## 2026-06-12: Tor reopen race during longer runs
+
+Longer-run verification after degraded-channel avoidance:
+
+- `45 -> 185`, parallel with the opposite direction,
+  `iperf3 -P 4 -t 300`: sender-side stayed useful for 270 seconds with
+  30-second windows mostly in the `6.99-11.6 Mbit/s` range, then `iperf3`
+  failed to send the final control message with `Broken pipe`. No final
+  receiver summary was produced for this direction.
+- `185 -> 45`, parallel with the opposite direction,
+  `iperf3 -P 4 -t 300`: completed; sender `5.76 Mbit/s`, receiver
+  `5.41 Mbit/s`.
+- During that run, telemetry showed exactly the intended degraded-channel
+  behavior: some channels became `degraded=true`, one channel became
+  `healthy=false`, and traffic continued on other channels without dropping the
+  peer.
+- Post-load status stayed healthy: management/signal connected, relay
+  available, `Peers count: 3/14 Connected`, and direct real-peer TCP checks
+  remained `0`.
+
+Problem found:
+
+- A reopened Tor/WebSocket channel can fail immediately after installation.
+- `installReopenedChannel` starts the new read loop before the reopening marker
+  was removed from the `reopening` map.
+- If the new read loop got an immediate error, `markChannelUnhealthy` tried to
+  start another reopen, saw the channel as already reopening, and skipped it.
+  The first reopen goroutine then returned and removed the marker, leaving the
+  channel unhealthy with no active reopener.
+
+Fix:
+
+- `reopenChannel` now clears the `reopening` marker before installing a
+  successfully opened replacement connection. That lets an immediately failing
+  replacement stream start the next reopen attempt.
+- Added warning logs for reopen failures so live tests distinguish a code race
+  from a real relay-side establishment error.
+- Added unit coverage for the immediate-failure case:
+  `TestRelayMultipathConnReopensAgainWhenReopenedChannelFailsImmediately`.
+
+Local verification:
+
+```sh
+go test ./client/internal/peer -run 'TestRelayMultipathConnReopens(Again|Unhealthy|Missing)|TestRelayMultipathConnSkipsDegraded|TestRelayMultipathConnUsesDegraded' -count=1 -timeout=120s
+go test ./client/internal/peer ./client/iface/bind ./shared/relay/client ./shared/relay/client/dialer/ws -count=1 -timeout=180s
+git diff --check
+```
+
+Actual status on 2026-06-12: pass.
+
+Deployment:
+
+- Deployed version on `45.138.103.224`, `185.246.220.249`,
+  `213.108.2.95`, and `83.171.225.115`:
+  `development-local-tor-reopen-race`.
+- Binary SHA256 on all four hosts:
+  `e92700c8f4debf67183edd35330d1446349e13812b1740b4b58d56dc8689e520`.
+- Gzip SHA256:
+  `56d64df966adc4f27f7a1cf83cc425c341ae9d301c78286bbcb2908371a88944`.
+- After warm-up, all four hosts reported management/signal connected, relay
+  `1/1 Available`, and `Peers count: 3/14 Connected`.
+- Direct real-peer TCP checks stayed `0` on all four hosts.
+- Startup telemetry showed channel IDs `0/1/2/3` present and healthy on all
+  checked peer relay connections.
+
+Control retest:
+
+| Direction | Result |
+| --- | --- |
+| `45 -> 185`, parallel `iperf3 -P 4 -t 120` | completed; sender `9.89 Mbit/s`, receiver `9.13 Mbit/s` |
+| `185 -> 45`, parallel `iperf3 -P 4 -t 120` | immediate `iperf3` `control socket has closed unexpectedly` |
+| `185 -> 45`, sequential retry `iperf3 -P 4 -t 120` | completed; sender `10.4 Mbit/s`, receiver `9.36 Mbit/s` |
+
+Post-load health:
+
+- `45` and `185` both stayed management/signal connected with relay available
+  and `Peers count: 3/14 Connected`.
+- Direct real-peer TCP checks stayed `0` on both hosts.
+- On `45`, post-load telemetry kept all channels healthy on checked relay
+  connections.
+- On `185`, one secondary channel still failed to establish on some relay
+  connections, but it now logs explicit retry reasons such as
+  `relay connection is not established` and
+  `wait for peer to come online has been cancelled`. Other channels stayed
+  healthy and carried the traffic.
+
+Conclusion:
+
+- The code race that could leave an immediately failed reopened channel without
+  a future reopener is fixed.
+- The current deployed build meets the `5-15 Mbit/s` target on the retested
+  `45 <-> 185` path in 120-second sequential/one-direction windows, with
+  receiver-side results `9.13-9.36 Mbit/s`.
+- The remaining Tor stability issue is narrower now: secondary relay channel
+  establishment can fail repeatedly for one channel while the peer remains
+  usable. The dataplane no longer waits for that channel, and retry logs make
+  the failure visible, but the relay-side reason still needs a separate fix if
+  we want all four sub-channels restored consistently after load.
