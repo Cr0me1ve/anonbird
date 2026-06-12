@@ -161,6 +161,7 @@ type relayMultipathTelemetryChannel struct {
 	id                uint32
 	healthy           bool
 	stalled           bool
+	degraded          bool
 	pendingBytes      int64
 	activeBytes       int64
 	writeEWMA         time.Duration
@@ -802,6 +803,9 @@ func (c *relayMultipathConn) writeCandidatesLocked(now time.Time, excluded map[u
 		if !allowCooling && c.channelStalled(channelID, now) {
 			continue
 		}
+		if !allowCooling && c.channelDegraded(channelID, now) {
+			continue
+		}
 		if !allowOverLimit && c.channelOverInflightLimit(channelID) {
 			continue
 		}
@@ -1056,6 +1060,21 @@ func (c *relayMultipathConn) channelStalled(channelID uint32, now time.Time) boo
 	return stats.selectedSinceRead.Load() >= relayMultipathStallSelectedWrites
 }
 
+func (c *relayMultipathConn) channelDegraded(channelID uint32, now time.Time) bool {
+	if !c.scoringEnabled || c.readIdlePenalty <= 0 {
+		return false
+	}
+	stats := c.channelStats[channelID]
+	if stats == nil {
+		return false
+	}
+	lastRead := stats.lastReadUnixNano.Load()
+	if lastRead <= 0 || now.Sub(time.Unix(0, lastRead)) <= c.readIdlePenalty/2 {
+		return false
+	}
+	return c.channelHasUnansweredWrites(stats)
+}
+
 func (c *relayMultipathConn) channelPacingWait(channelID uint32, now time.Time) time.Duration {
 	if !c.scoringEnabled || c.pacingDelay <= 0 {
 		return 0
@@ -1150,6 +1169,9 @@ func (c *relayMultipathConn) channelScore(channelID uint32, now time.Time) int64
 	if c.channelStalled(channelID, now) {
 		score -= 2_000_000_000_000
 	}
+	if c.channelDegraded(channelID, now) {
+		score -= 1_000_000_000_000
+	}
 	if lastRead := stats.lastReadUnixNano.Load(); lastRead > 0 && c.readIdlePenalty > 0 {
 		idle := now.Sub(time.Unix(0, lastRead))
 		if idle > c.readIdlePenalty/2 {
@@ -1208,10 +1230,11 @@ func (c *relayMultipathConn) logTelemetrySnapshot() {
 		}
 		_, _ = fmt.Fprintf(
 			&b,
-			"{id=%d healthy=%t stalled=%t pending=%d active=%d ewma=%s cooldown=%s pace_wait=%s read_idle=%s write_idle=%s queue=%d assigned_flows=%d selected=%d selected_since_read=%d read_frames=%d read_bytes=%d written_bytes=%d written_since_read=%d failures=%d congestions=%d stalls=%d}",
+			"{id=%d healthy=%t stalled=%t degraded=%t pending=%d active=%d ewma=%s cooldown=%s pace_wait=%s read_idle=%s write_idle=%s queue=%d assigned_flows=%d selected=%d selected_since_read=%d read_frames=%d read_bytes=%d written_bytes=%d written_since_read=%d failures=%d congestions=%d stalls=%d}",
 			channel.id,
 			channel.healthy,
 			channel.stalled,
+			channel.degraded,
 			channel.pendingBytes,
 			channel.activeBytes,
 			channel.writeEWMA,
@@ -1245,9 +1268,10 @@ func (c *relayMultipathConn) telemetrySnapshot(now time.Time) []relayMultipathTe
 		}
 		stats := c.channelStats[channelID]
 		snapshot := relayMultipathTelemetryChannel{
-			id:      channelID,
-			healthy: selectorChannel.Healthy,
-			stalled: c.channelStalled(channelID, now),
+			id:       channelID,
+			healthy:  selectorChannel.Healthy,
+			stalled:  c.channelStalled(channelID, now),
+			degraded: c.channelDegraded(channelID, now),
 		}
 		if stats != nil {
 			lastRead := stats.lastReadUnixNano.Load()

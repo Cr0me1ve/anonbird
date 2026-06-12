@@ -331,6 +331,40 @@ func TestRelayMultipathConnFlowAffineUsesIdlePreferredChannelWithoutUnansweredWr
 	}
 }
 
+func TestRelayMultipathConnSkipsDegradedChannel(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(2)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	conn.channelStats[1].lastReadUnixNano.Store(time.Now().Add(-conn.readIdlePenalty).UnixNano())
+	conn.channelStats[1].selectedSinceRead.Store(relayMultipathSilentWriteThreshold)
+	conn.flowCounter.Store(1)
+
+	packet := wireGuardDataPacket("bulk")
+	_, err := conn.Write(packet)
+	require.NoError(t, err)
+	require.Equal(t, packet, <-fakes[0].writes)
+	select {
+	case got := <-fakes[1].writes:
+		t.Fatalf("degraded channel received write %q", string(got))
+	default:
+	}
+}
+
+func TestRelayMultipathConnUsesDegradedChannelWhenAllChannelsDegraded(t *testing.T) {
+	channels, fakes := newTestRelayMultipathChannels(1)
+	conn := newRelayMultipathConn(channels, []netip.Prefix{netip.MustParsePrefix("100.80.0.20/32")}, nil)
+	defer conn.Close()
+
+	conn.channelStats[0].lastReadUnixNano.Store(time.Now().Add(-conn.readIdlePenalty).UnixNano())
+	conn.channelStats[0].selectedSinceRead.Store(relayMultipathSilentWriteThreshold)
+
+	packet := wireGuardDataPacket("bulk")
+	_, err := conn.Write(packet)
+	require.NoError(t, err)
+	require.Equal(t, packet, <-fakes[0].writes)
+}
+
 func TestRelayMultipathConnReopensStalledChannelAndReassignsFlow(t *testing.T) {
 	t.Setenv(envAnonRelayMultipathReadIdleMS, "1")
 	t.Setenv(envAnonRelayMultipathStallBytes, "8")
