@@ -1494,3 +1494,111 @@ Conclusion:
   usable. The dataplane no longer waits for that channel, and retry logs make
   the failure visible, but the relay-side reason still needs a separate fix if
   we want all four sub-channels restored consistently after load.
+
+## 2026-06-12: Dedicated Tor channel reopen no longer waits on duplicate peer state
+
+Follow-up after the `development-local-tor-reopen-race` live test:
+
+- `185.246.220.249` still showed one secondary channel repeatedly failing to
+  reopen after load.
+- The failure changed from a code-race symptom to relay-client state symptoms:
+  `relay connection is not established` and
+  `wait for peer to come online has been cancelled`.
+- Other channels stayed healthy, traffic continued, and real-peer TCP checks
+  remained `0`, but the failed secondary lane reduced redundancy and made long
+  runs more fragile than necessary.
+
+Problems found:
+
+1. Dedicated anonymous relay clients could stay cached after their relay
+   connection was no longer ready. A reopen then reused that stale client and
+   failed immediately with `relay connection is not established`.
+2. Every dedicated Tor channel owns a separate relay client. On channel reopen,
+   that client had no `peerConnRefs` state, so it subscribed and waited for a
+   new peer-online notification even though the primary relay connection had
+   already proved the peer was online. If the subscription was cancelled while
+   the peer connection remained usable, the secondary lane retried forever with
+   `wait for peer to come online has been cancelled`.
+
+Fixes:
+
+- `Manager.cachedDedicatedRelayClient` now returns a cached dedicated client
+  only when `Ready()` is true. Not-ready dedicated clients are evicted and the
+  next reopen creates a fresh relay connection.
+- Dedicated anonymous channel open now uses an internal
+  assumed-peer-online path. Normal `OpenConnChannel` still waits for relay peer
+  state, preserving the NetBird-compatible behavior for primary relay connects.
+  The assumed-online path is used only for secondary anonymous transport lanes,
+  where the primary connection already established the peer.
+- Added focused tests:
+  `TestCachedDedicatedRelayClientReturnsReadyClient`,
+  `TestCachedDedicatedRelayClientEvictsNotReadyClient`, and
+  `TestOpenConnChannelAssumePeerOnlineSkipsPeerStateWait`.
+
+Local verification:
+
+```sh
+go test ./shared/relay/client -run 'TestOpenConnChannelAssumePeerOnlineSkipsPeerStateWait|TestCachedDedicatedRelayClient|TestDedicatedRelayChannelReusedAcrossPeers' -count=1 -timeout=120s
+go test ./shared/relay/client ./client/internal/peer ./client/iface/bind ./shared/relay/client/dialer/ws -count=1 -timeout=180s
+git diff --check
+```
+
+Actual status on 2026-06-12: pass.
+
+Deployment:
+
+- Deployed version on `45.138.103.224`, `185.246.220.249`,
+  `213.108.2.95`, and `83.171.225.115`:
+  `development-local-tor-peerwait`.
+- Binary SHA256:
+  `130fcbb21a910e8db31d76f8f3d3bdadf58cf5d9fd3cae5ea4bddb926c5ce67e`.
+- Gzip SHA256:
+  `0816caf70f897002e2614b32ea4a6b21d6c1d1011ef6d05d7407efc84b089305`.
+- After warm-up, all four hosts reported management/signal connected, relay
+  `1/1 Available`, and `Peers count: 3/14 Connected`.
+- Direct real-peer TCP checks stayed `0` on all checked hosts.
+- Fresh startup logs on `83.171.225.115` showed secondary lanes using the new
+  `prepare the relayed connection for available remote peer` path for channels
+  `1`, `2`, and `3`.
+
+Control retest on `45.138.103.224 <-> 185.246.220.249`:
+
+| Direction | Result |
+| --- | --- |
+| `45 -> 185`, `iperf3 -P 4 -t 120` | sender `11.3 Mbit/s` over 118 seconds; server log receiver `10.6 Mbit/s` over 119 seconds |
+| `185 -> 45`, clean retry `iperf3 -P 4 -t 60` | sender `8.26 Mbit/s`, receiver `6.97 Mbit/s`; completed normally |
+
+Observed Tor behavior:
+
+- `45 -> 185` stayed in the target range throughout the run:
+  `10.7`, `10.8`, `12.5`, and `11.3 Mbit/s` per reporting window.
+- The `45 -> 185` client-side iperf process still did not receive the final
+  receiver summary and was interrupted by the outer timeout, but the receiving
+  server log contained the final `10.6 Mbit/s` summary. AnonBird status and
+  telemetry stayed healthy, so this is tracked as an iperf/TCP teardown symptom
+  over Tor rather than a confirmed AnonBird dataplane failure.
+- `185 -> 45` had one congested 15-second window at `2.73 Mbit/s`, then
+  recovered to `8.94 Mbit/s` and completed normally.
+- Post-load telemetry showed channels healthy with `failures=0` and
+  `stalls=0`. Some channels were temporarily `degraded=true`, and there were
+  isolated `congestions=1` samples, which is expected under Tor TCP load.
+
+Ping and privacy checks after load:
+
+| Direction | Loss | RTT |
+| --- | --- | --- |
+| `45 -> 185` over AnonBird IPs | `0%` | min/avg/max `569/703/831 ms` |
+| `185 -> 45` over AnonBird IPs | `0%` | min/avg/max `370/841/2969 ms` |
+
+Direct real-peer TCP checks remained `0` on both hosts after the load and ping
+tests.
+
+Conclusion:
+
+- The previously observed repeated secondary-channel reopen failure is not
+  present in the latest live logs after this fix.
+- The Tor path now repeatedly reaches the requested `5-15 Mbit/s` range on the
+  main test pair while preserving peer IPv4/IPv6 privacy.
+- Remaining improvement area: reduce Tor congestion sensitivity and teardown
+  oddities. The connection stays up, but latency spikes and one short
+  throughput dip remain visible under load.

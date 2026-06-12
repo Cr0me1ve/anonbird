@@ -316,6 +316,14 @@ func (c *Client) OpenConn(ctx context.Context, dstPeerID string) (net.Conn, erro
 // OpenConnChannel creates a logical relayed connection to dstPeerID on the
 // given channel. Channel 0 is the legacy/default relay channel used by OpenConn.
 func (c *Client) OpenConnChannel(ctx context.Context, dstPeerID string, channelID uint32) (net.Conn, error) {
+	return c.openConnChannel(ctx, dstPeerID, channelID, true)
+}
+
+func (c *Client) openConnChannelAssumePeerOnline(ctx context.Context, dstPeerID string, channelID uint32) (net.Conn, error) {
+	return c.openConnChannel(ctx, dstPeerID, channelID, false)
+}
+
+func (c *Client) openConnChannel(ctx context.Context, dstPeerID string, channelID uint32, waitForPeerOnline bool) (net.Conn, error) {
 	peerID := messages.HashID(dstPeerID)
 	key := connKey{peerID: peerID, channelID: channelID}
 
@@ -331,7 +339,11 @@ func (c *Client) OpenConnChannel(ctx context.Context, dstPeerID string, channelI
 	}
 	alreadySubscribed := c.peerConnRefs[peerID] > 0
 
-	c.log.Infof("prepare the relayed connection, waiting for remote peer: %s channel: %d", peerID, channelID)
+	if waitForPeerOnline && !alreadySubscribed {
+		c.log.Infof("prepare the relayed connection, waiting for remote peer: %s channel: %d", peerID, channelID)
+	} else {
+		c.log.Infof("prepare the relayed connection for available remote peer: %s channel: %d", peerID, channelID)
+	}
 
 	c.muInstanceURL.Lock()
 	instanceURL := c.instanceURL
@@ -347,7 +359,7 @@ func (c *Client) OpenConnChannel(ctx context.Context, dstPeerID string, channelI
 		c.log.Tracef("flushed buffered early message for peer: %s", peerID)
 	}
 
-	if !alreadySubscribed {
+	if waitForPeerOnline && !alreadySubscribed {
 		if err := c.stateSubscription.WaitToBeOnlineAndSubscribe(ctx, peerID); err != nil {
 			c.log.Errorf("peer not available: %s, %s", peerID, err)
 			c.mu.Lock()

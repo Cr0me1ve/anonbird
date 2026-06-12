@@ -15,6 +15,7 @@ import (
 	"github.com/netbirdio/netbird/shared/relay/auth/allow"
 	"github.com/netbirdio/netbird/shared/relay/auth/hmac"
 	"github.com/netbirdio/netbird/shared/relay/client/dialer/ws"
+	"github.com/netbirdio/netbird/shared/relay/messages"
 	"github.com/netbirdio/netbird/util"
 
 	"github.com/netbirdio/netbird/relay/server"
@@ -112,6 +113,25 @@ func TestClientGetDialersWithI2PUsesWebSocketOnly(t *testing.T) {
 	if !client.usesAnonymousRelayTransport() {
 		t.Fatal("expected I2P relay client to use anonymous health-check timings")
 	}
+}
+
+func TestOpenConnChannelAssumePeerOnlineSkipsPeerStateWait(t *testing.T) {
+	client := NewClient("rel://127.0.0.1:33080", hmacTokenStore, "alice", iface.DefaultMTU)
+	client.serviceIsRunning = true
+	client.stateSubscription = NewPeersStateSubscription(log.NewEntry(log.New()), &mockRelayedConn{}, func([]messages.PeerID) {})
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := client.OpenConnChannel(cancelledCtx, "bob", 7); err == nil {
+		t.Fatal("expected regular channel open to wait for peer state and fail with a cancelled context")
+	}
+
+	conn, err := client.openConnChannelAssumePeerOnline(cancelledCtx, "bob", 7)
+	if err != nil {
+		t.Fatalf("expected assumed-online channel open to skip peer state wait, got %s", err)
+	}
+	defer conn.Close()
 }
 
 func TestClientDirectRelayDoesNotUseAnonymousHealthChecks(t *testing.T) {

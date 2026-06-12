@@ -293,6 +293,72 @@ func TestDedicatedRelayChannelReusedAcrossPeers(t *testing.T) {
 	}
 }
 
+func TestCachedDedicatedRelayClientReturnsReadyClient(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mgr := NewManager(ctx, nil, "alice", iface.DefaultMTU)
+	key := dedicatedRelayKey{serverAddress: "rel://127.0.0.1:33080", channelID: 3}
+	relayClient := &Client{connectionURL: key.serverAddress}
+	relayClient.serviceIsRunning = true
+
+	rt := NewRelayTrack()
+	rt.Lock()
+	rt.relayClient = relayClient
+	rt.Unlock()
+
+	mgr.dedicatedRelayClientsMutex.Lock()
+	mgr.dedicatedRelayClients[key] = rt
+	mgr.dedicatedRelayClientsMutex.Unlock()
+
+	got, ok, err := mgr.cachedDedicatedRelayClient(key)
+	if err != nil {
+		t.Fatalf("expected cached ready client without error, got %s", err)
+	}
+	if !ok {
+		t.Fatal("expected cached ready client to be found")
+	}
+	if got != relayClient {
+		t.Fatal("expected the cached ready client to be returned")
+	}
+}
+
+func TestCachedDedicatedRelayClientEvictsNotReadyClient(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mgr := NewManager(ctx, nil, "alice", iface.DefaultMTU)
+	key := dedicatedRelayKey{serverAddress: "rel://127.0.0.1:33080", channelID: 3}
+	relayClient := &Client{connectionURL: key.serverAddress}
+
+	rt := NewRelayTrack()
+	rt.Lock()
+	rt.relayClient = relayClient
+	rt.Unlock()
+
+	mgr.dedicatedRelayClientsMutex.Lock()
+	mgr.dedicatedRelayClients[key] = rt
+	mgr.dedicatedRelayClientsMutex.Unlock()
+
+	got, ok, err := mgr.cachedDedicatedRelayClient(key)
+	if err != nil {
+		t.Fatalf("expected not-ready client eviction without error, got %s", err)
+	}
+	if ok {
+		t.Fatal("expected not-ready cached client to be treated as missing")
+	}
+	if got != nil {
+		t.Fatal("expected no client after evicting not-ready cached client")
+	}
+
+	mgr.dedicatedRelayClientsMutex.RLock()
+	_, exists := mgr.dedicatedRelayClients[key]
+	mgr.dedicatedRelayClientsMutex.RUnlock()
+	if exists {
+		t.Fatal("expected not-ready dedicated relay client to be evicted")
+	}
+}
+
 func TestForeginConnClose(t *testing.T) {
 	ctx := context.Background()
 

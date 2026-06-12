@@ -384,59 +384,69 @@ func (m *Manager) openDedicatedConn(ctx context.Context, serverAddress, peerKey 
 	if err != nil {
 		return nil, err
 	}
-	return relayClient.OpenConnChannel(ctx, peerKey, channelID)
+	return relayClient.openConnChannelAssumePeerOnline(ctx, peerKey, channelID)
 }
 
 func (m *Manager) dedicatedRelayClient(ctx context.Context, key dedicatedRelayKey, serverIP netip.Addr) (*Client, error) {
+	for {
+		if relayClient, ok, err := m.cachedDedicatedRelayClient(key); ok || err != nil {
+			return relayClient, err
+		}
+
+		m.dedicatedRelayClientsMutex.Lock()
+		if _, ok := m.dedicatedRelayClients[key]; ok {
+			m.dedicatedRelayClientsMutex.Unlock()
+			continue
+		}
+
+		rt := NewRelayTrack()
+		rt.Lock()
+		m.dedicatedRelayClients[key] = rt
+		m.dedicatedRelayClientsMutex.Unlock()
+
+		relayClient := m.newRelayClient(key.serverAddress, serverIP, key.channelID)
+		if err := relayClient.Connect(ctx); err != nil {
+			rt.err = err
+			rt.Unlock()
+			m.evictDedicatedRelay(key)
+			return nil, err
+		}
+		relayClient.SetOnDisconnectListener(func(string) {
+			m.evictDedicatedRelay(key)
+		})
+		rt.relayClient = relayClient
+		rt.Unlock()
+		return relayClient, nil
+	}
+}
+
+func (m *Manager) cachedDedicatedRelayClient(key dedicatedRelayKey) (*Client, bool, error) {
 	m.dedicatedRelayClientsMutex.RLock()
 	rt, ok := m.dedicatedRelayClients[key]
-	if ok {
-		rt.RLock()
+	if !ok {
 		m.dedicatedRelayClientsMutex.RUnlock()
-		defer rt.RUnlock()
-		if rt.err != nil {
-			return nil, rt.err
-		}
-		if rt.relayClient == nil {
-			return nil, ErrRelayClientNotConnected
-		}
-		return rt.relayClient, nil
+		return nil, false, nil
 	}
+
+	rt.RLock()
 	m.dedicatedRelayClientsMutex.RUnlock()
+	err := rt.err
+	relayClient := rt.relayClient
+	rt.RUnlock()
 
-	m.dedicatedRelayClientsMutex.Lock()
-	rt, ok = m.dedicatedRelayClients[key]
-	if ok {
-		rt.RLock()
-		m.dedicatedRelayClientsMutex.Unlock()
-		defer rt.RUnlock()
-		if rt.err != nil {
-			return nil, rt.err
-		}
-		if rt.relayClient == nil {
-			return nil, ErrRelayClientNotConnected
-		}
-		return rt.relayClient, nil
+	if err != nil {
+		return nil, true, err
+	}
+	if relayClient == nil {
+		return nil, true, ErrRelayClientNotConnected
+	}
+	if relayClient.Ready() {
+		return relayClient, true, nil
 	}
 
-	rt = NewRelayTrack()
-	rt.Lock()
-	m.dedicatedRelayClients[key] = rt
-	m.dedicatedRelayClientsMutex.Unlock()
-
-	relayClient := m.newRelayClient(key.serverAddress, serverIP, key.channelID)
-	if err := relayClient.Connect(ctx); err != nil {
-		rt.err = err
-		rt.Unlock()
-		m.evictDedicatedRelay(key)
-		return nil, err
-	}
-	relayClient.SetOnDisconnectListener(func(string) {
-		m.evictDedicatedRelay(key)
-	})
-	rt.relayClient = relayClient
-	rt.Unlock()
-	return relayClient, nil
+	log.Debugf("evicting not-ready dedicated relay client: %s channel %d", key.serverAddress, key.channelID)
+	m.evictDedicatedRelay(key)
+	return nil, false, nil
 }
 
 func (m *Manager) newRelayClient(serverAddress string, serverIP netip.Addr, channelID uint32) *Client {
