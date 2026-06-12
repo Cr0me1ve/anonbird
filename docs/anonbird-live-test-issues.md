@@ -1261,3 +1261,51 @@ go test ./client/internal/peer -count=1 -timeout=120s
 ```
 
 Actual status on 2026-06-12: pass.
+
+Deployment and post-fix live verification:
+
+- Deployed version on `45.138.103.224`, `185.246.220.249`,
+  `213.108.2.95`, and `83.171.225.115`:
+  `development-local-tor-startup-reopen`.
+- Binary SHA256 on all four hosts:
+  `f3d48ce99f54d56f7081f633a999561b3349ad23b1e199746ab41a98a3268769`.
+- Gzip SHA256:
+  `23af0de49fcd3150bac736fd7b27edbf7c96cd60b26dfeaeb9bf2aae9855ab46`.
+- Runtime env on all four hosts remained the current Tor profile:
+  `flow-affine`, 4 channels, batch enabled, Tor SOCKS isolation enabled,
+  no pacing, no in-flight byte cap.
+- After restart and warm-up, all four hosts reported management/signal
+  connected, relay `1/1 Available`, and `Peers count: 3/14 Connected`.
+- Direct real-peer TCP checks stayed `0` on all four hosts.
+- Telemetry after restart showed channel IDs `0/1/2/3` present and
+  `healthy=true` on all checked peer relay connections.
+
+Post-fix Tor throughput:
+
+| Direction | Result |
+| --- | --- |
+| `45 -> 185`, `iperf3 -P 4 -t 30` | sender `6.53 Mbit/s`, receiver `3.64 Mbit/s`, completed without `Broken pipe` |
+| `185 -> 45`, `iperf3 -P 4 -t 30` | sender `7.13 Mbit/s`, receiver `3.69 Mbit/s`, completed without `Broken pipe` |
+| `185 -> 83`, `iperf3 -P 4 -t 20` | sender `7.71 Mbit/s`, receiver `5.23 Mbit/s`, completed |
+| `83 -> 185`, `iperf3 -P 4 -t 20` | sender `11.5 Mbit/s`, receiver `8.35 Mbit/s`, completed |
+
+Post-load health:
+
+- All four hosts still reported management/signal connected, relay available,
+  and `Peers count: 3/14 Connected`.
+- Direct real-peer TCP checks remained `0`.
+- Telemetry for the loaded `45 <-> 185` and `185 <-> 83` connections showed
+  all four channels healthy with flow assignments and selected writes
+  distributed across channel IDs instead of leaving missing channels dead.
+
+Conclusion:
+
+- The missing-startup-channel recovery bug is fixed: channels that fail initial
+  Tor auth/startup are now represented and reopened in the background.
+- The reliability symptom improved: the retested directions completed without
+  `iperf3` control reset/Broken pipe.
+- The speed target is partially met. `185 <-> 83` is inside the desired
+  receiver-side `5-15 Mbit/s` range, while `45 <-> 185` still averages about
+  `3.6-3.7 Mbit/s` receiver-side despite sender-side being above `6 Mbit/s`.
+  The next bottleneck is no longer missing channel recovery; it is Tor/TCP
+  tail latency and per-channel congestion/blackhole avoidance under load.
