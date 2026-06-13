@@ -35,6 +35,7 @@ import (
 	"github.com/netbirdio/netbird/management/server/account"
 	"github.com/netbirdio/netbird/management/server/activity"
 	nbcache "github.com/netbirdio/netbird/management/server/cache"
+	"github.com/netbirdio/netbird/management/server/cloudaccount"
 	"github.com/netbirdio/netbird/management/server/cloudquota"
 	nbcontext "github.com/netbirdio/netbird/management/server/context"
 	"github.com/netbirdio/netbird/management/server/geolocation"
@@ -155,7 +156,8 @@ type DefaultAccountManager struct {
 
 	disableDefaultPolicy bool
 
-	cloudQuota cloudquota.Checker
+	cloudAccount cloudaccount.Resolver
+	cloudQuota   cloudquota.Checker
 }
 
 var _ account.Manager = (*DefaultAccountManager)(nil)
@@ -255,6 +257,16 @@ func BuildManager(
 	if err != nil {
 		return nil, err
 	}
+	cloudAccountResolver, err := cloudaccount.NewFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	if cloudAccountResolver != nil && singleAccountModeDomain != "" {
+		return nil, status.Errorf(status.InvalidArgument, "single account mode is not compatible with AnonBird Cloud account resolution")
+	}
+	if cloudAccountResolver != nil {
+		log.WithContext(ctx).Info("cloud account resolution enabled")
+	}
 	if cloudQuotaChecker != nil {
 		log.WithContext(ctx).Info("cloud quota enforcement enabled")
 	}
@@ -280,6 +292,7 @@ func BuildManager(
 		settingsManager:          settingsManager,
 		permissionsManager:       permissionsManager,
 		disableDefaultPolicy:     disableDefaultPolicy,
+		cloudAccount:             cloudAccountResolver,
 		cloudQuota:               cloudQuotaChecker,
 	}
 
@@ -1409,17 +1422,23 @@ func (am *DefaultAccountManager) addNewUserToDomainAccount(ctx context.Context, 
 	newUser := types.NewRegularUser(userAuth.UserId, userAuth.Email, userAuth.Name)
 	newUser.AccountID = domainAccountID
 
-	settings, err := am.Store.GetAccountSettings(ctx, store.LockingStrengthNone, domainAccountID)
-	if err != nil {
-		return "", err
-	}
+	err := am.Store.ExecuteInTransaction(ctx, func(transaction store.Store) error {
+		if err := am.enforceCloudUserQuota(ctx, transaction, domainAccountID, 1, ""); err != nil {
+			return err
+		}
 
-	if settings != nil && settings.Extra != nil && settings.Extra.UserApprovalRequired {
-		newUser.Blocked = true
-		newUser.PendingApproval = true
-	}
+		settings, err := transaction.GetAccountSettings(ctx, store.LockingStrengthNone, domainAccountID)
+		if err != nil {
+			return err
+		}
 
-	err = am.Store.SaveUser(ctx, newUser)
+		if settings != nil && settings.Extra != nil && settings.Extra.UserApprovalRequired {
+			newUser.Blocked = true
+			newUser.PendingApproval = true
+		}
+
+		return transaction.SaveUser(ctx, newUser)
+	})
 	if err != nil {
 		return "", err
 	}
@@ -1573,6 +1592,37 @@ func (am *DefaultAccountManager) GetAccountIDFromUserAuth(ctx context.Context, u
 	if userAuth.UserId == "" {
 		return "", "", errors.New(emptyUserID)
 	}
+	if am.cloudAccount != nil && !userAuth.IsPAT {
+		accountID, err := am.getAccountIDWithCloudAccount(ctx, userAuth)
+		if err != nil {
+			return "", "", err
+		}
+
+		user, err := am.Store.GetUserByUserID(ctx, store.LockingStrengthNone, userAuth.UserId)
+		if err != nil {
+			log.Errorf("failed to get user by ID %s: %v", userAuth.UserId, err)
+			return "", "", status.Errorf(status.NotFound, "user %s not found", userAuth.UserId)
+		}
+
+		if userAuth.IsChild {
+			return accountID, user.Id, nil
+		}
+
+		ctx, err = am.permissionsManager.ValidateAccountAccess(ctx, accountID, user, false)
+		if err != nil {
+			return "", "", err
+		}
+
+		if !user.IsServiceUser && userAuth.Invited {
+			err = am.redeemInvite(ctx, accountID, user.Id)
+			if err != nil {
+				return "", "", err
+			}
+		}
+
+		return accountID, user.Id, nil
+	}
+
 	if am.singleAccountMode && am.singleAccountModeDomain != "" {
 		// This section is mostly related to self-hosted installations.
 		// We override incoming domain claims to group users under a single account.
@@ -1858,6 +1908,70 @@ func (am *DefaultAccountManager) getAccountIDWithAuthorizationClaims(ctx context
 	}
 
 	return am.addNewPrivateAccount(ctx, domainAccountID, userAuth)
+}
+
+func (am *DefaultAccountManager) getAccountIDWithCloudAccount(ctx context.Context, userAuth auth.UserAuth) (string, error) {
+	if userAuth.UserId == "" {
+		return "", errors.New(emptyUserID)
+	}
+	if userAuth.IsChild {
+		exists, err := am.Store.AccountExists(ctx, store.LockingStrengthNone, userAuth.AccountId)
+		if err != nil || !exists {
+			return "", err
+		}
+		return userAuth.AccountId, nil
+	}
+
+	principal, err := am.cloudAccount.Resolve(ctx, userAuth.UserId, userAuth.Email)
+	if err != nil {
+		return "", status.Errorf(status.Unauthorized, "cloud account resolution failed")
+	}
+
+	accountID := strings.TrimSpace(principal.AccountID)
+	domain := strings.ToLower(strings.TrimSpace(principal.Domain))
+	if accountID == "" || !isDomainValid(domain) {
+		return "", status.Errorf(status.Internal, "cloud account resolver returned invalid account")
+	}
+
+	unlock := am.Store.AcquireGlobalLock(ctx)
+	defer unlock()
+
+	userAccountID, err := am.Store.GetAccountIDByUserID(ctx, store.LockingStrengthNone, userAuth.UserId)
+	if err != nil && handleNotFound(err) != nil {
+		return "", err
+	}
+	if userAccountID != "" {
+		if userAccountID != accountID {
+			return "", status.Errorf(status.PermissionDenied, "user is linked to a different cloud account")
+		}
+		return accountID, nil
+	}
+
+	exists, err := am.Store.AccountExists(ctx, store.LockingStrengthNone, accountID)
+	if err != nil {
+		return "", err
+	}
+	if exists {
+		cloudUserAuth := userAuth
+		cloudUserAuth.Domain = domain
+		cloudUserAuth.DomainCategory = types.PrivateCategory
+		return am.addNewUserToDomainAccount(ctx, accountID, cloudUserAuth)
+	}
+
+	account := newAccountWithId(ctx, accountID, userAuth.UserId, domain, userAuth.Email, userAuth.Name, am.disableDefaultPolicy)
+	account.DomainCategory = types.PrivateCategory
+	account.IsDomainPrimaryAccount = true
+	if err := am.Store.SaveAccount(ctx, account); err != nil {
+		return "", err
+	}
+	am.StoreEvent(ctx, userAuth.UserId, account.Id, account.Id, activity.AccountCreated, nil)
+
+	if err := am.addAccountIDToIDPAppMeta(ctx, userAuth.UserId, account.Id); err != nil {
+		return "", err
+	}
+	am.StoreEvent(ctx, userAuth.UserId, userAuth.UserId, account.Id, activity.UserJoined, nil)
+
+	return account.Id, nil
 }
 func (am *DefaultAccountManager) getPrivateDomainWithGlobalLock(ctx context.Context, domain string) (string, context.CancelFunc, error) {
 	domainAccountID, err := am.Store.GetAccountIDByPrivateDomain(ctx, store.LockingStrengthNone, domain)
