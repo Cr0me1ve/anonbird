@@ -48,7 +48,13 @@ func (am *DefaultAccountManager) createServiceUser(ctx context.Context, accountI
 	newUser.AccountID = accountID
 	log.WithContext(ctx).Debugf("New User: %v", newUser)
 
-	if err = am.Store.SaveUser(ctx, newUser); err != nil {
+	err = am.Store.ExecuteInTransaction(ctx, func(transaction store.Store) error {
+		if err := am.enforceCloudUserQuota(ctx, transaction, accountID, 1, ""); err != nil {
+			return err
+		}
+		return transaction.SaveUser(ctx, newUser)
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -130,7 +136,16 @@ func (am *DefaultAccountManager) inviteNewUser(ctx context.Context, accountID, u
 		Name:                 invite.Name,
 	}
 
-	if err = am.Store.SaveUser(ctx, newUser); err != nil {
+	err = am.Store.ExecuteInTransaction(ctx, func(transaction store.Store) error {
+		if err := am.enforceCloudUserQuota(ctx, transaction, accountID, 1, ""); err != nil {
+			return err
+		}
+		return transaction.SaveUser(ctx, newUser)
+	})
+	if err != nil {
+		if deleteErr := am.idpManager.DeleteUser(ctx, idpUser.ID); deleteErr != nil {
+			log.WithContext(ctx).WithError(deleteErr).Errorf("failed to rollback IdP user %s after user save failure", idpUser.ID)
+		}
 		return nil, err
 	}
 
@@ -624,11 +639,16 @@ func (am *DefaultAccountManager) SaveOrAddUsers(ctx context.Context, accountID, 
 		}
 
 		err = am.Store.ExecuteInTransaction(ctx, func(transaction store.Store) error {
-			_, updatedUser, userPeersToExpire, userEvents, err := am.processUserUpdate(
+			isNewUser, updatedUser, userPeersToExpire, userEvents, err := am.processUserUpdate(
 				ctx, transaction, groupsMap, accountID, initiatorUserID, initiatorUser, update, addIfNotExists, settings,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to process update for user %s: %w", update.Id, err)
+			}
+			if isNewUser {
+				if err := am.enforceCloudUserQuota(ctx, transaction, accountID, 1, ""); err != nil {
+					return err
+				}
 			}
 
 			updateAccountPeers = true
@@ -1573,7 +1593,13 @@ func (am *DefaultAccountManager) CreateUserInvite(ctx context.Context, accountID
 		CreatedBy:   initiatorUserID,
 	}
 
-	if err := am.Store.SaveUserInvite(ctx, userInvite); err != nil {
+	err = am.Store.ExecuteInTransaction(ctx, func(transaction store.Store) error {
+		if err := am.enforceCloudUserQuota(ctx, transaction, accountID, 1, ""); err != nil {
+			return err
+		}
+		return transaction.SaveUserInvite(ctx, userInvite)
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -1684,7 +1710,7 @@ func (am *DefaultAccountManager) AcceptUserInvite(ctx context.Context, token, pa
 	}
 
 	hashedToken := types.HashInviteToken(token)
-	invite, err := am.Store.GetUserInviteByHashedToken(ctx, store.LockingStrengthUpdate, hashedToken)
+	invite, err := am.Store.GetUserInviteByHashedToken(ctx, store.LockingStrengthNone, hashedToken)
 	if err != nil {
 		return err
 	}
@@ -1716,11 +1742,23 @@ func (am *DefaultAccountManager) AcceptUserInvite(ctx context.Context, token, pa
 		Name:       invite.Name,
 	}
 
+	acceptedInvite := invite
 	err = am.Store.ExecuteInTransaction(ctx, func(transaction store.Store) error {
+		lockedInvite, err := transaction.GetUserInviteByHashedToken(ctx, store.LockingStrengthUpdate, hashedToken)
+		if err != nil {
+			return err
+		}
+		if lockedInvite.IsExpired() {
+			return status.Errorf(status.InvalidArgument, "invite has expired")
+		}
+		if err := am.enforceCloudUserQuota(ctx, transaction, lockedInvite.AccountID, 1, lockedInvite.ID); err != nil {
+			return err
+		}
+		acceptedInvite = lockedInvite
 		if err := transaction.SaveUser(ctx, newUser); err != nil {
 			return fmt.Errorf("failed to save user: %w", err)
 		}
-		if err := transaction.DeleteUserInvite(ctx, invite.ID); err != nil {
+		if err := transaction.DeleteUserInvite(ctx, lockedInvite.ID); err != nil {
 			return fmt.Errorf("failed to delete invite: %w", err)
 		}
 		return nil
@@ -1733,7 +1771,7 @@ func (am *DefaultAccountManager) AcceptUserInvite(ctx context.Context, token, pa
 		return err
 	}
 
-	am.StoreEvent(ctx, newUser.Id, newUser.Id, invite.AccountID, activity.UserInviteLinkAccepted, map[string]any{"email": invite.Email})
+	am.StoreEvent(ctx, newUser.Id, newUser.Id, acceptedInvite.AccountID, activity.UserInviteLinkAccepted, map[string]any{"email": acceptedInvite.Email})
 
 	return nil
 }

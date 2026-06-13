@@ -35,6 +35,7 @@ import (
 	"github.com/netbirdio/netbird/management/server/account"
 	"github.com/netbirdio/netbird/management/server/activity"
 	nbcache "github.com/netbirdio/netbird/management/server/cache"
+	"github.com/netbirdio/netbird/management/server/cloudquota"
 	nbcontext "github.com/netbirdio/netbird/management/server/context"
 	"github.com/netbirdio/netbird/management/server/geolocation"
 	"github.com/netbirdio/netbird/management/server/idp"
@@ -153,6 +154,8 @@ type DefaultAccountManager struct {
 	permissionsManager permissions.Manager
 
 	disableDefaultPolicy bool
+
+	cloudQuota cloudquota.Checker
 }
 
 var _ account.Manager = (*DefaultAccountManager)(nil)
@@ -248,6 +251,14 @@ func BuildManager(
 		log.WithContext(ctx).Debugf("took %v to instantiate account manager", time.Since(start))
 	}()
 
+	cloudQuotaChecker, err := cloudquota.NewFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	if cloudQuotaChecker != nil {
+		log.WithContext(ctx).Info("cloud quota enforcement enabled")
+	}
+
 	am := &DefaultAccountManager{
 		Store:                    store,
 		config:                   config,
@@ -269,6 +280,7 @@ func BuildManager(
 		settingsManager:          settingsManager,
 		permissionsManager:       permissionsManager,
 		disableDefaultPolicy:     disableDefaultPolicy,
+		cloudQuota:               cloudQuotaChecker,
 	}
 
 	am.networkMapController.StartWarmup(ctx)

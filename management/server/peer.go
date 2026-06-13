@@ -838,6 +838,11 @@ func (am *DefaultAccountManager) AddPeer(ctx context.Context, accountID, setupKe
 		}
 
 		err = am.Store.ExecuteInTransaction(ctx, func(transaction store.Store) error {
+			if !newPeer.ProxyMeta.Embedded {
+				if err := am.enforceCloudPeerQuota(ctx, transaction, accountID, 1); err != nil {
+					return err
+				}
+			}
 			err = transaction.AddPeerToAccount(ctx, newPeer)
 			if err != nil {
 				return err
