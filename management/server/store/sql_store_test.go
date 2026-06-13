@@ -40,8 +40,9 @@ import (
 
 func runTestForAllEngines(t *testing.T, testDataFile string, f func(t *testing.T, store Store)) {
 	t.Helper()
+	requestedEngine := os.Getenv("NETBIRD_STORE_ENGINE")
 	for _, engine := range supportedEngines {
-		if os.Getenv("NETBIRD_STORE_ENGINE") != "" && os.Getenv("NETBIRD_STORE_ENGINE") != string(engine) {
+		if requestedEngine != "" && requestedEngine != string(engine) {
 			continue
 		}
 		t.Setenv("NETBIRD_STORE_ENGINE", string(engine))
@@ -51,7 +52,11 @@ func runTestForAllEngines(t *testing.T, testDataFile string, f func(t *testing.T
 		t.Run(string(engine), func(t *testing.T) {
 			f(t, store)
 		})
-		os.Unsetenv("NETBIRD_STORE_ENGINE")
+		if requestedEngine == "" {
+			os.Unsetenv("NETBIRD_STORE_ENGINE")
+		} else {
+			os.Setenv("NETBIRD_STORE_ENGINE", requestedEngine)
+		}
 	}
 }
 

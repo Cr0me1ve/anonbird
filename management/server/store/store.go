@@ -32,7 +32,6 @@ import (
 	"github.com/netbirdio/netbird/management/internals/modules/zones"
 	"github.com/netbirdio/netbird/management/internals/modules/zones/records"
 	"github.com/netbirdio/netbird/management/server/telemetry"
-	"github.com/netbirdio/netbird/management/server/testutil"
 	"github.com/netbirdio/netbird/management/server/types"
 	"github.com/netbirdio/netbird/util"
 	"github.com/netbirdio/netbird/util/crypt"
@@ -368,6 +367,19 @@ func lookupDSNEnv(nbKey, legacyKey string) (string, bool) {
 	return os.LookupEnv(legacyKey)
 }
 
+type testStoreContainerFactory func() (func(), string, error)
+
+var (
+	createPostgresTestContainer testStoreContainerFactory = missingTestStoreDSN(postgresDsnEnv, postgresDsnEnvLegacy)
+	createMysqlTestContainer    testStoreContainerFactory = missingTestStoreDSN(mysqlDsnEnv, mysqlDsnEnvLegacy)
+)
+
+func missingTestStoreDSN(envKeys ...string) testStoreContainerFactory {
+	return func() (func(), string, error) {
+		return nil, "", fmt.Errorf("store DSN is required; set one of %s", strings.Join(envKeys, ", "))
+	}
+}
+
 var supportedEngines = []types.Engine{types.SqliteStoreEngine, types.PostgresStoreEngine, types.MysqlStoreEngine}
 
 func getStoreEngineFromEnv() types.Engine {
@@ -667,7 +679,7 @@ func newReusedPostgresStore(ctx context.Context, store *SqlStore, kind types.Eng
 	dsn, ok := lookupDSNEnv(postgresDsnEnv, postgresDsnEnvLegacy)
 	if !ok || dsn == "" {
 		var err error
-		_, dsn, err = testutil.CreatePostgresTestContainer()
+		_, dsn, err = createPostgresTestContainer()
 		if err != nil {
 			return nil, nil, err
 		}
@@ -705,7 +717,7 @@ func newReusedMysqlStore(ctx context.Context, store *SqlStore, kind types.Engine
 	dsn, ok := lookupDSNEnv(mysqlDsnEnv, mysqlDsnEnvLegacy)
 	if !ok || dsn == "" {
 		var err error
-		_, dsn, err = testutil.CreateMysqlTestContainer()
+		_, dsn, err = createMysqlTestContainer()
 		if err != nil {
 			return nil, nil, err
 		}
