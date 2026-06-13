@@ -29,7 +29,7 @@ type Principal struct {
 }
 
 type Resolver interface {
-	Resolve(ctx context.Context, subject, email string) (Principal, error)
+	Resolve(ctx context.Context, subject, email string, emailVerified bool) (Principal, error)
 }
 
 type Client struct {
@@ -108,16 +108,24 @@ func isPrivateHTTPHost(host string) bool {
 	return !strings.Contains(host, ".")
 }
 
-func (c *Client) Resolve(ctx context.Context, subject, email string) (Principal, error) {
+func (c *Client) Resolve(ctx context.Context, subject, email string, emailVerified bool) (Principal, error) {
 	subject = strings.TrimSpace(subject)
 	email = strings.TrimSpace(email)
 	if subject == "" || email == "" {
 		return Principal{}, errors.New("cloud account subject and email are required")
 	}
+	if !emailVerified {
+		return Principal{}, errors.New("cloud account email must be verified")
+	}
 
-	payload := map[string]string{
-		"subject": subject,
-		"email":   email,
+	payload := struct {
+		Subject       string `json:"subject"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+	}{
+		Subject:       subject,
+		Email:         email,
+		EmailVerified: emailVerified,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

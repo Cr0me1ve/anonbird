@@ -21,6 +21,8 @@ type UserAuth struct {
 	// The user's email address
 	// (optional, may be empty if not in token, make sure to set getUserInfo: true in Dex to have this field)
 	Email string
+	// Indicates whether the identity provider verified the user's email address.
+	EmailVerified bool
 	// The user's name
 	// (optional, may be empty if not in token, make sure to set getUserInfo: true in Dex to have this field)
 	Name string

@@ -16,8 +16,9 @@ import (
 )
 
 type cloudResolveCall struct {
-	subject string
-	email   string
+	subject       string
+	email         string
+	emailVerified bool
 }
 
 type recordingCloudAccountResolver struct {
@@ -26,8 +27,8 @@ type recordingCloudAccountResolver struct {
 	err       error
 }
 
-func (r *recordingCloudAccountResolver) Resolve(_ context.Context, subject, email string) (cloudaccount.Principal, error) {
-	r.calls = append(r.calls, cloudResolveCall{subject: subject, email: email})
+func (r *recordingCloudAccountResolver) Resolve(_ context.Context, subject, email string, emailVerified bool) (cloudaccount.Principal, error) {
+	r.calls = append(r.calls, cloudResolveCall{subject: subject, email: email, emailVerified: emailVerified})
 	if r.err != nil {
 		return cloudaccount.Principal{}, r.err
 	}
@@ -53,6 +54,7 @@ func TestCloudAccountResolverCreatesManagementAccountWithCloudID(t *testing.T) {
 		AccountId:      "forged-account-claim",
 		UserId:         "oidc-subject",
 		Email:          "owner@example.com",
+		EmailVerified:  true,
 		Name:           "Owner User",
 		Domain:         "evil.example.com",
 		DomainCategory: "private",
@@ -63,6 +65,7 @@ func TestCloudAccountResolverCreatesManagementAccountWithCloudID(t *testing.T) {
 	require.Len(t, resolver.calls, 1)
 	assert.Equal(t, "oidc-subject", resolver.calls[0].subject)
 	assert.Equal(t, "owner@example.com", resolver.calls[0].email)
+	assert.True(t, resolver.calls[0].emailVerified)
 
 	account, err := manager.Store.GetAccount(context.Background(), "acc_cloud")
 	require.NoError(t, err)
@@ -80,13 +83,38 @@ func TestCloudAccountResolverFailsClosed(t *testing.T) {
 	manager.cloudAccount = &recordingCloudAccountResolver{err: errors.New("cloud api unavailable")}
 
 	_, _, err = manager.GetAccountIDFromUserAuth(context.Background(), auth.UserAuth{
-		UserId: "oidc-subject",
-		Email:  "owner@example.com",
+		UserId:        "oidc-subject",
+		Email:         "owner@example.com",
+		EmailVerified: true,
 	})
 	require.Error(t, err)
 	sErr, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, status.Unauthorized, sErr.Type())
+	assert.Empty(t, manager.Store.GetAllAccounts(context.Background()))
+}
+
+func TestCloudAccountResolverRequiresVerifiedEmail(t *testing.T) {
+	manager, _, err := createManager(t)
+	require.NoError(t, err)
+	resolver := &recordingCloudAccountResolver{
+		principal: cloudaccount.Principal{
+			AccountID: "acc_cloud",
+			UserID:    "usr_cloud",
+			Email:     "owner@example.com",
+			Role:      "owner",
+			Domain:    "acc-cloud.accounts.anonbird.cloud",
+		},
+	}
+	manager.cloudAccount = resolver
+
+	_, _, err = manager.GetAccountIDFromUserAuth(context.Background(), auth.UserAuth{
+		UserId:        "oidc-subject",
+		Email:         "owner@example.com",
+		EmailVerified: false,
+	})
+	require.Error(t, err)
+	require.Empty(t, resolver.calls)
 	assert.Empty(t, manager.Store.GetAllAccounts(context.Background()))
 }
 
@@ -104,8 +132,9 @@ func TestCloudAccountExistingTenantEnforcesUserQuota(t *testing.T) {
 	}
 
 	_, _, err = manager.GetAccountIDFromUserAuth(context.Background(), auth.UserAuth{
-		UserId: "owner-subject",
-		Email:  "owner@example.com",
+		UserId:        "owner-subject",
+		Email:         "owner@example.com",
+		EmailVerified: true,
 	})
 	require.NoError(t, err)
 
@@ -123,8 +152,9 @@ func TestCloudAccountExistingTenantEnforcesUserQuota(t *testing.T) {
 	}
 
 	_, _, err = manager.GetAccountIDFromUserAuth(context.Background(), auth.UserAuth{
-		UserId: "second-subject",
-		Email:  "second@example.com",
+		UserId:        "second-subject",
+		Email:         "second@example.com",
+		EmailVerified: true,
 	})
 	require.Error(t, err)
 	sErr, ok := status.FromError(err)

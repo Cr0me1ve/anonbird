@@ -17,19 +17,22 @@ func TestClaimsExtractor_ToUserAuth_ExtractsEmailAndName(t *testing.T) {
 		audience       string
 		expectedUserID string
 		expectedEmail  string
+		expectedVerify bool
 		expectedName   string
 		expectError    bool
 	}{
 		{
 			name: "extracts email and name from standard claims",
 			claims: jwt.MapClaims{
-				"sub":   "user-123",
-				"email": "test@example.com",
-				"name":  "Test User",
+				"sub":            "user-123",
+				"email":          "test@example.com",
+				"email_verified": true,
+				"name":           "Test User",
 			},
 			userIDClaim:    "sub",
 			expectedUserID: "user-123",
 			expectedEmail:  "test@example.com",
+			expectedVerify: true,
 			expectedName:   "Test User",
 		},
 		{
@@ -155,6 +158,7 @@ func TestClaimsExtractor_ToUserAuth_ExtractsEmailAndName(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedUserID, userAuth.UserId)
 			assert.Equal(t, tt.expectedEmail, userAuth.Email)
+			assert.Equal(t, tt.expectedVerify, userAuth.EmailVerified)
 			assert.Equal(t, tt.expectedName, userAuth.Name)
 		})
 	}

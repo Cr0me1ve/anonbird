@@ -18,12 +18,16 @@ func TestClientResolve(t *testing.T) {
 		if r.Header.Get("X-AnonBird-Cloud-Token") != testInternalToken {
 			t.Fatal("missing internal token")
 		}
-		var request map[string]string
+		var request struct {
+			Subject       string `json:"subject"`
+			Email         string `json:"email"`
+			EmailVerified bool   `json:"email_verified"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatal(err)
 		}
-		if request["subject"] != "oidc-sub" || request["email"] != "owner@example.com" {
-			t.Fatalf("unexpected request payload: %v", request)
+		if request.Subject != "oidc-sub" || request.Email != "owner@example.com" || !request.EmailVerified {
+			t.Fatalf("unexpected request payload: %+v", request)
 		}
 		_ = json.NewEncoder(w).Encode(Principal{
 			AccountID: "acc_test",
@@ -40,7 +44,7 @@ func TestClientResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	principal, err := client.Resolve(context.Background(), "oidc-sub", "owner@example.com")
+	principal, err := client.Resolve(context.Background(), "oidc-sub", "owner@example.com", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +84,17 @@ func TestClientRequiresCompletePrincipal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Resolve(context.Background(), "oidc-sub", "owner@example.com"); err == nil {
+	if _, err := client.Resolve(context.Background(), "oidc-sub", "owner@example.com", true); err == nil {
 		t.Fatal("expected incomplete principal to fail")
+	}
+}
+
+func TestClientRequiresVerifiedEmail(t *testing.T) {
+	client, err := NewClient("http://cloud-api:8080", testInternalToken, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Resolve(context.Background(), "oidc-sub", "owner@example.com", false); err == nil {
+		t.Fatal("expected unverified email to fail closed before calling cloud API")
 	}
 }

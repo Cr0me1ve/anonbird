@@ -1921,8 +1921,11 @@ func (am *DefaultAccountManager) getAccountIDWithCloudAccount(ctx context.Contex
 		}
 		return userAuth.AccountId, nil
 	}
+	if !userAuth.EmailVerified {
+		return "", status.Errorf(status.Unauthorized, "cloud account email must be verified")
+	}
 
-	principal, err := am.cloudAccount.Resolve(ctx, userAuth.UserId, userAuth.Email)
+	principal, err := am.cloudAccount.Resolve(ctx, userAuth.UserId, userAuth.Email, userAuth.EmailVerified)
 	if err != nil {
 		return "", status.Errorf(status.Unauthorized, "cloud account resolution failed")
 	}

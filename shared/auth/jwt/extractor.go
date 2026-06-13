@@ -24,6 +24,8 @@ const (
 	LastLoginSuffix = "nb_last_login"
 	// Invited claim indicates that an incoming JWT is from a user that just accepted an invitation
 	Invited = "nb_invited"
+	// EmailVerifiedClaim is the standard OIDC claim for verified email ownership.
+	EmailVerifiedClaim = "email_verified"
 )
 
 var (
@@ -125,6 +127,10 @@ func (c *ClaimsExtractor) ToUserAuth(token *jwt.Token) (auth.UserAuth, error) {
 	// Extract email from standard "email" claim
 	if email, ok := claims["email"].(string); ok {
 		userAuth.Email = email
+	}
+
+	if emailVerified, ok := claims[EmailVerifiedClaim].(bool); ok {
+		userAuth.EmailVerified = emailVerified
 	}
 
 	// Extract name from standard "name" claim
